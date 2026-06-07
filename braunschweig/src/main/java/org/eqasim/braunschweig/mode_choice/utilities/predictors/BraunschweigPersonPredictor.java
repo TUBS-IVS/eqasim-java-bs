@@ -15,6 +15,7 @@ public class BraunschweigPersonPredictor extends CachedVariablePredictor<Braunsc
 		boolean hasSubscription = BraunschweigPredictorUtils.hasSubscription(person);
 		boolean hasDrivingPermit = BraunschweigPredictorUtils.hasDrivingLicense(person);
 		boolean isParisResident = BraunschweigPredictorUtils.isParisResident(person);
-		return new BraunschweigPersonVariables(hasSubscription, hasDrivingPermit, isParisResident);
+		double householdIncome_MU = BraunschweigPredictorUtils.getHouseholdIncome(person);
+		return new BraunschweigPersonVariables(hasSubscription, hasDrivingPermit, isParisResident, householdIncome_MU);
 	}
 }

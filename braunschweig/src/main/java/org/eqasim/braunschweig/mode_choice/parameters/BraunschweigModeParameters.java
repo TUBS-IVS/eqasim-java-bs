@@ -28,6 +28,14 @@ public class BraunschweigModeParameters extends ModeParameters {
 
 	public double betaAccessTime_u_min;
 
+	// Income elasticity of the monetary-cost utility (Task A1). The cost term is
+	// multiplied by (householdIncome / referenceHouseholdIncome)^lambdaCostIncome,
+	// the canonical eqasim form (see ZurichModeParameters). A negative lambda makes
+	// a given monetary cost weigh less for higher-income agents (and more for
+	// lower-income agents), so the synthesised household income drives mode choice.
+	public double lambdaCostIncome;
+	public double referenceHouseholdIncome_MU;
+
 	public static BraunschweigModeParameters buildDefault() {
 		BraunschweigModeParameters parameters = new BraunschweigModeParameters();
 
@@ -38,6 +46,18 @@ public class BraunschweigModeParameters extends ModeParameters {
 		parameters.betaCost_u_MU = -0.310998;
 		parameters.lambdaCostEuclideanDistance = -0.257501;
 		parameters.referenceEuclideanDistance_km = 4.4;
+
+		// Income elasticity of cost (Task A1). lambdaCostIncome is transferred from the
+		// eqasim Switzerland estimation (ZurichModeParameters.buildFrom6Feb2020:
+		// lambdaCostHouseholdIncome = -0.8169), the canonical eqasim income elasticity;
+		// no local re-estimation exists yet (Task B1, deferred). referenceHouseholdIncome_MU
+		// is the synthetic-population mean monthly household income in EUR -- a provisional
+		// value pending the mean logged by the next full synthesis run (the legacy incommuter
+		// income constant was 3000 EUR/month; ZGB net household income is of this order).
+		// With income == reference the interaction term is exactly 1.0, so this is a neutral
+		// reference point, not an additive offset.
+		parameters.lambdaCostIncome = -0.8169;
+		parameters.referenceHouseholdIncome_MU = 3200.0;
 
 		// Car
 		parameters.car.alpha_u = 0.4; // -0.201465;

@@ -48,9 +48,23 @@ public class BraunschweigPtUtilityEstimator implements UtilityEstimator {
 		return parameters.pt.betaWaitingTime_u_min * variables.waitingTime_min;
 	}
 
-	protected double estimateMonetaryCostUtility(BraunschweigPtVariables variables, double cost_EUR) {
-		return parameters.betaCost_u_MU * EstimatorUtils.interaction(variables.euclideanDistance_km,
-				parameters.referenceEuclideanDistance_km, parameters.lambdaCostEuclideanDistance) * cost_EUR;
+	/**
+	 * Income-elastic monetary-cost utility (Task A1). On top of the existing
+	 * cost-vs-distance interaction (kept intact), the cost is multiplied by
+	 * (income/referenceIncome)^lambdaCostIncome -- the canonical eqasim income
+	 * elasticity. A person with a missing income attribute uses the reference
+	 * income, so its income interaction term is exactly 1.0 (neutral).
+	 */
+	protected double estimateMonetaryCostUtility(BraunschweigPtVariables variables, double cost_EUR,
+			BraunschweigPersonVariables personVariables) {
+		double income_MU = Double.isNaN(personVariables.householdIncome_MU) ? parameters.referenceHouseholdIncome_MU
+				: personVariables.householdIncome_MU;
+		return parameters.betaCost_u_MU
+				* EstimatorUtils.interaction(variables.euclideanDistance_km, parameters.referenceEuclideanDistance_km,
+						parameters.lambdaCostEuclideanDistance)
+				* EstimatorUtils.interaction(income_MU, parameters.referenceHouseholdIncome_MU,
+						parameters.lambdaCostIncome)
+				* cost_EUR;
 	}
 
 	protected double estimateInVehicleTimeUtility(BraunschweigPtVariables variables) {
@@ -78,7 +92,7 @@ public class BraunschweigPtUtilityEstimator implements UtilityEstimator {
 		utility += estimateAccessEgressTimeUtility(ptVariables);
 		utility += estimateLineSwitchUtility(ptVariables);
 		utility += estimateWaitingTimeUtility(ptVariables);
-		utility += estimateMonetaryCostUtility(ptVariables, cost_EUR);
+		utility += estimateMonetaryCostUtility(ptVariables, cost_EUR, personVariables);
 		utility += estimateInVehicleTimeUtility(ptVariables);
 
 		utility += estimateOnlyBus(ptVariables);
