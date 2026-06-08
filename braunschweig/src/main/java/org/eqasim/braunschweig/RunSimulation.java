@@ -13,11 +13,13 @@ import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.controler.Controler;
 import org.matsim.core.scenario.ScenarioUtils;
+import org.matsim.simwrapper.SimWrapperModule;
 
 public class RunSimulation {
 	static public void main(String[] args) throws ConfigurationException {
 		CommandLine cmd = new CommandLine.Builder(args) //
 				.requireOptions("config-path") //
+				.allowOptions("simwrapper") //
 				.allowPrefixes("mode-choice-parameter", "cost-parameter", "use-vdf", "use-vdf-engine") //
 				.build();
 
@@ -59,6 +61,13 @@ public class RunSimulation {
 
 		Controler controller = new Controler(scenario);
 		configurator.configureController(controller);
+
+		// Optional SimWrapper dashboards (network volumes, mode share, trips/legs).
+		// Off by default so a standard run is byte-identical; enabled from the
+		// pipeline via --simwrapper true (config key: simwrapper_dashboards).
+		if (cmd.getOption("simwrapper").map(Boolean::parseBoolean).orElse(false)) {
+			controller.addOverridingModule(new SimWrapperModule());
+		}
 
 		controller.run();
 	}

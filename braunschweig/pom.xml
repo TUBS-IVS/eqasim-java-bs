@@ -28,6 +28,20 @@
 			<artifactId>application</artifactId>
 			<version>2025.0-PR3568</version>
 		</dependency>
+		<!--
+			MATSim SimWrapper contrib: lets the run write standard SimWrapper
+			dashboards (network volumes, mode share, trips/legs) into the output
+			directory. Uses the parent pom's matsim.version property so the contrib
+			stays in lockstep with the MATSim core version; the contrib is
+			published alongside the MATSim builds on repo.matsim.org. Only activated
+			at runtime behind the simwrapper command-line flag (see RunSimulation),
+			so a standard run is byte-identical when the flag is off.
+		-->
+		<dependency>
+			<groupId>org.matsim.contrib</groupId>
+			<artifactId>simwrapper</artifactId>
+			<version>${matsim.version}</version>
+		</dependency>
 	</dependencies>
 
 	<profiles>
