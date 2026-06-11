@@ -17,6 +17,17 @@
 			<artifactId>core</artifactId>
 			<version>1.5.0</version>
 		</dependency>
+		<!--
+			MATSim application contrib: provides the published german-wide-freight
+			trip extraction (org.matsim.application.prepare.freight.tripExtraction.
+			ExtractRelevantFreightTrips, Lu et al. 2022). Version pinned to the
+			active MATSim version, like the other matsim.contrib dependencies.
+		-->
+		<dependency>
+			<groupId>org.matsim.contrib</groupId>
+			<artifactId>application</artifactId>
+			<version>2025.0-PR3568</version>
+		</dependency>
 	</dependencies>
 
 	<profiles>

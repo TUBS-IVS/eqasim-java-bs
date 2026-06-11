@@ -13,6 +13,14 @@ import org.matsim.contribs.discrete_mode_choice.model.mode_availability.ModeAvai
 public class BraunschweigModeAvailability implements ModeAvailability {
 	@Override
 	public Collection<String> getAvailableModes(Person person, List<DiscreteModeChoiceTrip> trips) {
+		// Freight agents (german-wide-freight injection) are trip creators, not
+		// travelers: their single leg is fixed to "truck". Returning only that
+		// mode makes any DMC replanning a no-op re-selection of the same mode,
+		// regardless of how strategies are scoped to subpopulations.
+		if ("freight".equals(org.matsim.core.population.PopulationUtils.getSubpopulation(person))) {
+			return java.util.List.of("truck");
+		}
+
 		Collection<String> modes = new HashSet<>();
 
 		// Modes that are always available
