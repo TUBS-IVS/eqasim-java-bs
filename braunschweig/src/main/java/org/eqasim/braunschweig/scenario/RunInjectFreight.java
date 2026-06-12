@@ -208,8 +208,15 @@ public class RunInjectFreight {
 			config.scoring().addModeParams(truckParams);
 		}
 
+		// KeepLastSelected mirrors the resident strategy mix (DiscreteModeChoice +
+		// KeepLastSelected). A score-based selector (e.g. ChangeExpBeta) is NOT
+		// allowed here: eqasim enforces mode-choice-in-the-loop and the DMC
+		// ModeChoiceInTheLoopChecker aborts on ANY enabled ChangeExpBeta strategy,
+		// regardless of its subpopulation (verified on a real 1% run). Freight
+		// agents have a single plan and a single mode, so a score-based selector
+		// would add nothing anyway; route updates come from ReRoute below.
 		StrategySettings selector = new StrategySettings();
-		selector.setStrategyName("ChangeExpBeta");
+		selector.setStrategyName("KeepLastSelected");
 		selector.setSubpopulation(FREIGHT_SUBPOPULATION);
 		selector.setWeight(0.95);
 		config.replanning().addStrategySettings(selector);
