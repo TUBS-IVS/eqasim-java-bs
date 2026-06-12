@@ -18,6 +18,7 @@ import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigBicy
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigCarPassengerUtilityEstimator;
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigCarUtilityEstimator;
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigPtUtilityEstimator;
+import org.eqasim.braunschweig.mode_choice.utilities.estimators.FreightTruckUtilityEstimator;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigCarPassengerPredictor;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPersonPredictor;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPtPredictor;
@@ -42,6 +43,7 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	public static final String CAR_PASSENGER_ESTIMATOR_NAME = "BraunschweigCarPassengerUtilityEstimator";
 	public static final String BICYCLE_ESTIMATOR_NAME = "BraunschweigBicycleUtilityEstimator";
 	public static final String PT_ESTIMATOR_NAME = "BraunschweigPtUtilityEstimator";
+	public static final String FREIGHT_TRUCK_ESTIMATOR_NAME = "FreightTruckEstimator";
 
 	static public final String CAR_PASSENGER = "car_passenger";
 	static public final String BICYCLE = "bicycle";
@@ -67,6 +69,7 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		bindUtilityEstimator(BICYCLE_ESTIMATOR_NAME).to(BraunschweigBicycleUtilityEstimator.class);
 		bindUtilityEstimator(CAR_PASSENGER_ESTIMATOR_NAME).to(BraunschweigCarPassengerUtilityEstimator.class);
 		bindUtilityEstimator(PT_ESTIMATOR_NAME).to(BraunschweigPtUtilityEstimator.class);
+		bindUtilityEstimator(FREIGHT_TRUCK_ESTIMATOR_NAME).to(FreightTruckUtilityEstimator.class);
 
 		bind(ModeParameters.class).to(BraunschweigModeParameters.class);
 
