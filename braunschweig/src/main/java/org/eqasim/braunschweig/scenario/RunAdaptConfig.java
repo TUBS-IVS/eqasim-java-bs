@@ -9,9 +9,9 @@ import org.eqasim.braunschweig.mode_choice.BraunschweigModeChoiceModule;
 import org.eqasim.core.components.config.ConfigAdapter;
 import org.eqasim.core.components.config.EqasimConfigGroup;
 import org.eqasim.core.simulation.mode_choice.EqasimModeChoiceModule;
-import org.eqasim.core.simulation.mode_choice.epsilon.AdaptConfigForEpsilon;
 import org.eqasim.core.simulation.termination.EqasimTerminationConfigGroup;
 import org.matsim.api.core.v01.TransportMode;
+import org.matsim.contribs.discrete_mode_choice.modules.SelectorModule;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
 import org.matsim.contribs.discrete_mode_choice.modules.config.VehicleTourConstraintConfigGroup;
 import org.matsim.core.config.CommandLine;
@@ -84,8 +84,11 @@ public class RunAdaptConfig {
 		// Major crossing penalty from calibration
 		eqasimConfig.setCrossingPenalty(4.2);
 
-		// Epsilon
-		AdaptConfigForEpsilon.run(config);
+		// Epsilon: eqasim-java 2.2.0 removed the static AdaptConfigForEpsilon.run(Config)
+		// helper (only main(String[]) remains). Inline its two mutations, which are exactly
+		// what run(config) applied: DMC selector MAXIMUM + pseudo-random utility errors.
+		dmcConfig.setSelector(SelectorModule.MAXIMUM);
+		eqasimConfig.setUsePseudoRandomErrors(true);
 
 		// Vehicles
 		QSimConfigGroup qsimConfig = config.qsim();

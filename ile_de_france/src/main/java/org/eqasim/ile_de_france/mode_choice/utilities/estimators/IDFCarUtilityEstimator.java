@@ -4,9 +4,9 @@ import java.util.List;
 
 import org.eqasim.core.simulation.mode_choice.utilities.estimators.CarUtilityEstimator;
 import org.eqasim.core.simulation.mode_choice.utilities.predictors.CarPredictor;
-import org.eqasim.core.simulation.mode_choice.utilities.variables.CarVariables;
 import org.eqasim.ile_de_france.mode_choice.parameters.IDFModeParameters;
-import org.matsim.api.core.v01.population.Activity;
+import org.eqasim.ile_de_france.mode_choice.utilities.predictors.IDFSpatialPredictor;
+import org.eqasim.ile_de_france.mode_choice.utilities.variables.IDFSpatialVariables;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.PlanElement;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
@@ -15,44 +15,40 @@ import com.google.inject.Inject;
 
 public class IDFCarUtilityEstimator extends CarUtilityEstimator {
 	private final IDFModeParameters parameters;
-	private final CarPredictor predictor;
+	private final IDFSpatialPredictor spatialPredictor;
 
 	@Inject
-	public IDFCarUtilityEstimator(IDFModeParameters parameters, CarPredictor predictor) {
-		super(parameters, predictor);
+	public IDFCarUtilityEstimator(IDFModeParameters parameters, IDFSpatialPredictor spatialPredictor,
+			CarPredictor carPredictor) {
+		super(parameters, carPredictor);
 
 		this.parameters = parameters;
-		this.predictor = predictor;
+		this.spatialPredictor = spatialPredictor;
 	}
 
-	protected double estimateAccessEgressTimeUtility(CarVariables variables) {
-		return parameters.betaAccessTime_u_min * variables.accessEgressTime_min;
-	}
-
-	@Override
-	public double estimateUtility(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
-		CarVariables variables = predictor.predictVariables(person, trip, elements);
-
+	protected double estimateUrbanUtility(IDFSpatialVariables variables) {
 		double utility = 0.0;
 
-		utility += estimateConstantUtility();
-		utility += estimateTravelTimeUtility(variables);
-		utility += estimateAccessEgressTimeUtility(variables);
-		utility += estimateMonetaryCostUtility(variables);
+		if (variables.hasUrbanOrigin && variables.hasUrbanDestination) {
+			utility += parameters.idfCar.betaInsideUrbanArea;
+		}
 
-		if (isParis(trip)) {
-			utility += parameters.idfParis.car_u;
+		if (variables.hasUrbanOrigin || variables.hasUrbanDestination) {
+			utility += parameters.idfCar.betaCrossingUrbanArea;
 		}
 
 		return utility;
 	}
 
-	static private boolean isParis(DiscreteModeChoiceTrip trip) {
-		return isParis(trip.getOriginActivity()) || isParis(trip.getDestinationActivity());
-	}
+	@Override
+	public double estimateUtility(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
+		IDFSpatialVariables variables = spatialPredictor.predictVariables(person, trip, elements);
 
-	static private boolean isParis(Activity activity) {
-		Boolean isParis = (Boolean) activity.getAttributes().getAttribute("isParis");
-		return isParis != null && isParis;
+		double utility = 0.0;
+
+		utility += super.estimateUtility(person, trip, elements);
+		utility += estimateUrbanUtility(variables);
+
+		return utility;
 	}
 }

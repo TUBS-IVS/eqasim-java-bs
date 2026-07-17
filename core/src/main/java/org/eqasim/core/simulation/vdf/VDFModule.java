@@ -3,7 +3,9 @@ package org.eqasim.core.simulation.vdf;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -12,6 +14,7 @@ import org.eqasim.core.components.traffic.CrossingPenalty;
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.eqasim.core.scenario.cutter.extent.ShapeScenarioExtent;
 import org.eqasim.core.simulation.mode_choice.AbstractEqasimExtension;
+import org.eqasim.core.simulation.vdf.engine.VDFEngineConfigGroup;
 import org.eqasim.core.simulation.vdf.handlers.VDFHorizonHandler;
 import org.eqasim.core.simulation.vdf.handlers.VDFInterpolationHandler;
 import org.eqasim.core.simulation.vdf.handlers.VDFSparseHorizonHandler;
@@ -19,6 +22,7 @@ import org.eqasim.core.simulation.vdf.handlers.VDFTrafficHandler;
 import org.eqasim.core.simulation.vdf.travel_time.VDFTravelTime;
 import org.eqasim.core.simulation.vdf.travel_time.function.BPRFunction;
 import org.eqasim.core.simulation.vdf.travel_time.function.VolumeDelayFunction;
+import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.network.Network;
 import org.matsim.core.config.ConfigGroup;
 import org.matsim.core.config.groups.ControllerConfigGroup;
@@ -44,21 +48,52 @@ public class VDFModule extends AbstractEqasimExtension {
 		bind(VolumeDelayFunction.class).to(BPRFunction.class);
 
 		switch (vdfConfig.getHandler()) {
-		case Horizon:
-			bind(VDFTrafficHandler.class).to(VDFHorizonHandler.class);
-			addEventHandlerBinding().to(VDFHorizonHandler.class);
-			break;
-		case SparseHorizon:
-			bind(VDFTrafficHandler.class).to(VDFSparseHorizonHandler.class);
-			addEventHandlerBinding().to(VDFSparseHorizonHandler.class);
-			break;
-		case Interpolation:
-			bind(VDFTrafficHandler.class).to(VDFInterpolationHandler.class);
-			addEventHandlerBinding().to(VDFInterpolationHandler.class);
-			break;
-		default:
-			throw new IllegalStateException();
+			case Horizon:
+				bind(VDFTrafficHandler.class).to(VDFHorizonHandler.class);
+				break;
+			case SparseHorizon:
+				bind(VDFTrafficHandler.class).to(VDFSparseHorizonHandler.class);
+				break;
+			case Interpolation:
+				bind(VDFTrafficHandler.class).to(VDFInterpolationHandler.class);
+				break;
+			default:
+				throw new IllegalStateException();
 		}
+
+		if (getTrackedModes().size() > 0) {
+			// no need to put a listener if no modes need to be tracked
+			addEventHandlerBinding().to(VDFTrafficListener.class);
+		}
+	}
+
+	private Set<String> getTrackedModes() {
+		// we listen to all modes that are defined for VDF
+		Set<String> trackedModes = new HashSet<>(VDFConfigGroup.getOrCreate(getConfig()).getModes());
+
+		// except for those that are simulated by the vdf engine - their flows are
+		// directly added to the handlers, no need to listen to events
+		VDFEngineConfigGroup engineConfig = (VDFEngineConfigGroup) getConfig().getModules()
+				.get(VDFEngineConfigGroup.GROUP_NAME);
+
+		if (engineConfig != null) {
+			trackedModes.removeAll(engineConfig.getModes());
+		}
+
+		return trackedModes;
+	}
+
+	@Provides
+	@Singleton
+	public FlowEquivalentProvider provideFlowEquivalentProvider(Scenario scenario) {
+		return new FlowEquivalentProvider(scenario.getVehicles(), scenario.getTransitVehicles());
+	}
+
+	@Provides
+	@Singleton
+	public VDFTrafficListener provideVDFTrafficListener(VDFTrafficHandler handler,
+			FlowEquivalentProvider flowEquivalentProvider) {
+		return new VDFTrafficListener(handler, flowEquivalentProvider, getTrackedModes());
 	}
 
 	@Provides
@@ -69,7 +104,8 @@ public class VDFModule extends AbstractEqasimExtension {
 		URL inputFile = config.getInputFlowFile() == null ? null
 				: ConfigGroup.getInputFileURL(getConfig().getContext(), config.getInputFlowFile());
 		return new VDFUpdateListener(network, scope, handler, travelTime, outputHierarchy, config.getWriteInterval(),
-				config.getWriteFlowInterval(), config.getWriteTravelTimesInterval(), controllerConfig.getFirstIteration(), inputFile);
+				config.getWriteFlowInterval(), config.getWriteTravelTimesInterval(),
+				controllerConfig.getFirstIteration(), inputFile, controllerConfig.getCompressionType());
 	}
 
 	@Provides
@@ -87,10 +123,9 @@ public class VDFModule extends AbstractEqasimExtension {
 				: new ShapeScenarioExtent.Builder(new File(ConfigGroup
 						.getInputFileURL(getConfig().getContext(), config.getUpdateAreaShapefile()).getPath()),
 						Optional.empty(), Optional.empty()).build();
-
 		VDFTravelTime vdfTravelTime = new VDFTravelTime(scope, config.getMinimumSpeed(), config.getCapacityFactor(),
 				eqasimConfig.getSampleSize(), network, vdf, crossingPenalty, updateExtent);
-		if(config.getInputTravelTimesFile() != null) {
+		if (config.getInputTravelTimesFile() != null) {
 			LOGGER.info("Reading VDF travel times");
 			URL inputTimeFile = ConfigGroup.getInputFileURL(getConfig().getContext(), config.getInputTravelTimesFile());
 			vdfTravelTime.readFrom(inputTimeFile);
@@ -107,8 +142,10 @@ public class VDFModule extends AbstractEqasimExtension {
 
 	@Provides
 	@Singleton
-	public VDFSparseHorizonHandler provideVDFSparseHorizonHandler(VDFConfigGroup config, Network network, VDFScope scope) {
-		return new VDFSparseHorizonHandler(network, scope, config.getHorizon(), getConfig().global().getNumberOfThreads());
+	public VDFSparseHorizonHandler provideVDFSparseHorizonHandler(VDFConfigGroup config, Network network,
+			VDFScope scope) {
+		return new VDFSparseHorizonHandler(network, scope, config.getHorizon(),
+				getConfig().global().getNumberOfThreads());
 	}
 
 	@Provides
