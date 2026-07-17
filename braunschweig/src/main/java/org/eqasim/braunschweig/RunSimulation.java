@@ -38,7 +38,11 @@ public class RunSimulation {
 			if (cmd.getOption("use-vdf-engine").map(Boolean::parseBoolean).orElse(false)) {
 				VDFEngineConfigGroup engineConfig = new VDFEngineConfigGroup();
 				engineConfig.setModes(Set.of("car", "car_passenger"));
-				engineConfig.setGenerateNetworkEvents(false);
+				// VDF engine API change (eqasim-java 2.2.0 / upstream #544): the boolean
+				// setGenerateNetworkEvents(false) was replaced by an interval. The module
+				// computes generateNetworkEvents = interval > 0 && (it % interval == 0), so
+				// interval 0 preserves the previous "never emit network events" behaviour.
+				engineConfig.setGenerateNetworkEventsInterval(0);
 				config.addModule(engineConfig);
 
 				config.qsim().setMainModes(Collections.emptySet());

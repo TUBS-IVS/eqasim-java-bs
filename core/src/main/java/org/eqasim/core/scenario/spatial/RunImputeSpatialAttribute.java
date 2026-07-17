@@ -18,16 +18,14 @@ import org.matsim.core.network.io.NetworkWriter;
 import org.matsim.core.population.io.PopulationReader;
 import org.matsim.core.population.io.PopulationWriter;
 import org.matsim.core.scenario.ScenarioUtils;
-import org.matsim.pt.transitSchedule.api.TransitScheduleReader;
-import org.matsim.pt.transitSchedule.api.TransitScheduleWriter;
 
 public class RunImputeSpatialAttribute {
 	static public void main(String[] args)
 			throws ConfigurationException, MalformedURLException, IOException, InterruptedException {
 		CommandLine cmd = new CommandLine.Builder(args) //
 				.allowOptions("input-population-path", "input-network-path", "output-population-path",
-						"output-network-path", "input-schedule-path", "output-schedule-path") //
-				.requireOptions("shape-path", "shape-attribute", "shape-value", "attribute", EqasimConfigurator.CONFIGURATOR) //
+						"output-network-path", EqasimConfigurator.CONFIGURATOR) //
+				.requireOptions("shape-path", "shape-attribute", "shape-value", "attribute") //
 				.build();
 
 		if (cmd.hasOption("input-population-path") ^ cmd.hasOption("output-population-path")) {
@@ -36,10 +34,6 @@ public class RunImputeSpatialAttribute {
 
 		if (cmd.hasOption("input-network-path") ^ cmd.hasOption("output-network-path")) {
 			throw new IllegalStateException("Both input and output path must be given for the network.");
-		}
-
-		if (cmd.hasOption("input-schedule-path") ^ cmd.hasOption("output-schedule-path")) {
-			throw new IllegalStateException("Both input and output path must be given for the schedule.");
 		}
 
 		// Load shape
@@ -73,15 +67,6 @@ public class RunImputeSpatialAttribute {
 			new PopulationReader(scenario).readFile(populationPath.toString());
 			algorithm.run(scenario.getPopulation());
 			new PopulationWriter(scenario.getPopulation()).write(cmd.getOptionStrict("output-population-path"));
-		}
-
-		// Load schedule
-		if (cmd.hasOption("input-schedule-path")) {
-			File populationPath = new File(cmd.getOptionStrict("input-schedule-path"));
-			new TransitScheduleReader(scenario).readFile(populationPath.toString());
-			algorithm.run(scenario.getTransitSchedule());
-			new TransitScheduleWriter(scenario.getTransitSchedule())
-					.writeFile(cmd.getOptionStrict("output-schedule-path"));
 		}
 	}
 }
