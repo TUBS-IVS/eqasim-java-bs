@@ -3,7 +3,7 @@
   <parent>
     <artifactId>eqasim</artifactId>
     <groupId>org.eqasim</groupId>
-    <version>1.5.0</version>
+    <version>2.2.0</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
   <artifactId>braunschweig</artifactId>
@@ -14,7 +14,7 @@
         <plugins>
           <plugin>
             <artifactId>maven-shade-plugin</artifactId>
-            <version>3.2.0</version>
+            <version>3.6.2</version>
             <executions>
               <execution>
                 <phase>package</phase>
@@ -53,7 +53,7 @@
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
-      <version>3.8.0</version>
+      <version>5.23.0</version>
       <scope>test</scope>
       <exclusions>
         <exclusion>
@@ -73,7 +73,7 @@
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.13.1</version>
+      <version>4.13.2</version>
       <scope>test</scope>
       <exclusions>
         <exclusion>
@@ -81,6 +81,12 @@
           <groupId>org.hamcrest</groupId>
         </exclusion>
       </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-log4j12</artifactId>
+      <version>2.0.18</version>
+      <scope>compile</scope>
     </dependency>
   </dependencies>
 </project>
