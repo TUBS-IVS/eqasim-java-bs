@@ -1,6 +1,6 @@
 package org.eqasim.braunschweig.scenario;
 
-import org.matsim.application.prepare.freight.tripExtraction.ExtractRelevantFreightTrips;
+import org.matsim.application.prepare.longDistanceFreightGER.tripExtraction.ExtractRelevantFreightTrips;
 
 import picocli.CommandLine;
 

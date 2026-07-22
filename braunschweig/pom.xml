@@ -7,7 +7,7 @@
 	<parent>
 		<groupId>org.eqasim</groupId>
 		<artifactId>eqasim</artifactId>
-		<version>2.2.0</version>
+		<version>2.2.0</version> <!-- x-release-please-version -->
 		<relativePath>../pom.xml</relativePath>
 	</parent>
 
@@ -15,18 +15,34 @@
 		<dependency>
 			<groupId>org.eqasim</groupId>
 			<artifactId>core</artifactId>
-			<version>2.2.0</version>
+			<version>2.2.0</version> <!-- x-release-please-version -->
 		</dependency>
 		<!--
 			MATSim application contrib: provides the published german-wide-freight
-			trip extraction (org.matsim.application.prepare.freight.tripExtraction.
-			ExtractRelevantFreightTrips, Lu et al. 2022). Version pinned to the
-			active MATSim version, like the other matsim.contrib dependencies.
+			trip extraction (org.matsim.application.prepare.longDistanceFreightGER.
+			tripExtraction.ExtractRelevantFreightTrips, Lu et al. 2022). Uses the
+			parent pom's
+			matsim.version property so the contrib stays in lockstep with the
+			MATSim core version, like the other matsim.contrib dependencies.
 		-->
 		<dependency>
 			<groupId>org.matsim.contrib</groupId>
 			<artifactId>application</artifactId>
-			<version>2025.0-PR3568</version>
+			<version>${matsim.version}</version>
+		</dependency>
+		<!--
+			MATSim SimWrapper contrib: lets the run write standard SimWrapper
+			dashboards (network volumes, mode share, trips/legs) into the output
+			directory. Uses the parent pom's matsim.version property so the contrib
+			stays in lockstep with the MATSim core version; the contrib is
+			published alongside the MATSim builds on repo.matsim.org. Only activated
+			at runtime behind the simwrapper command-line flag (see RunSimulation),
+			so a standard run is byte-identical when the flag is off.
+		-->
+		<dependency>
+			<groupId>org.matsim.contrib</groupId>
+			<artifactId>simwrapper</artifactId>
+			<version>${matsim.version}</version>
 		</dependency>
 	</dependencies>
 
@@ -38,7 +54,7 @@
 					<plugin>
 						<groupId>org.apache.maven.plugins</groupId>
 						<artifactId>maven-shade-plugin</artifactId>
-						<version>3.2.0</version>
+						<version>3.6.2</version>
 						<executions>
 							<execution>
 								<phase>package</phase>
