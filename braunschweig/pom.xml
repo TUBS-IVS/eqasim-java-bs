@@ -19,8 +19,9 @@
 		</dependency>
 		<!--
 			MATSim application contrib: provides the published german-wide-freight
-			trip extraction (org.matsim.application.prepare.freight.tripExtraction.
-			ExtractRelevantFreightTrips, Lu et al. 2022). Uses the parent pom's
+			trip extraction (org.matsim.application.prepare.longDistanceFreightGER.
+			tripExtraction.ExtractRelevantFreightTrips, Lu et al. 2022). Uses the
+			parent pom's
 			matsim.version property so the contrib stays in lockstep with the
 			MATSim core version, like the other matsim.contrib dependencies.
 		-->
