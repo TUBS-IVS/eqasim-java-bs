@@ -27,8 +27,11 @@ import org.matsim.core.config.groups.ScoringConfigGroup.ModeParams;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 
 public class GenerateConfig {
+	// "escort" (eqasim-bs issue #201, analog eqasim-france#495): pre-registered like
+	// every other type so MATSim scoring never encounters an unknown activity; the
+	// entry is inert (scoringThisActivityAtAll(false)) when no escort activities exist.
 	protected final List<String> ACTIVITY_TYPES = Arrays.asList("home", "work", "education", "shop", "leisure", "other",
-			"freight_loading", "freight_unloading", "outside");
+			"escort", "freight_loading", "freight_unloading", "outside");
 
 	protected final List<String> MODES = Arrays.asList("walk", "bike", "pt", "car", "car_passenger", "motorcycle",
 			"truck", "outside");
