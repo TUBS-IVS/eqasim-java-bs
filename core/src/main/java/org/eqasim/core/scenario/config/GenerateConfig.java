@@ -27,8 +27,13 @@ import org.matsim.core.config.groups.ScoringConfigGroup.ModeParams;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 
 public class GenerateConfig {
+	// "escort" (eqasim-bs issue #201, analog eqasim-france#495): pre-registered like
+	// every other type so config generation always emits an ActivityParams block and
+	// MATSim scoring never encounters an unknown activity type. Like ALL types in this
+	// list, its params get setScoringThisActivityAtAll(false) unconditionally below;
+	// on a population without escort activities the entry is simply unused.
 	protected final List<String> ACTIVITY_TYPES = Arrays.asList("home", "work", "education", "shop", "leisure", "other",
-			"freight_loading", "freight_unloading", "outside");
+			"escort", "freight_loading", "freight_unloading", "outside");
 
 	protected final List<String> MODES = Arrays.asList("walk", "bike", "pt", "car", "car_passenger", "motorcycle",
 			"truck", "outside");
