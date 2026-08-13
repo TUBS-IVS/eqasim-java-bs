@@ -19,7 +19,15 @@ jobs:
       - uses: googleapis/release-please-action@v5
         id: release
         with:
-          token: ${{ secrets.RELEASE }}
+          # The RELEASE PAT secret is not defined in this fork, which made every
+          # main-push run fail with "Input required and not supplied: token"
+          # (empty expression = no input supplied). Fall back to the built-in
+          # GITHUB_TOKEN: the permissions block above grants contents + PR write,
+          # and the release build/deploy steps live in THIS workflow (gated on
+          # release_created), so the "GITHUB_TOKEN does not trigger downstream
+          # workflows" caveat does not apply here. A RELEASE PAT defined later
+          # takes precedence automatically.
+          token: ${{ secrets.RELEASE || secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v7
         if: ${{ steps.release.outputs.release_created }}
       - uses: actions/setup-java@v5
