@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.3.0](https://github.com/TUBS-IVS/eqasim-java-bs/compare/v2.2.0...v2.3.0) (2026-08-17)
+
+
+### Features
+
+* **core:** add escort activity type to GenerateConfig ACTIVITY_TYPES (eqasim-bs [#201](https://github.com/TUBS-IVS/eqasim-java-bs/issues/201)) ([1a8e24a](https://github.com/TUBS-IVS/eqasim-java-bs/commit/1a8e24a808eeae40a33e64debe25cb4e9e9b4a0e))
+* **freight:** extraction wrapper + DMC isolation + CSV freight injector ([cf5fa5f](https://github.com/TUBS-IVS/eqasim-java-bs/commit/cf5fa5f4a1686816c75b086c1412b34b8505341f))
+* **mode-choice:** income-elastic monetary-cost utility (consumes householdIncomeEur) ([1b037ef](https://github.com/TUBS-IVS/eqasim-java-bs/commit/1b037efc66d468a698c086d3332b62756faedb08))
+* SimWrapper Layer-1 dashboards + project-wide dependency consolidation (2.2.0) ([1976d5c](https://github.com/TUBS-IVS/eqasim-java-bs/commit/1976d5ce9194e245993055f30d38709f432fa743))
+* **simwrapper:** flag-gated MATSim SimWrapperModule in braunschweig run ([9178a3e](https://github.com/TUBS-IVS/eqasim-java-bs/commit/9178a3e63d5cf629af48e5598223cc52a55aba6a))
+* upgrade to upstream eqasim-java v2.2.0 + braunschweig module (JDK 25) ([f5cf4c7](https://github.com/TUBS-IVS/eqasim-java-bs/commit/f5cf4c76d5338aacb0d6655094a1711edd3e5ab0))
+
+
+### Bug Fixes
+
+* **analysis:** exclude injected freight agents from person-travel analysis ([03a9194](https://github.com/TUBS-IVS/eqasim-java-bs/commit/03a9194b06f39e93267454f5abe6741469b1a16c))
+* **braunschweig:** adapt freight trip extraction to MATSim 2026 package move ([e171055](https://github.com/TUBS-IVS/eqasim-java-bs/commit/e171055fc2748298d20e5da7b506455fd6d85fed))
+* **ci:** fall back to GITHUB_TOKEN when the RELEASE secret is undefined ([418cd7b](https://github.com/TUBS-IVS/eqasim-java-bs/commit/418cd7ba67a7e914bf0035ae652226e3a21ac49b))
+* **ci:** fall back to GITHUB_TOKEN when the RELEASE secret is undefined ([dbb5125](https://github.com/TUBS-IVS/eqasim-java-bs/commit/dbb51252b8b7febe17c4a79a75b04619c5550279))
+* **freight:** KeepLastSelected selector -- DMC forbids ChangeExpBeta globally ([ad5c231](https://github.com/TUBS-IVS/eqasim-java-bs/commit/ad5c23132f64e2c4956fa71d628cdefb1382bac5))
+
 ## [2.2.0](https://github.com/eqasim-org/eqasim-java/compare/v2.1.0...v2.2.0) (2026-06-03)
 
 
