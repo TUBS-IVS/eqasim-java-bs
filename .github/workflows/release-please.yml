@@ -16,6 +16,15 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # This fork intentionally releases WITHOUT publishing artifacts. Upstream
+      # deploys org.eqasim:eqasim to packagecloud.io/eth-ivt/eqasim, and the fork
+      # inherited both those coordinates (see distributionManagement in pom.xml)
+      # and the upstream groupId. Publishing from here would push fork artifacts
+      # into a third party's registry under the coordinates upstream needs for
+      # its own releases, so the build and deploy steps were removed. Downstream
+      # consumers build this fork from source instead (eqasim_source_path in the
+      # eqasim-bs pipeline). A release therefore produces exactly a tag, a
+      # GitHub release and an updated CHANGELOG.
       - uses: googleapis/release-please-action@v5
         id: release
         with:
@@ -23,24 +32,9 @@ jobs:
           # main-push run fail with "Input required and not supplied: token"
           # (empty expression = no input supplied). Fall back to the built-in
           # GITHUB_TOKEN: the permissions block above grants contents + PR write,
-          # and the release build/deploy steps live in THIS workflow (gated on
-          # release_created), so the "GITHUB_TOKEN does not trigger downstream
-          # workflows" caveat does not apply here. A RELEASE PAT defined later
-          # takes precedence automatically.
+          # which is all release-please needs to open the release pull request and
+          # to create the tag and GitHub release. Releases created with
+          # GITHUB_TOKEN do not trigger further workflows, which is harmless here
+          # because no workflow is meant to react to a release. A RELEASE PAT
+          # defined later takes precedence automatically.
           token: ${{ secrets.RELEASE || secrets.GITHUB_TOKEN }}
-      - uses: actions/checkout@v7
-        if: ${{ steps.release.outputs.release_created }}
-      - uses: actions/setup-java@v5
-        if: ${{ steps.release.outputs.release_created }}
-        with:
-          distribution: zulu
-          java-version: 25
-          cache: maven
-      - name: Build
-        if: ${{ steps.release.outputs.release_created }}
-        run: mvn package -DskipTests
-      - name: Deploy to packagecloud
-        if: ${{ steps.release.outputs.release_created }}
-        run: mvn --settings .github/settings.xml deploy -DskipTests
-        env:
-          PACKAGECLOUD_TOKEN: ${{ secrets.PACKAGECLOUD_TOKEN }}
