@@ -4,6 +4,15 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    ignore:
+      # GeoTools major bumps break the build: PR #6 (gt-geopkg 34.4 -> 35.0)
+      # failed the Maven Test CI on a major-version API break, while the five
+      # patch/minor bumps around it merged green. Moving to GeoTools 35 is a
+      # deliberate migration round, not an automated bump, so major versions
+      # are proposed only when someone opens that round explicitly. Patch and
+      # minor GeoTools updates keep flowing. See eqasim-bs issue #218.
+      - dependency-name: "org.geotools:*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
