@@ -70,5 +70,19 @@ public class RunSimulation {
 		}
 
 		controller.run();
+
+		// Terminate explicitly. MATSim's SimWrapper dashboard generation reads CSV
+		// output through tablesaw, whose univocity-parsers backend starts a
+		// NON-DAEMON "input reading thread"; that thread is left parked in
+		// FixedInstancePool.allocate when the reader is not closed, so DestroyJavaVM
+		// waits for it forever and the JVM never exits even though the controler has
+		// finished and every output (incl. all SimWrapper dashboards) is written.
+		// Diagnosed by jstack on the 100 % run of 2026-08-20, where the process hung
+		// for hours after "closing the logfile", which stalls the synpp pipeline
+		// (matsim.simulation.run never returns) and blocks every downstream stage.
+		// The leak is upstream and out of our reach; this batch entry point therefore
+		// guarantees termination itself. Safe at this point: controller.run() has
+		// returned, so all shutdown listeners (dashboards included) have completed.
+		System.exit(0);
 	}
 }
