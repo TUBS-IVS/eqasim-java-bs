@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.1](https://github.com/TUBS-IVS/eqasim-java-bs/compare/v2.3.0...v2.3.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* guarantee termination on the failure path as well ([c3297ee](https://github.com/TUBS-IVS/eqasim-java-bs/commit/c3297eedd32818165f01bac7e290028225f3816c))
+* terminate the braunschweig run explicitly so a leaked SimWrapper reader thread cannot hang the JVM ([03c1d68](https://github.com/TUBS-IVS/eqasim-java-bs/commit/03c1d680efe60dc20a9cf7ab9478f3833038e12f))
+
 ## [2.3.0](https://github.com/TUBS-IVS/eqasim-java-bs/compare/v2.2.0...v2.3.0) (2026-08-17)
 
 
