@@ -5,11 +5,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import org.junit.Test;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.junit.Rule;
+import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.Scenario;
@@ -134,6 +140,31 @@ public class BraunschweigModeAvailabilityTest {
 				.contains(BraunschweigModeChoiceModule.CAR_PASSENGER));
 	}
 
+	@Test
+	public void coverageLoggingEmitsOnlyOnFirstEvaluationOfEachPath() {
+		Logger logger = (Logger) LogManager.getLogger(BraunschweigModeAvailability.class);
+		CollectingAppender appender = new CollectingAppender();
+		logger.addAppender(appender);
+		appender.start();
+
+		try {
+			BraunschweigModeAvailability availability = new BraunschweigModeAvailability();
+			availability.getAvailableModes(createPerson("all", "yes"), List.of());
+			for (int index = 0; index < 3; index++) {
+				Person person = createPerson("none", "no");
+				person.getAttributes().putAttribute("carPassengerAvailability", "some");
+				availability.getAvailableModes(person, List.of());
+			}
+
+			assertEquals(2, appender.messages.stream()
+					.filter(message -> message.startsWith("carPassengerAvailability evaluations:"))
+					.count());
+		} finally {
+			logger.removeAppender(appender);
+			appender.stop();
+		}
+	}
+
 	private void assertLegacyModes(String carAvailability, String license, boolean passengerExpected,
 			boolean carExpected) {
 		Collection<String> modes = availableModes(createPerson(carAvailability, license));
@@ -151,5 +182,18 @@ public class BraunschweigModeAvailabilityTest {
 		person.getAttributes().putAttribute("carAvailability", carAvailability);
 		PersonUtils.setLicence(person, license);
 		return person;
+	}
+
+	private static class CollectingAppender extends AbstractAppender {
+		private final List<String> messages = new ArrayList<>();
+
+		CollectingAppender() {
+			super("passenger-availability-test", null, PatternLayout.createDefaultLayout(), false, null);
+		}
+
+		@Override
+		public void append(LogEvent event) {
+			messages.add(event.getMessage().getFormattedMessage());
+		}
 	}
 }

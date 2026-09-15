@@ -64,7 +64,7 @@ public class BraunschweigModeAvailability implements ModeAvailability {
 		Object value = person.getAttributes().getAttribute(CAR_PASSENGER_AVAILABILITY_ATTRIBUTE);
 		if (!person.getAttributes().getAsMap().containsKey(CAR_PASSENGER_AVAILABILITY_ATTRIBUTE)) {
 			long compatibility = passengerCompatibilityCount.incrementAndGet();
-			logPassengerAvailabilityCoverage(passengerAttributeCount.get(), compatibility);
+			logPassengerAvailabilityCoverage(passengerAttributeCount.get(), compatibility, compatibility == 1L);
 			return BraunschweigPredictorUtils.hasCarAvailability(person);
 		}
 
@@ -84,13 +84,13 @@ public class BraunschweigModeAvailability implements ModeAvailability {
 		};
 
 		long primary = passengerAttributeCount.incrementAndGet();
-		logPassengerAvailabilityCoverage(primary, passengerCompatibilityCount.get());
+		logPassengerAvailabilityCoverage(primary, passengerCompatibilityCount.get(), primary == 1L);
 		return available;
 	}
 
-	private void logPassengerAvailabilityCoverage(long primary, long compatibility) {
+	private void logPassengerAvailabilityCoverage(long primary, long compatibility, boolean firstPathEvaluation) {
 		long total = primary + compatibility;
-		if (primary == 1L || compatibility == 1L || total % PASSENGER_AVAILABILITY_LOG_INTERVAL == 0L) {
+		if (firstPathEvaluation || total % PASSENGER_AVAILABILITY_LOG_INTERVAL == 0L) {
 			logger.info("carPassengerAvailability evaluations: attribute {}/{}, compatibility fallback {}/{}",
 					primary, total, compatibility, total);
 		}
