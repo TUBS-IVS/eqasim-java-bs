@@ -14,7 +14,7 @@ public class VrbFareModelTest {
 	/** Small synthetic fare model with the same key set as braunschweig.data.vrb.fare_model_export writes. */
 	public static final String JSON = """
 			{"schema_version": 1, "tariff_snapshot_date": "2026-06-20", "money_price_year": 2026, "currency": "EUR",
-			 "zones": ["40", "70"], "city_zones": ["40"], "price_classes": ["city", "ps1", "ps2", "ps3", "ps4"],
+			 "zones": ["40", "55", "70"], "city_zones": ["40"], "price_classes": ["city", "ps1", "ps2", "ps3", "ps4"],
 			 "single_adult_cents": {"city": 360, "ps1": 390, "ps2": 560, "ps3": 770, "ps4": 1230},
 			 "single_child_cents": {"city": 210, "ps1": 230, "ps2": 330, "ps3": 460, "ps4": 740},
 			 "short_trip_cents": 200, "short_trip_maximum_stop_intervals": 3,
@@ -94,6 +94,8 @@ public class VrbFareModelTest {
 		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(unknownClass)));
 		String badPair = JSON.replace("\"40|70\": \"ps2\"", "\"40|70\": \"ps9\"");
 		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(badPair)));
+		String unlistedZone = JSON.replace("\"70|70\": \"ps1\"", "\"70|99\": \"ps1\"");
+		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(unlistedZone)));
 		String wrongSchema = JSON.replace("\"schema_version\": 1", "\"schema_version\": 2");
 		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(wrongSchema)));
 	}

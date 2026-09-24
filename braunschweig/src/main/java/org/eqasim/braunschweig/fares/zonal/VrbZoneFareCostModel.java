@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
+import java.util.TreeSet;
 
 import org.eqasim.core.simulation.mode_choice.cost.CostModel;
 import org.matsim.api.core.v01.Coord;
@@ -58,6 +60,25 @@ public final class VrbZoneFareCostModel implements CostModel, FareQuoteSource {
 		this.fares = fares;
 		this.lineScopes = lineScopes;
 		this.counter = counter;
+		requireKnownZones(schedule, fares);
+	}
+
+	/**
+	 * Every zone id attached to a stop facility must be a zone of the fare model: a new or misread id would
+	 * otherwise only surface later as counted vrb_pair_undefined_fallback quotes.
+	 */
+	private static void requireKnownZones(TransitSchedule schedule, VrbFareModel fares) {
+		Set<String> unknown = new TreeSet<>();
+		for (TransitStopFacility facility : schedule.getFacilities().values()) {
+			String zone = zone(facility);
+			if (zone != null && !fares.zones().contains(zone)) {
+				unknown.add(zone);
+			}
+		}
+		if (!unknown.isEmpty()) {
+			throw new IllegalStateException("stop facilities carry " + ZONE_ATTRIBUTE + " values that the VRB fare model does"
+					+ " not know: " + unknown + "; regenerate the zone attribution and the fare model from the same polygon layer");
+		}
 	}
 
 	@Override
@@ -96,10 +117,14 @@ public final class VrbZoneFareCostModel implements CostModel, FareQuoteSource {
 			return new FareQuote(0, FareQuote.NO_PT_LEG, null);
 		}
 		Integer age = PersonUtils.getAge(person);
-		if (age != null && age < fares.childMinimumAge()) {
+		if (age == null) {
+			throw new IllegalStateException("person " + person.getId() + " has no age attribute; the VRB fare model needs it"
+					+ " for the child rules (the synthetic population writes an age for every person)");
+		}
+		if (age < fares.childMinimumAge()) {
 			return new FareQuote(0, FareQuote.CHILD_FREE, null);
 		}
-		boolean child = age != null && age <= fares.childMaximumAge();
+		boolean child = age <= fares.childMaximumAge();
 		if (rides.stream().anyMatch(ride -> ride.scope().isEmpty())) {
 			return fallback(FareQuote.LINE_SCOPE_MISSING);
 		}
@@ -122,7 +147,8 @@ public final class VrbZoneFareCostModel implements CostModel, FareQuoteSource {
 		FareQuote priced = price(rides, holder, child);
 		// A missing or unknown category is priced as "no entitlement" but keeps its own outcome, so a
 		// systematic attribute gap shows up in the fallback share instead of disappearing into the singles.
-		return categoryIssue == null ? priced : new FareQuote(priced.cents(), categoryIssue, priced.priceClass());
+		return categoryIssue == null ? priced
+				: new FareQuote(priced.cents(), categoryIssue, priced.priceClass(), priced.vrbCash());
 	}
 
 	private FareQuote price(List<Ride> rides, VrbFareModel.Holder holder, boolean child) {
@@ -181,8 +207,10 @@ public final class VrbZoneFareCostModel implements CostModel, FareQuoteSource {
 				throw new IllegalStateException("routed PT leg references unknown transit route " + route.getRouteId()
 						+ " on line " + route.getLineId());
 			}
-			int access = indexOf(transitRoute, route.getAccessStopId(), 0);
-			int egress = indexOf(transitRoute, route.getEgressStopId(), access + 1);
+			// On a loop route the boarding stop can occur twice before the alighting stop; the passenger boards
+			// at the last occurrence, so the ridden distance and stop intervals start there.
+			int egress = indexOf(transitRoute, route.getEgressStopId(), indexOf(transitRoute, route.getAccessStopId(), 0) + 1);
+			int access = lastIndexBefore(transitRoute, route.getAccessStopId(), egress);
 			double meters = 0.0;
 			for (int index = access + 1; index <= egress; index++) {
 				Coord before = transitRoute.getStops().get(index - 1).getStopFacility().getCoord();
@@ -205,6 +233,17 @@ public final class VrbZoneFareCostModel implements CostModel, FareQuoteSource {
 		}
 		throw new IllegalStateException("stop facility " + facilityId + " is not on transit route " + route.getId()
 				+ " after position " + from);
+	}
+
+	private static int lastIndexBefore(TransitRoute route, Id<TransitStopFacility> facilityId, int before) {
+		List<TransitRouteStop> stops = route.getStops();
+		for (int index = before - 1; index >= 0; index--) {
+			if (stops.get(index).getStopFacility().getId().equals(facilityId)) {
+				return index;
+			}
+		}
+		throw new IllegalStateException("stop facility " + facilityId + " is not on transit route " + route.getId()
+				+ " before position " + before);
 	}
 
 	private static String zone(TransitStopFacility facility) {

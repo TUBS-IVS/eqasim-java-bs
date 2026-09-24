@@ -11,7 +11,7 @@ import java.util.List;
  * single price. ASSUMPTION (D9): a day ticket of class k covers every trip of class k or lower,
  * wherever it runs in the VRB; ticket validity windows are not modelled.
  *
- * <p>All amounts are euro cents. Only VRB cash quotes (short trip and singles, {@link FareQuote#isVrbCash()})
+ * <p>All amounts are euro cents. Only VRB cash quotes (short trip and singles, {@link FareQuote#vrbCash()})
  * belong in the lists; the caller filters them.
  */
 public final class DayTicketCap {

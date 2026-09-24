@@ -59,7 +59,7 @@ public final class VrbZoneFarePtUtilityEstimator extends BraunschweigPtUtilityEs
 	public double utilityAdjustment(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements,
 			List<TripCandidate> previousTrips) {
 		FareQuote current = fares.quoteWithoutCounting(person, elements);
-		if (!current.isVrbCash()) {
+		if (!current.vrbCash()) {
 			return 0.0;
 		}
 		long marginal = marginalCents(person, current, previousTrips);
@@ -79,7 +79,7 @@ public final class VrbZoneFarePtUtilityEstimator extends BraunschweigPtUtilityEs
 				continue;
 			}
 			FareQuote earlier = fares.quoteWithoutCounting(person, routed.getRoutedPlanElements());
-			if (earlier.isVrbCash()) {
+			if (earlier.vrbCash()) {
 				before.add(earlier);
 			}
 		}

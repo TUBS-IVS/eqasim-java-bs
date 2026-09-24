@@ -3,11 +3,13 @@ package org.eqasim.braunschweig.fares.zonal;
 import java.util.Set;
 
 /**
- * One priced PT trip: cash in euro cents, exactly one outcome label and, for VRB tickets, the
- * VRB price class (city, ps1..ps4). Outcome labels are the vocabulary of the per-iteration fare
- * report and of the fallback share (ADR-0133 D8).
+ * One priced PT trip: cash in euro cents, exactly one outcome label, for VRB tickets the VRB price
+ * class (city, ps1..ps4), and whether the cash is a VRB short trip or single that counts towards the
+ * day-ticket cap. The cash flag is carried separately from the label because a missing or unknown
+ * ticket category keeps its own label but the VRB single price (ADR-0133 D8). Outcome labels are the
+ * vocabulary of the per-iteration fare report and of the fallback share.
  */
-public record FareQuote(long cents, String outcome, String priceClass) {
+public record FareQuote(long cents, String outcome, String priceClass, boolean vrbCash) {
 	public static final String NO_PT_LEG = "no_pt_leg";
 	public static final String CHILD_FREE = "child_free";
 	public static final String VRB_SHORT_TRIP = "vrb_short_trip";
@@ -35,6 +37,9 @@ public record FareQuote(long cents, String outcome, String priceClass) {
 	public static final Set<String> FALLBACK_OUTCOMES = Set.of(CATEGORY_MISSING, CATEGORY_UNKNOWN, LINE_SCOPE_MISSING,
 			LONG_DISTANCE_FALLBACK, VRB_PAIR_UNDEFINED_FALLBACK, EXTERNAL_RAIL_BEYOND_BANDS);
 
+	/** Outcomes that are VRB tickets paid in cash; only these count towards the day-ticket cap. */
+	public static final Set<String> VRB_CASH_OUTCOMES = Set.of(VRB_SHORT_TRIP, VRB_SINGLE_ADULT, VRB_SINGLE_CHILD);
+
 	public FareQuote {
 		if (cents < 0) {
 			throw new IllegalArgumentException("fare cents must not be negative: " + cents);
@@ -42,10 +47,13 @@ public record FareQuote(long cents, String outcome, String priceClass) {
 		if (outcome == null || outcome.isBlank()) {
 			throw new IllegalArgumentException("fare outcome label is required");
 		}
+		if (vrbCash && priceClass == null) {
+			throw new IllegalArgumentException("a VRB cash quote needs its price class for the day-ticket cap: " + outcome);
+		}
 	}
 
-	/** True for VRB tickets paid in cash (short trip and singles); only these count towards the day-ticket cap. */
-	public boolean isVrbCash() {
-		return VRB_SHORT_TRIP.equals(outcome) || VRB_SINGLE_ADULT.equals(outcome) || VRB_SINGLE_CHILD.equals(outcome);
+	/** Quote whose cash flag follows from its outcome label ({@link #VRB_CASH_OUTCOMES}). */
+	public FareQuote(long cents, String outcome, String priceClass) {
+		this(cents, outcome, priceClass, VRB_CASH_OUTCOMES.contains(outcome));
 	}
 }

@@ -60,6 +60,10 @@ public final class VrbFareModel {
 			if (!priceClasses.contains(entry.getValue().asText())) {
 				throw fail("price_class_by_pair " + entry.getKey() + " names unknown class " + entry.getValue().asText());
 			}
+			String[] pair = entry.getKey().split("[|]", -1);
+			if (pair.length != 2 || !zones.contains(pair[0]) || !zones.contains(pair[1])) {
+				throw fail("price_class_by_pair key " + entry.getKey() + " is not a pair of listed zones");
+			}
 			priceClassByPair.put(entry.getKey(), entry.getValue().asText());
 		}
 		holderByCategory = new LinkedHashMap<>();

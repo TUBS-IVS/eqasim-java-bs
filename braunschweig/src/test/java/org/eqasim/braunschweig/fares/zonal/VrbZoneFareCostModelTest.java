@@ -1,6 +1,9 @@
 package org.eqasim.braunschweig.fares.zonal;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,10 +58,13 @@ public class VrbZoneFareCostModelTest {
 		line(factory, "ICE", "rail", c, h);
 		line(factory, "NOSCOPE", "bus", a, b);
 		line(factory, "TO55", "bus", a, e);
+		line(factory, "LOOP", "bus", a, b, c, a, d);
+		line(factory, "NOSCOPE_OUT", "bus", a, g);
 		counter = new FareOutcomeCounter();
 		PtLineScopes scopes = PtLineScopes.of(Map.of(
 				"BUS", new PtLineScopes.Scope("regional", "bus"), "RAIL", new PtLineScopes.Scope("regional", "rail"),
-				"ICE", new PtLineScopes.Scope("long_distance", "rail"), "TO55", new PtLineScopes.Scope("regional", "bus")));
+				"ICE", new PtLineScopes.Scope("long_distance", "rail"), "TO55", new PtLineScopes.Scope("regional", "bus"),
+				"LOOP", new PtLineScopes.Scope("regional", "bus")));
 		model = new VrbZoneFareCostModel(schedule, VrbFareModelTest.model(), scopes, counter);
 	}
 
@@ -177,5 +183,42 @@ public class VrbZoneFareCostModelTest {
 		assertEquals(Long.valueOf(1), snapshot.get(FareQuote.VRB_SINGLE_ADULT));
 		assertEquals(Long.valueOf(1), snapshot.get(FareQuote.LONG_DISTANCE_FALLBACK));
 		assertEquals(0.5, FareOutcomeCounter.fallbackShare(snapshot), 1e-12);
+	}
+
+	@Test
+	public void loopRouteIsMeasuredFromTheLastBoardingOccurrenceBeforeAlighting() {
+		// LOOP runs a b c a d: boarding at the second "a" rides one interval, a short trip, not four.
+		assertQuote(200, FareQuote.VRB_SHORT_TRIP, person("single_ticket", 30), ride("LOOP", "a", "d"));
+	}
+
+	@Test
+	public void categoryIssueKeepsTheCashFlagOfThePriceItWasGiven() {
+		// Priced as no entitlement, so the trip is a VRB single and must enter the day-ticket cap.
+		assertTrue(model.quote(person(null, 30), ride("BUS", "a", "f")).vrbCash());
+		assertTrue(model.quote(person("platinum", 30), ride("BUS", "a", "f")).vrbCash());
+		assertFalse(model.quote(person(null, 30), ride("BUS", "a", "g")).vrbCash());
+	}
+
+	@Test
+	public void personWithoutAgeFailsLoudlyInsteadOfPayingTheAdultPrice() {
+		assertThrows(IllegalStateException.class, () -> model.quote(person("single_ticket", null), ride("BUS", "a", "f")));
+	}
+
+	@Test
+	public void unzonedStopOnALineWithoutScopeIsTheScopeFallbackNotExternalPricing() {
+		assertQuote(370, FareQuote.LINE_SCOPE_MISSING, person("single_ticket", 30), ride("NOSCOPE_OUT", "a", "g"));
+	}
+
+	@Test
+	public void missingCategoryCountsTowardsTheFallbackShare() {
+		model.quote(person(null, 30), ride("BUS", "a", "f"));
+		assertEquals(1.0, FareOutcomeCounter.fallbackShare(counter.snapshotAndReset()), 0.0);
+	}
+
+	@Test
+	public void stopZoneOutsideTheFareModelIsRejectedAtConstruction() throws Exception {
+		stop(schedule.getFactory(), "z", 9000, "99");
+		assertThrows(IllegalStateException.class, () -> new VrbZoneFareCostModel(schedule, VrbFareModelTest.model(),
+				PtLineScopes.of(Map.of()), new FareOutcomeCounter()));
 	}
 }
