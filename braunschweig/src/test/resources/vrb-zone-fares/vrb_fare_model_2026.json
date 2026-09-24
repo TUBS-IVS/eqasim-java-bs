@@ -6375,14 +6375,18 @@
   "sources": [
     {
       "path": "docs/data/vrb-dated-price-inputs.json",
+      "sha256": "2a324ec693c53f0e01587dc0b67cb26cc8e7d4ba4f2b2b443f7b6d516591ed80",
       "source_id": "vrb_prices_2026"
     },
     {
       "path": "docs/data/vrb-price-stage-matrix-2022.csv",
+      "sha256": "31894631c450c30085e48818403654025f0904fbd9442246d1f4b524a34f6c78",
       "source_id": "vrb_matrix_2022"
     },
     {
-      "sha256": "9e0aa1b359def0589ed02f4b5d2d2b8e390f17370daa4fdcf4c1fde110d5d035",
+      "path": "docs/data/external-regional-rail-single-fares-2026.json",
+      "sha256": "dd4dce35c44cedae7fc215e5d2264fe507d4399fe46332a1acbd9d2ebcef0210",
+      "source_document_sha256": "9e0aa1b359def0589ed02f4b5d2d2b8e390f17370daa4fdcf4c1fde110d5d035",
       "source_id": "niedersachsentarif_single_table",
       "url": "https://www.niedersachsentarif.de/wp-content/uploads/2025/12/Preismatrix_Niedersachsentarif_gueltig_ab_14.12.2025.pdf",
       "valid_from": "2025-12-14"
