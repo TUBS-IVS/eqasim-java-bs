@@ -29,14 +29,20 @@ public final class FareOutcomeCounter {
 		return snapshot;
 	}
 
-	/** Share of fallback outcomes among all counted outcomes; 0 for an empty snapshot. */
+	/** Share of fallback outcomes among all counted quote outcomes (informational labels excluded); 0 when empty. */
 	public static double fallbackShare(Map<String, Long> snapshot) {
-		long total = snapshot.values().stream().mapToLong(Long::longValue).sum();
+		long total = quoteTotal(snapshot);
 		if (total == 0) {
 			return 0.0;
 		}
 		long fallback = snapshot.entrySet().stream().filter(entry -> FareQuote.FALLBACK_OUTCOMES.contains(entry.getKey()))
 				.mapToLong(Map.Entry::getValue).sum();
 		return fallback / (double) total;
+	}
+
+	/** Number of counted quotes, i.e. all entries except informational labels. */
+	public static long quoteTotal(Map<String, Long> snapshot) {
+		return snapshot.entrySet().stream().filter(entry -> !FareQuote.INFORMATIONAL_LABELS.contains(entry.getKey()))
+				.mapToLong(Map.Entry::getValue).sum();
 	}
 }

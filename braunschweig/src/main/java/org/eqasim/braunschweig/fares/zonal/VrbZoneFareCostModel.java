@@ -72,6 +72,11 @@ public final class VrbZoneFareCostModel implements CostModel, FareQuoteSource {
 		return quote;
 	}
 
+	@Override
+	public FareQuote quoteWithoutCounting(Person person, List<? extends PlanElement> elements) {
+		return evaluate(person, elements);
+	}
+
 	/** One PT leg as the tariff sees it: zones at both ends, line scope, ridden distance and stop intervals. */
 	record Ride(String boardingZone, String alightingZone, Optional<PtLineScopes.Scope> scope, String transportMode,
 			double distanceKm, int stopIntervals) {

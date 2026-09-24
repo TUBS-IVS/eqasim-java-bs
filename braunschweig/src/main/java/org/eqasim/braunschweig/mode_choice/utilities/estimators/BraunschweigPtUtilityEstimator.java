@@ -81,10 +81,17 @@ public class BraunschweigPtUtilityEstimator implements UtilityEstimator {
 
 	@Override
 	public double estimateUtility(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
+		return estimateUtilityAtCost(person, trip, elements, costModel.calculateCost_MU(person, trip, elements));
+	}
+
+	/**
+	 * All utility terms for an externally supplied monetary cost in EUR; shared with the VRB zone fare
+	 * estimator, which supplies the day-ticket-capped marginal fare instead of the cost model's quote.
+	 */
+	protected double estimateUtilityAtCost(Person person, DiscreteModeChoiceTrip trip,
+			List<? extends PlanElement> elements, double cost_EUR) {
 		BraunschweigPersonVariables personVariables = personPredictor.predictVariables(person, trip, elements);
 		BraunschweigPtVariables ptVariables = ptPredictor.predictVariables(person, trip, elements);
-
-		double cost_EUR = costModel.calculateCost_MU(person, trip, elements);
 
 		double utility = 0.0;
 

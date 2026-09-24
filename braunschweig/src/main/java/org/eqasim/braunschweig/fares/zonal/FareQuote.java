@@ -25,6 +25,12 @@ public record FareQuote(long cents, String outcome, String priceClass) {
 	public static final String VRB_PAIR_UNDEFINED_FALLBACK = "vrb_pair_undefined_fallback";
 	public static final String EXTERNAL_RAIL_BEYOND_BANDS = "external_rail_beyond_bands";
 
+	/** Informational label: the day-ticket cap reduced a trip's marginal cost. Not a quote outcome. */
+	public static final String DAY_TICKET_CAP_APPLIED = "day_ticket_cap_applied";
+
+	/** Labels counted for information only; they are excluded from the quote total of the fallback share. */
+	public static final Set<String> INFORMATIONAL_LABELS = Set.of(DAY_TICKET_CAP_APPLIED);
+
 	/** Outcomes whose input is incomplete or whose price is the configured fallback: the unsupported share. */
 	public static final Set<String> FALLBACK_OUTCOMES = Set.of(CATEGORY_MISSING, CATEGORY_UNKNOWN, LINE_SCOPE_MISSING,
 			LONG_DISTANCE_FALLBACK, VRB_PAIR_UNDEFINED_FALLBACK, EXTERNAL_RAIL_BEYOND_BANDS);

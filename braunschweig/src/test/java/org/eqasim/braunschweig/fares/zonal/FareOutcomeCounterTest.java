@@ -21,4 +21,11 @@ public class FareOutcomeCounterTest {
 		assertTrue(counter.snapshotAndReset().isEmpty());
 		assertEquals(0.0, FareOutcomeCounter.fallbackShare(Map.of()), 0.0);
 	}
+
+	@Test
+	public void dayTicketCapLabelIsReportedButNotPartOfTheQuoteTotal() {
+		Map<String, Long> snapshot = Map.of(FareQuote.VRB_SINGLE_ADULT, 1L, FareQuote.LONG_DISTANCE_FALLBACK, 1L,
+				FareQuote.DAY_TICKET_CAP_APPLIED, 8L);
+		assertEquals(0.5, FareOutcomeCounter.fallbackShare(snapshot), 1e-12);
+	}
 }
