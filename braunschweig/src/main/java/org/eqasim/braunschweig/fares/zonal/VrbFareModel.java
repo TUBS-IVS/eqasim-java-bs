@@ -44,10 +44,12 @@ public final class VrbFareModel {
 	private final double distanceFactor;
 	private final long externalLocalSingleCents;
 	private final long fallbackCents;
+	private final long longDistanceSingleCents;
 
 	private VrbFareModel(JsonNode root) {
-		if (require(root, "schema_version").asInt() != 1) {
-			throw fail("schema_version must be 1");
+		// Schema 2 added long_distance.single_cents; a schema-1 model written by an older exporter is rejected.
+		if (require(root, "schema_version").asInt() != 2) {
+			throw fail("schema_version must be 2");
 		}
 		priceClasses = strings(require(root, "price_classes"));
 		zones = Set.copyOf(strings(require(root, "zones")));
@@ -83,6 +85,8 @@ public final class VrbFareModel {
 			throw fail("external.distance_factor must be positive");
 		}
 		externalLocalSingleCents = nonNegative(require(external, "local_single_cents").asLong(-1), "external.local_single_cents");
+		longDistanceSingleCents = nonNegative(require(require(root, "long_distance"), "single_cents").asLong(-1),
+				"long_distance.single_cents");
 		fallbackCents = nonNegative(require(require(root, "fallback"), "unsupported_ride_cents").asLong(-1),
 				"fallback.unsupported_ride_cents");
 	}
@@ -169,6 +173,11 @@ public final class VrbFareModel {
 
 	public long fallbackCents() {
 		return fallbackCents;
+	}
+
+	/** Flat price in euro cents of a journey with a long-distance ride, whatever the traveller's ticket. */
+	public long longDistanceSingleCents() {
+		return longDistanceSingleCents;
 	}
 
 	private Map<String, Long> classCents(JsonNode node, String name) {

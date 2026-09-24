@@ -29,8 +29,9 @@ import com.google.inject.Inject;
  * VRB zone tariff 2026 for one routed PT trip (ADR-0133).
  *
  * <p>Rules, in priority order: no PT leg costs nothing; a traveller younger than the child minimum
- * age rides free; a line without a scope row is a counted fallback; a long-distance line is a
- * counted fallback (the Deutschlandticket is not valid there); when every boarding and alighting
+ * age rides free; a line without a scope row is a counted fallback; a journey with a long-distance
+ * ride pays the fare model's long-distance flat price, whatever the ticket (no Germany-wide or VRB
+ * pass is valid on long-distance services; ADR-0133 D6); when every boarding and alighting
  * stop is zoned, flat holders pay nothing and everyone else pays the VRB single (a short trip for
  * one bus/tram ride of at most three stop intervals, otherwise the matrix price class of the first
  * boarding zone and the last alighting zone); when any stop is unzoned, national flat holders pay
@@ -129,7 +130,7 @@ public final class VrbZoneFareCostModel implements CostModel, FareQuoteSource {
 			return fallback(FareQuote.LINE_SCOPE_MISSING);
 		}
 		if (rides.stream().anyMatch(ride -> PtLineScopes.SCOPE_LONG_DISTANCE.equals(ride.scope().get().tariffScope()))) {
-			return fallback(FareQuote.LONG_DISTANCE_FALLBACK);
+			return new FareQuote(fares.longDistanceSingleCents(), FareQuote.LONG_DISTANCE_FLAT, null);
 		}
 		Object rawCategory = person.getAttributes().getAttribute(CATEGORY_ATTRIBUTE);
 		String categoryIssue = null;

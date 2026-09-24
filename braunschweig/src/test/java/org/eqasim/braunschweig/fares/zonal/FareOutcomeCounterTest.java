@@ -13,7 +13,7 @@ public class FareOutcomeCounterTest {
 		FareOutcomeCounter counter = new FareOutcomeCounter();
 		counter.record(FareQuote.VRB_SINGLE_ADULT);
 		counter.record(FareQuote.VRB_SINGLE_ADULT);
-		counter.record(FareQuote.LONG_DISTANCE_FALLBACK);
+		counter.record(FareQuote.VRB_PAIR_UNDEFINED_FALLBACK);
 		counter.record(FareQuote.LINE_SCOPE_MISSING);
 		Map<String, Long> snapshot = counter.snapshotAndReset();
 		assertEquals(Long.valueOf(2), snapshot.get(FareQuote.VRB_SINGLE_ADULT));
@@ -24,7 +24,7 @@ public class FareOutcomeCounterTest {
 
 	@Test
 	public void dayTicketCapLabelIsReportedButNotPartOfTheQuoteTotal() {
-		Map<String, Long> snapshot = Map.of(FareQuote.VRB_SINGLE_ADULT, 1L, FareQuote.LONG_DISTANCE_FALLBACK, 1L,
+		Map<String, Long> snapshot = Map.of(FareQuote.VRB_SINGLE_ADULT, 1L, FareQuote.VRB_PAIR_UNDEFINED_FALLBACK, 1L,
 				FareQuote.DAY_TICKET_CAP_APPLIED, 8L);
 		assertEquals(0.5, FareOutcomeCounter.fallbackShare(snapshot), 1e-12);
 	}

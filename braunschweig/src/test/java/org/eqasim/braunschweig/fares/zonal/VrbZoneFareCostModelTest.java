@@ -154,8 +154,23 @@ public class VrbZoneFareCostModelTest {
 	}
 
 	@Test
-	public void longDistanceLinesFallBackEvenForNationalFlatHolders() {
-		assertQuote(370, FareQuote.LONG_DISTANCE_FALLBACK, person("deutschlandticket", 30), ride("ICE", "c", "h"));
+	public void longDistanceRidesPayTheFlatPriceWhateverTheTicket() {
+		// Maintainer decision 2026-09-24: neither the Deutschlandticket nor a VRB pass is valid on long-distance
+		// services, and children of 6-14 pay the same flat price (ASSUMPTION); under-6s still ride free.
+		assertQuote(2190, FareQuote.LONG_DISTANCE_FLAT, person("deutschlandticket", 30), ride("ICE", "c", "h"));
+		assertQuote(2190, FareQuote.LONG_DISTANCE_FLAT, person("monthly_or_annual_subscription", 30), ride("ICE", "c", "h"));
+		assertQuote(2190, FareQuote.LONG_DISTANCE_FLAT, person("single_ticket", 10), ride("ICE", "c", "h"));
+		assertQuote(0, FareQuote.CHILD_FREE, person("single_ticket", 4), ride("ICE", "c", "h"));
+		// A journey with a long-distance ride is priced once, VRB feeder included.
+		assertQuote(2190, FareQuote.LONG_DISTANCE_FLAT, person("single_ticket", 30),
+				rides(ride("BUS", "a", "c"), ride("ICE", "c", "h")));
+	}
+
+	@Test
+	public void longDistanceFlatIsNeitherAFallbackNorPartOfTheDayTicketCap() {
+		assertFalse(FareQuote.FALLBACK_OUTCOMES.contains(FareQuote.LONG_DISTANCE_FLAT));
+		assertFalse(model.quote(person("single_ticket", 30), ride("ICE", "c", "h")).vrbCash());
+		assertEquals(0.0, FareOutcomeCounter.fallbackShare(counter.snapshotAndReset()), 0.0);
 	}
 
 	@Test
@@ -179,10 +194,12 @@ public class VrbZoneFareCostModelTest {
 	public void everyQuoteIsCountedExactlyOnce() {
 		model.quote(person("single_ticket", 30), ride("BUS", "a", "f"));
 		model.quote(person("deutschlandticket", 30), ride("ICE", "c", "h"));
+		model.quote(person("single_ticket", 30), ride("NOSCOPE", "a", "b"));
 		Map<String, Long> snapshot = counter.snapshotAndReset();
 		assertEquals(Long.valueOf(1), snapshot.get(FareQuote.VRB_SINGLE_ADULT));
-		assertEquals(Long.valueOf(1), snapshot.get(FareQuote.LONG_DISTANCE_FALLBACK));
-		assertEquals(0.5, FareOutcomeCounter.fallbackShare(snapshot), 1e-12);
+		assertEquals(Long.valueOf(1), snapshot.get(FareQuote.LONG_DISTANCE_FLAT));
+		assertEquals(Long.valueOf(1), snapshot.get(FareQuote.LINE_SCOPE_MISSING));
+		assertEquals(1.0 / 3.0, FareOutcomeCounter.fallbackShare(snapshot), 1e-12);
 	}
 
 	@Test

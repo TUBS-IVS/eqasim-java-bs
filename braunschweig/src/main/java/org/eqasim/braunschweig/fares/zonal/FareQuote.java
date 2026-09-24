@@ -23,7 +23,8 @@ public record FareQuote(long cents, String outcome, String priceClass, boolean v
 	public static final String CATEGORY_MISSING = "category_missing";
 	public static final String CATEGORY_UNKNOWN = "category_unknown";
 	public static final String LINE_SCOPE_MISSING = "line_scope_missing";
-	public static final String LONG_DISTANCE_FALLBACK = "long_distance_fallback";
+	/** A journey with a long-distance ride (DB Fernverkehr, Flix): the flat price of the fare model for everyone. */
+	public static final String LONG_DISTANCE_FLAT = "long_distance_flat";
 	public static final String VRB_PAIR_UNDEFINED_FALLBACK = "vrb_pair_undefined_fallback";
 	public static final String EXTERNAL_RAIL_BEYOND_BANDS = "external_rail_beyond_bands";
 
@@ -35,7 +36,7 @@ public record FareQuote(long cents, String outcome, String priceClass, boolean v
 
 	/** Outcomes whose input is incomplete or whose price is the configured fallback: the unsupported share. */
 	public static final Set<String> FALLBACK_OUTCOMES = Set.of(CATEGORY_MISSING, CATEGORY_UNKNOWN, LINE_SCOPE_MISSING,
-			LONG_DISTANCE_FALLBACK, VRB_PAIR_UNDEFINED_FALLBACK, EXTERNAL_RAIL_BEYOND_BANDS);
+			VRB_PAIR_UNDEFINED_FALLBACK, EXTERNAL_RAIL_BEYOND_BANDS);
 
 	/** Outcomes that are VRB tickets paid in cash; only these count towards the day-ticket cap. */
 	public static final Set<String> VRB_CASH_OUTCOMES = Set.of(VRB_SHORT_TRIP, VRB_SINGLE_ADULT, VRB_SINGLE_CHILD);

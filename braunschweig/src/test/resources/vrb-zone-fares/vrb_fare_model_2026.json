@@ -4,7 +4,8 @@
     "ASSUMPTION: ticket validity windows are not modelled; every PT trip is priced on its own (D4).",
     "ASSUMPTION: job/semester tickets count as Germany-wide flat; monthly and weekly passes as VRB-network flat (D5).",
     "ASSUMPTION: external local single 370 ct for every non-VRB bus/tram ride (D7).",
-    "ASSUMPTION: rail tariff distance = ridden stop distance x 1.0 (D7)."
+    "ASSUMPTION: rail tariff distance = ridden stop distance x 1.0 (D7).",
+    "ASSUMPTION: every journey with a long-distance ride costs 21.90 EUR for every traveller of 6 or older, the DB Sparpreis entry price 2026 (D6)."
   ],
   "category_holder": {
     "deutschlandticket": "national_flat",
@@ -4043,6 +4044,9 @@
   "fallback": {
     "unsupported_ride_cents": 370
   },
+  "long_distance": {
+    "single_cents": 2190
+  },
   "money_price_year": 2026,
   "price_class_by_pair": {
     "10|10": "ps1",
@@ -6355,7 +6359,7 @@
     "ps3",
     "ps4"
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "short_trip_cents": 200,
   "short_trip_maximum_stop_intervals": 3,
   "single_adult_cents": {

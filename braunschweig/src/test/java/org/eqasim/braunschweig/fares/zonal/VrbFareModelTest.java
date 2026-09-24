@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class VrbFareModelTest {
 	/** Small synthetic fare model with the same key set as braunschweig.data.vrb.fare_model_export writes. */
 	public static final String JSON = """
-			{"schema_version": 1, "tariff_snapshot_date": "2026-06-20", "money_price_year": 2026, "currency": "EUR",
+			{"schema_version": 2, "tariff_snapshot_date": "2026-06-20", "money_price_year": 2026, "currency": "EUR",
 			 "zones": ["40", "55", "70"], "city_zones": ["40"], "price_classes": ["city", "ps1", "ps2", "ps3", "ps4"],
 			 "single_adult_cents": {"city": 360, "ps1": 390, "ps2": 560, "ps3": 770, "ps4": 1230},
 			 "single_child_cents": {"city": 210, "ps1": 230, "ps2": 330, "ps3": 460, "ps4": 740},
@@ -27,6 +27,7 @@ public class VrbFareModelTest {
 			 "external": {"rail_distance_bands_adult": [{"up_to_km": 5, "price_cents": 200}, {"up_to_km": 20, "price_cents": 500}],
 			              "rail_distance_bands_child": [{"up_to_km": 5, "price_cents": 100}, {"up_to_km": 20, "price_cents": 250}],
 			              "distance_factor": 1.0, "local_single_cents": 370},
+			 "long_distance": {"single_cents": 2190},
 			 "fallback": {"unsupported_ride_cents": 370}, "sources": [], "assumptions": []}
 			""";
 
@@ -57,6 +58,7 @@ public class VrbFareModelTest {
 		assertEquals(14, model.childMaximumAge());
 		assertEquals(370, model.externalLocalSingleCents());
 		assertEquals(370, model.fallbackCents());
+		assertEquals(2190, model.longDistanceSingleCents());
 	}
 
 	@Test
@@ -96,7 +98,10 @@ public class VrbFareModelTest {
 		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(badPair)));
 		String unlistedZone = JSON.replace("\"70|70\": \"ps1\"", "\"70|99\": \"ps1\"");
 		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(unlistedZone)));
-		String wrongSchema = JSON.replace("\"schema_version\": 1", "\"schema_version\": 2");
+		// Schema 1 had no long-distance price; a model written by the old exporter must be rejected.
+		String wrongSchema = JSON.replace("\"schema_version\": 2", "\"schema_version\": 1");
 		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(wrongSchema)));
+		String noLongDistance = JSON.replace("\"long_distance\": {\"single_cents\": 2190},", "");
+		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(noLongDistance)));
 	}
 }
