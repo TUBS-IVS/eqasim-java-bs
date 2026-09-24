@@ -77,6 +77,17 @@ public class VrbZoneFarePtUtilityEstimatorTest {
 	}
 
 	@Test
+	public void higherClassTripAfterCappedCityTripsCostsAtMostItsOwnSingle() throws Exception {
+		FareQuote city = new FareQuote(360, FareQuote.VRB_SINGLE_ADULT, "city");
+		FareQuote ps3 = new FareQuote(770, FareQuote.VRB_SINGLE_ADULT, "ps3");
+		VrbZoneFarePtUtilityEstimator estimator = estimator(source(city, city, city, ps3), true);
+		List<TripCandidate> prefix = List.of(new DefaultRoutedTripCandidate(0, "pt", route(0), 100),
+				new DefaultRoutedTripCandidate(0, "pt", route(1), 100), new DefaultRoutedTripCandidate(0, "pt", route(2), 100));
+		// city day ticket 7.20 + ps3 single 7.70 = 14.90 is the cheapest day: the ps3 trip adds 7.70, not 8.20.
+		assertEquals(7.70, estimator.marginalCostEur(person(), route(3), prefix), 1e-9);
+	}
+
+	@Test
 	public void capUsesOnlyPtCandidatesInTheSuppliedPrefix() throws Exception {
 		FareQuote city = new FareQuote(360, FareQuote.VRB_SINGLE_ADULT, "city");
 		FareQuote ps2 = new FareQuote(560, FareQuote.VRB_SINGLE_ADULT, "ps2");

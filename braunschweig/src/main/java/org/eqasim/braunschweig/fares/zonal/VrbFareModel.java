@@ -104,9 +104,20 @@ public final class VrbFareModel {
 		return dayTicketCents.get(priceClass);
 	}
 
-	/** The class with the higher index in price_classes (city < ps1 < ... < ps4). */
-	public String higherClass(String a, String b) {
-		return priceClasses.indexOf(a) >= priceClasses.indexOf(b) ? a : b;
+	/** Price classes in ascending order (city < ps1 < ... < ps4), as listed in price_classes. */
+	public List<String> priceClasses() {
+		return priceClasses;
+	}
+
+	/** True when a day ticket of {@code dayClass} covers a trip of {@code tripClass}: the trip's class is not higher. */
+	public boolean covers(String dayClass, String tripClass) {
+		int day = priceClasses.indexOf(dayClass);
+		int trip = priceClasses.indexOf(tripClass);
+		if (day < 0 || trip < 0) {
+			throw new IllegalArgumentException("unknown VRB price class in " + dayClass + " / " + tripClass
+					+ "; expected one of " + priceClasses);
+		}
+		return trip <= day;
 	}
 
 	/** Holder kind for a population ticket category, or null when the category is not in the model. */

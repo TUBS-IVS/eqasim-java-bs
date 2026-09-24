@@ -1,7 +1,9 @@
 package org.eqasim.braunschweig.mode_choice.utilities.estimators;
 
+import java.util.ArrayList;
 import java.util.List;
 
+import org.eqasim.braunschweig.fares.zonal.DayTicketCap;
 import org.eqasim.braunschweig.fares.zonal.FareOutcomeCounter;
 import org.eqasim.braunschweig.fares.zonal.FareQuote;
 import org.eqasim.braunschweig.fares.zonal.FareQuoteSource;
@@ -24,8 +26,9 @@ import com.google.inject.name.Named;
 /**
  * PT utility with the VRB zone fare and the day-ticket cap (ADR-0133 D9).
  *
- * <p>A person's VRB cash for the day is min(sum of VRB singles, day ticket of the highest price class
- * used). The monetary term of the current trip is the increase of that quantity over the PT candidates
+ * <p>A person's VRB cash for the day is the cheapest of all singles or one day ticket plus the singles
+ * of the trips above its price class ({@link DayTicketCap}). The monetary term of the current trip is the
+ * increase of that quantity over the PT candidates
  * DMC passes as prefix (earlier selected tours plus the current tour's earlier trips). Earlier trips are
  * re-priced without counting, so every trip enters the outcome report once. Flat, external and fallback
  * outcomes are never capped. With the cap disabled the plain quote is used. ASSUMPTION: the traveller
@@ -66,26 +69,20 @@ public final class VrbZoneFarePtUtilityEstimator extends BraunschweigPtUtilityEs
 		if (!config.isDayTicketCapEnabled() || !current.isVrbCash()) {
 			return current.cents() / 100.0;
 		}
-		long singlesBefore = 0;
-		String classBefore = null;
+		List<FareQuote> before = new ArrayList<>();
 		for (TripCandidate candidate : previousTrips) {
 			if (!"pt".equals(candidate.getMode()) || !(candidate instanceof RoutedTripCandidate routed)) {
 				continue;
 			}
 			FareQuote earlier = fares.quoteWithoutCounting(person, routed.getRoutedPlanElements());
-			if (!earlier.isVrbCash()) {
-				continue;
+			if (earlier.isVrbCash()) {
+				before.add(earlier);
 			}
-			singlesBefore += earlier.cents();
-			classBefore = classBefore == null ? earlier.priceClass() : model.higherClass(classBefore, earlier.priceClass());
 		}
-		long cashBefore = classBefore == null ? 0 : Math.min(singlesBefore, model.dayTicketCents(classBefore));
-		String classAfter = classBefore == null ? current.priceClass() : model.higherClass(classBefore, current.priceClass());
-		long singlesAfter = singlesBefore + current.cents();
-		long cashAfter = Math.min(singlesAfter, model.dayTicketCents(classAfter));
-		if (cashAfter < singlesAfter) {
+		long marginal = DayTicketCap.marginalCents(model, before, current);
+		if (marginal < current.cents()) {
 			counter.record(FareQuote.DAY_TICKET_CAP_APPLIED);
 		}
-		return Math.max(0, cashAfter - cashBefore) / 100.0;
+		return marginal / 100.0;
 	}
 }

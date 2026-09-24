@@ -43,8 +43,10 @@ public class VrbFareModelTest {
 		assertEquals(560, model.singleCents("ps2", false));
 		assertEquals(330, model.singleCents("ps2", true));
 		assertEquals(1120, model.dayTicketCents("ps2"));
-		assertEquals("ps3", model.higherClass("ps1", "ps3"));
-		assertEquals("ps1", model.higherClass("city", "ps1"));
+		assertTrue(model.covers("ps3", "ps1"));
+		assertTrue(model.covers("ps1", "ps1"));
+		assertFalse(model.covers("city", "ps1"));
+		assertThrows(IllegalArgumentException.class, () -> model.covers("ps9", "city"));
 		assertEquals(VrbFareModel.Holder.NATIONAL_FLAT, model.holder("deutschlandticket"));
 		assertEquals(VrbFareModel.Holder.VRB_FLAT, model.holder("monthly_or_annual_subscription"));
 		assertEquals(VrbFareModel.Holder.NONE, model.holder("single_ticket"));
