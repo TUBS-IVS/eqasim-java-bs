@@ -1,5 +1,6 @@
 package org.eqasim.braunschweig;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -7,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
+import org.eqasim.braunschweig.fares.zonal.DayTicketCapAdjustment;
+import org.eqasim.braunschweig.fares.zonal.DayTicketCapTourEstimator;
 import org.eqasim.braunschweig.fares.zonal.FareQuoteSource;
 import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
@@ -98,7 +101,10 @@ public class VrbFareInjectorTest {
 		Map<String, Provider<TourEstimator>> tourEstimators = injector
 				.getInstance(Key.get(new TypeLiteral<Map<String, Provider<TourEstimator>>>() {
 				}));
-		assertTrue(tourEstimators.containsKey(dmc.getTourEstimator()));
-		tourEstimators.get(dmc.getTourEstimator()).get();
+		assertEquals(BraunschweigModeChoiceModule.DAY_TICKET_CAP_TOUR_ESTIMATOR_NAME, dmc.getTourEstimator());
+		assertTrue(tourEstimators.get(dmc.getTourEstimator()).get() instanceof DayTicketCapTourEstimator);
+		assertTrue(injector.getInstance(DayTicketCapAdjustment.class) instanceof VrbZoneFarePtUtilityEstimator);
+		// The cap is a correction in the tour estimator, so the pt estimate cache of the generated config stays.
+		assertTrue(dmc.getCachedModes().contains("pt"));
 	}
 }

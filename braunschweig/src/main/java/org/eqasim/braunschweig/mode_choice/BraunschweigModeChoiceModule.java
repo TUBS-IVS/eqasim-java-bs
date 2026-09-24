@@ -10,7 +10,8 @@ import org.eqasim.core.simulation.mode_choice.ParameterDefinition;
 import org.eqasim.core.simulation.mode_choice.parameters.ModeParameters;
 import org.eqasim.core.simulation.mode_choice.tour_finder.ActivityTourFinderWithExcludedActivities;
 import org.eqasim.core.simulation.mode_choice.utilities.estimators.BikeUtilityEstimator;
-import org.eqasim.braunschweig.fares.zonal.PrefixAwareTourEstimator;
+import org.eqasim.braunschweig.fares.zonal.DayTicketCapAdjustment;
+import org.eqasim.braunschweig.fares.zonal.DayTicketCapTourEstimator;
 import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.fares.zonal.VrbFareModule;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
@@ -58,7 +59,7 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	/** VRB zone fare model (ADR-0133): bound only when the vrbFare config module is enabled. */
 	public static final String VRB_FARE_PT_COST_MODEL_NAME = "VrbZoneFareCostModel";
 	public static final String VRB_FARE_PT_ESTIMATOR_NAME = "VrbZoneFarePtUtilityEstimator";
-	public static final String PREFIX_AWARE_TOUR_ESTIMATOR_NAME = "PrefixAwareTourEstimator";
+	public static final String DAY_TICKET_CAP_TOUR_ESTIMATOR_NAME = "DayTicketCapTourEstimator";
 
 	public BraunschweigModeChoiceModule(CommandLine commandLine) {
 		this.commandLine = commandLine;
@@ -86,7 +87,8 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		if (VrbFareConfigGroup.active(getConfig()) != null) {
 			bindCostModel(VRB_FARE_PT_COST_MODEL_NAME).to(VrbZoneFareCostModel.class);
 			bindUtilityEstimator(VRB_FARE_PT_ESTIMATOR_NAME).to(VrbZoneFarePtUtilityEstimator.class);
-			bindTourEstimator(PREFIX_AWARE_TOUR_ESTIMATOR_NAME).to(PrefixAwareTourEstimator.class);
+			bindTourEstimator(DAY_TICKET_CAP_TOUR_ESTIMATOR_NAME).to(DayTicketCapTourEstimator.class);
+			bind(DayTicketCapAdjustment.class).to(VrbZoneFarePtUtilityEstimator.class);
 			install(new VrbFareModule());
 		}
 

@@ -37,9 +37,7 @@ public class EqasimUtilityEstimator extends AbstractTripRouterEstimator {
 		if (estimator == null) {
 			throw new IllegalStateException(String.format("No estimator registered for mode '%s'", mode));
 		} else {
-			double utility = estimator instanceof PrefixAwareUtilityEstimator prefixAware
-					? prefixAware.estimateUtility(person, trip, elements, previousTrips)
-					: estimator.estimateUtility(person, trip, elements);
+			double utility = estimator.estimateUtility(person, trip, elements);
 			utility += epsilonProvider.getEpsilon(person.getId(), trip.getIndex(), mode);
 			utility -= utilityPenalty.calculatePenalty(mode, person, trip, elements);
 			return utility;

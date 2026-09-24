@@ -9,7 +9,9 @@ import org.matsim.core.config.ReflectiveConfigGroup;
 /**
  * MATSim config module "vrbFare": switches the PT cost model to the VRB zone tariff and names its
  * inputs (ADR-0133). Written into the prepared config by the eqasim-bs preparation stage; absent or
- * enabled=false keeps the legacy ring cost model.
+ * enabled=false keeps the legacy ring cost model. All prices, including the fallback price, come from
+ * the fare model JSON only; this module carries switches, paths and the run guard. BraunschweigConfigurator
+ * registers the group as optional, so EqasimConfigurator.updateConfig turns the generic XML module into it.
  */
 public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 	public static final String GROUP_NAME = "vrbFare";
@@ -18,7 +20,6 @@ public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 	private String fareModelPath;
 	private String lineScopesPath;
 	private boolean dayTicketCapEnabled = true;
-	private long unsupportedFallbackPriceCents = 370;
 	private double maximumUnsupportedShare = 0.05;
 
 	public VrbFareConfigGroup() {
@@ -73,24 +74,6 @@ public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 		return dayTicketCapEnabled;
 	}
 
-	@StringGetter("unsupportedFallbackPriceCents")
-	public String getUnsupportedFallbackPriceCents() {
-		return Long.toString(unsupportedFallbackPriceCents);
-	}
-
-	@StringSetter("unsupportedFallbackPriceCents")
-	public void setUnsupportedFallbackPriceCents(String value) {
-		long parsed = Long.parseLong(value);
-		if (parsed < 0) {
-			throw new IllegalArgumentException("vrbFare.unsupportedFallbackPriceCents must be >= 0, got " + value);
-		}
-		unsupportedFallbackPriceCents = parsed;
-	}
-
-	public long unsupportedFallbackPriceCents() {
-		return unsupportedFallbackPriceCents;
-	}
-
 	@StringGetter("maximumUnsupportedShare")
 	public String getMaximumUnsupportedShare() {
 		return Double.toString(maximumUnsupportedShare);
@@ -116,8 +99,8 @@ public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 		comments.put("fareModelPath", "vrb_fare_model_2026.json written by the preparation stage (relative to the config file)");
 		comments.put("lineScopesPath", "vrb_line_scopes.csv written by the preparation stage (relative to the config file)");
 		comments.put("dayTicketCapEnabled",
-				"cap a person's daily VRB cash at the day ticket of the highest price class used (ASSUMPTION, ADR-0133 D9)");
-		comments.put("unsupportedFallbackPriceCents", "price in euro cents of a counted fallback outcome (ASSUMPTION)");
+				"price a person's VRB trips of a day at the cheapest of all singles or one day ticket plus the singles above its"
+						+ " price class (ASSUMPTION, ADR-0133 D9)");
 		comments.put("maximumUnsupportedShare",
 				"the run fails after an iteration whose fallback share exceeds this value (ASSUMPTION for diagnostics)");
 		return comments;
@@ -133,19 +116,6 @@ public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 		}
 		if (lineScopesPath == null || lineScopesPath.isBlank()) {
 			throw new IllegalArgumentException("vrbFare.lineScopesPath is required when enabled");
-		}
-	}
-
-	/** A config read from XML carries the module as a generic group; replace it by the typed one. */
-	public static void promoteIfPresent(Config config) {
-		ConfigGroup raw = config.getModules().get(GROUP_NAME);
-		if (raw != null && !(raw instanceof VrbFareConfigGroup)) {
-			VrbFareConfigGroup typed = new VrbFareConfigGroup();
-			for (Map.Entry<String, String> parameter : raw.getParams().entrySet()) {
-				typed.addParam(parameter.getKey(), parameter.getValue());
-			}
-			config.removeModule(GROUP_NAME);
-			config.addModule(typed);
 		}
 	}
 
