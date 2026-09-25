@@ -53,7 +53,9 @@ public class TransitScheduleCutter {
 			StopSequenceCrossingPoint lastCrossingPoint = crossingPoints.get(crossingPoints.size() - 1);
 
 			int firstIndex = firstCrossingPoint.isOutgoing ? 0 : firstCrossingPoint.index + 1;
-			int lastIndex = lastCrossingPoint.isOutgoing ? lastCrossingPoint.index : originalSequence.size();
+			// An outgoing crossing's index is its inside stop, which the route still serves; subList excludes
+			// its end index, so the end is index + 1 (with index alone, the last inside stop was dropped).
+			int lastIndex = lastCrossingPoint.isOutgoing ? lastCrossingPoint.index + 1 : originalSequence.size();
 
 			return originalSequence.subList(firstIndex, lastIndex);
 		}
@@ -98,15 +100,11 @@ public class TransitScheduleCutter {
 	}
 
 	private TransitRoute reduceRoute(TransitRoute originalRoute, TransitScheduleFactory factory) {
-		List<TransitRouteStop> originalStopSequence = originalRoute.getStops();
 		List<TransitRouteStop> reducedStopSequence = reduceStopSequence(originalRoute.getStops());
 
 		if (reducedStopSequence.size() < 2) {
 			return null;
 		} else {
-			double departureOffset = reducedStopSequence.get(0).getDepartureOffset().seconds()
-					- originalStopSequence.get(0).getDepartureOffset().seconds();
-
 			Id<Link> routeStartLinkId = reducedStopSequence.get(0).getStopFacility().getLinkId();
 			Id<Link> routeEndLinkId = reducedStopSequence.get(reducedStopSequence.size() - 1).getStopFacility()
 					.getLinkId();
@@ -116,9 +114,12 @@ public class TransitScheduleCutter {
 			TransitRoute reducedRoute = factory.createTransitRoute(originalRoute.getId(), reducedNetworkRoute,
 					reducedStopSequence, originalRoute.getTransportMode());
 
+			// The kept stops keep their offsets, which count from the original route's start, so the departures
+			// keep their original times too. Moving them by the first kept stop's offset served every stop of a
+			// route that enters the extent earlier by the travel time from its original first stop.
 			for (Departure originalDeparture : originalRoute.getDepartures().values()) {
 				Departure reducedDeparture = factory.createDeparture(originalDeparture.getId(),
-						originalDeparture.getDepartureTime() - departureOffset);
+						originalDeparture.getDepartureTime());
 				reducedDeparture.setVehicleId(originalDeparture.getVehicleId());
 				reducedRoute.addDeparture(reducedDeparture);
 			}
