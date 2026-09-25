@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.4.0](https://github.com/TUBS-IVS/eqasim-java-bs/compare/v2.3.1...v2.4.0) (2026-09-25)
+
+
+### Features
+
+* price PT with the VRB zone tariff, a day-ticket cap and a long-distance routing cost ([da8b024](https://github.com/TUBS-IVS/eqasim-java-bs/commit/da8b02443f4b822bf356f365609d05f6e1ecdc41))
+* separate passenger availability from driver car access ([7c1f870](https://github.com/TUBS-IVS/eqasim-java-bs/commit/7c1f8703385e83745a2cc116bb3504f435a557fd))
+
+
+### Bug Fixes
+
+* keep the last inside stop and the timetable when cutting transit routes ([21c1045](https://github.com/TUBS-IVS/eqasim-java-bs/commit/21c1045c4d6ffd55d362927cd485fd09f7cb1d0b))
+* keep the last inside stop when cutting a transit route that leaves the extent ([19fe3d2](https://github.com/TUBS-IVS/eqasim-java-bs/commit/19fe3d24f6225fc28fa20687bbdb54b36aa89a1b))
+* keep the timetable of transit routes that the cutter shortens at their start ([83312f9](https://github.com/TUBS-IVS/eqasim-java-bs/commit/83312f93288bbc137780a4019980b8c620957985))
+* reject non-integral money and count values in the VRB fare model ([d224ca2](https://github.com/TUBS-IVS/eqasim-java-bs/commit/d224ca2e2e678086d671483628a69333c6e58bbf))
+* remove a stale VRB zone from stop facilities outside every polygon ([a9529a3](https://github.com/TUBS-IVS/eqasim-java-bs/commit/a9529a34cfa063393b0138673cbaf39a011b0a5c))
+
 ## [2.3.1](https://github.com/TUBS-IVS/eqasim-java-bs/compare/v2.3.0...v2.3.1) (2026-08-20)
 
 
