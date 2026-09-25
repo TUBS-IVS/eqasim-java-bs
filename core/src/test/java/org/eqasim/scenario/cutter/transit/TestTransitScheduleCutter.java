@@ -108,7 +108,8 @@ public class TestTransitScheduleCutter {
 					Id.create("fac" + stopXs[k], TransitStopFacility.class), new Coord(stopXs[k], 0.0), false);
 			facility.setLinkId(linkId);
 			schedule.addStopFacility(facility);
-			// arrive DWELL_S before departing (except at the first stop), as a GTFS-converted schedule may
+			// Arrive DWELL_S before departing (except at the first stop), as stops of a GTFS-converted
+			// schedule may, so the timetable tests cover arrival and departure offsets separately.
 			TransitRouteStop stop = factory.createTransitRouteStop(facility,
 					k == 0 ? 0.0 : k * SECONDS_PER_STOP - DWELL_S, k * SECONDS_PER_STOP);
 			stop.setAwaitDepartureTime(true);
