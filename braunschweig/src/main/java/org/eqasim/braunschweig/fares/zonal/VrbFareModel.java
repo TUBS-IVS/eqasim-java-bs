@@ -48,7 +48,7 @@ public final class VrbFareModel {
 
 	private VrbFareModel(JsonNode root) {
 		// Schema 2 added long_distance.single_cents; a schema-1 model written by an older exporter is rejected.
-		if (require(root, "schema_version").asInt() != 2) {
+		if (integralInt(require(root, "schema_version"), "schema_version") != 2) {
 			throw fail("schema_version must be 2");
 		}
 		priceClasses = strings(require(root, "price_classes"));
@@ -73,10 +73,11 @@ public final class VrbFareModel {
 			Map.Entry<String, JsonNode> entry = it.next();
 			holderByCategory.put(entry.getKey(), Holder.valueOf(entry.getValue().asText().toUpperCase(Locale.ROOT)));
 		}
-		shortTripCents = nonNegative(require(root, "short_trip_cents").asLong(-1), "short_trip_cents");
-		shortTripMaximumStopIntervals = require(root, "short_trip_maximum_stop_intervals").asInt();
-		childMinimumAge = require(root, "child_minimum_age").asInt();
-		childMaximumAge = require(root, "child_maximum_age").asInt();
+		shortTripCents = cents(require(root, "short_trip_cents"), "short_trip_cents");
+		shortTripMaximumStopIntervals = integralInt(require(root, "short_trip_maximum_stop_intervals"),
+				"short_trip_maximum_stop_intervals");
+		childMinimumAge = integralInt(require(root, "child_minimum_age"), "child_minimum_age");
+		childMaximumAge = integralInt(require(root, "child_maximum_age"), "child_maximum_age");
 		JsonNode external = require(root, "external");
 		adultBands = bands(require(external, "rail_distance_bands_adult"));
 		childBands = bands(require(external, "rail_distance_bands_child"));
@@ -84,11 +85,9 @@ public final class VrbFareModel {
 		if (!(distanceFactor > 0)) {
 			throw fail("external.distance_factor must be positive");
 		}
-		externalLocalSingleCents = nonNegative(require(external, "local_single_cents").asLong(-1), "external.local_single_cents");
-		longDistanceSingleCents = nonNegative(require(require(root, "long_distance"), "single_cents").asLong(-1),
-				"long_distance.single_cents");
-		fallbackCents = nonNegative(require(require(root, "fallback"), "unsupported_ride_cents").asLong(-1),
-				"fallback.unsupported_ride_cents");
+		externalLocalSingleCents = cents(require(external, "local_single_cents"), "external.local_single_cents");
+		longDistanceSingleCents = cents(require(require(root, "long_distance"), "single_cents"), "long_distance.single_cents");
+		fallbackCents = cents(require(require(root, "fallback"), "unsupported_ride_cents"), "fallback.unsupported_ride_cents");
 	}
 
 	public static VrbFareModel read(Path path) throws IOException {
@@ -187,7 +186,7 @@ public final class VrbFareModel {
 			if (!priceClasses.contains(entry.getKey())) {
 				throw fail(name + " has unknown price class " + entry.getKey());
 			}
-			result.put(entry.getKey(), nonNegative(entry.getValue().asLong(-1), name + "." + entry.getKey()));
+			result.put(entry.getKey(), cents(entry.getValue(), name + "." + entry.getKey()));
 		}
 		if (!result.keySet().equals(Set.copyOf(priceClasses))) {
 			throw fail(name + " must contain every price class exactly once");
@@ -203,7 +202,7 @@ public final class VrbFareModel {
 			if (upTo <= previous) {
 				throw fail("rail distance bands must be strictly increasing");
 			}
-			result.add(new Band(upTo, nonNegative(require(item, "price_cents").asLong(-1), "band.price_cents")));
+			result.add(new Band(upTo, cents(require(item, "price_cents"), "band.price_cents")));
 			previous = upTo;
 		}
 		if (result.isEmpty()) {
@@ -229,11 +228,24 @@ public final class VrbFareModel {
 		return value;
 	}
 
-	private static long nonNegative(long value, String name) {
+	/** A money amount: a non-negative integral JSON number of euro cents. */
+	private static long cents(JsonNode node, String name) {
+		if (!node.isIntegralNumber() || !node.canConvertToLong()) {
+			throw fail(name + " must be an integral number of cents, got " + node);
+		}
+		long value = node.longValue();
 		if (value < 0) {
 			throw fail(name + " must be a non-negative integer");
 		}
 		return value;
+	}
+
+	/** A count or version: an integral JSON number, never a fraction that asInt() would truncate or a string. */
+	private static int integralInt(JsonNode node, String name) {
+		if (!node.isIntegralNumber() || !node.canConvertToInt()) {
+			throw fail(name + " must be an integral number, got " + node);
+		}
+		return node.intValue();
 	}
 
 	private static IllegalArgumentException fail(String message) {

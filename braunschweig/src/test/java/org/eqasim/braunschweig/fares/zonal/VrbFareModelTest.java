@@ -104,4 +104,30 @@ public class VrbFareModelTest {
 		String noLongDistance = JSON.replace("\"long_distance\": {\"single_cents\": 2190},", "");
 		assertThrows(IllegalArgumentException.class, () -> VrbFareModel.parse(new ObjectMapper().readTree(noLongDistance)));
 	}
+
+	/** Money and count fields must be integral JSON numbers; a fraction or a string must not be truncated or parsed. */
+	@Test
+	public void rejectsNonIntegralMoneyAndCountValues() throws Exception {
+		String[][] replacements = {
+				{ "\"city\": 360", "\"city\": 1.5" }, // single_adult_cents
+				{ "\"ps1\": 390", "\"ps1\": \"390\"" }, // a string, not a number
+				{ "\"short_trip_cents\": 200", "\"short_trip_cents\": 199.5" },
+				{ "\"price_cents\": 200", "\"price_cents\": 200.5" }, // first adult rail band
+				{ "\"single_cents\": 2190", "\"single_cents\": 2190.5" }, // long_distance
+				{ "\"unsupported_ride_cents\": 370", "\"unsupported_ride_cents\": 370.5" },
+				{ "\"local_single_cents\": 370", "\"local_single_cents\": 370.5" },
+				{ "\"child_minimum_age\": 6", "\"child_minimum_age\": 6.5" },
+				{ "\"short_trip_maximum_stop_intervals\": 3", "\"short_trip_maximum_stop_intervals\": 3.5" },
+				{ "\"schema_version\": 2", "\"schema_version\": 2.5" } };
+		for (String[] replacement : replacements) {
+			String json = JSON.replace(replacement[0], replacement[1]);
+			assertFalse("fixture must contain " + replacement[0], json.equals(JSON));
+			IllegalArgumentException error = assertThrows(replacement[1], IllegalArgumentException.class,
+					() -> VrbFareModel.parse(new ObjectMapper().readTree(json)));
+			assertTrue(error.getMessage(), error.getMessage().contains("integral"));
+		}
+		IllegalArgumentException named = assertThrows(IllegalArgumentException.class,
+				() -> VrbFareModel.parse(new ObjectMapper().readTree(JSON.replace("\"city\": 360", "\"city\": 1.5"))));
+		assertTrue(named.getMessage(), named.getMessage().contains("single_adult_cents.city"));
+	}
 }
