@@ -10,6 +10,12 @@ import org.eqasim.core.simulation.mode_choice.ParameterDefinition;
 import org.eqasim.core.simulation.mode_choice.parameters.ModeParameters;
 import org.eqasim.core.simulation.mode_choice.tour_finder.ActivityTourFinderWithExcludedActivities;
 import org.eqasim.core.simulation.mode_choice.utilities.estimators.BikeUtilityEstimator;
+import org.eqasim.braunschweig.fares.zonal.DayTicketCapAdjustment;
+import org.eqasim.braunschweig.fares.zonal.DayTicketCapTourEstimator;
+import org.eqasim.braunschweig.fares.zonal.LongDistanceSurchargeContext;
+import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
+import org.eqasim.braunschweig.fares.zonal.VrbFareModule;
+import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigCarCostModel;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigPtCostModel;
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigCostParameters;
@@ -19,6 +25,7 @@ import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigCarP
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigCarUtilityEstimator;
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigPtUtilityEstimator;
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.FreightTruckUtilityEstimator;
+import org.eqasim.braunschweig.mode_choice.utilities.estimators.VrbZoneFarePtUtilityEstimator;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigCarPassengerPredictor;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPersonPredictor;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPtPredictor;
@@ -28,6 +35,9 @@ import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoic
 import org.matsim.core.config.CommandLine;
 import org.matsim.core.config.CommandLine.ConfigurationException;
 
+import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorStopFinder;
+import ch.sbb.matsim.routing.pt.raptor.RaptorInVehicleCostCalculator;
+import ch.sbb.matsim.routing.pt.raptor.RaptorStopFinder;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 
@@ -50,6 +60,11 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 
 	public static final String ISOLATED_OUTSIDE_TOUR_FINDER_NAME = "IsolatedOutsideTrips";
 
+	/** VRB zone fare model (ADR-0133): bound only when the vrbFare config module is enabled. */
+	public static final String VRB_FARE_PT_COST_MODEL_NAME = "VrbZoneFareCostModel";
+	public static final String VRB_FARE_PT_ESTIMATOR_NAME = "VrbZoneFarePtUtilityEstimator";
+	public static final String DAY_TICKET_CAP_TOUR_ESTIMATOR_NAME = "DayTicketCapTourEstimator";
+
 	public BraunschweigModeChoiceModule(CommandLine commandLine) {
 		this.commandLine = commandLine;
 	}
@@ -70,6 +85,25 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		bindUtilityEstimator(CAR_PASSENGER_ESTIMATOR_NAME).to(BraunschweigCarPassengerUtilityEstimator.class);
 		bindUtilityEstimator(PT_ESTIMATOR_NAME).to(BraunschweigPtUtilityEstimator.class);
 		bindUtilityEstimator(FREIGHT_TRUCK_ESTIMATOR_NAME).to(FreightTruckUtilityEstimator.class);
+
+		// The legacy names above stay bound; BraunschweigConfigurator switches the pt cost model and
+		// estimator names to the VRB zone fare ones only when the vrbFare module is enabled.
+		VrbFareConfigGroup vrbFare = VrbFareConfigGroup.active(getConfig());
+		if (vrbFare != null) {
+			bindCostModel(VRB_FARE_PT_COST_MODEL_NAME).to(VrbZoneFareCostModel.class);
+			bindUtilityEstimator(VRB_FARE_PT_ESTIMATOR_NAME).to(VrbZoneFarePtUtilityEstimator.class);
+			bindTourEstimator(DAY_TICKET_CAP_TOUR_ESTIMATOR_NAME).to(DayTicketCapTourEstimator.class);
+			bind(DayTicketCapAdjustment.class).to(VrbZoneFarePtUtilityEstimator.class);
+			install(new VrbFareModule());
+			// Overrides SwissRailRaptorModule's default in-vehicle cost: this module is added after it.
+			if (vrbFare.isLongDistanceRoutingSurchargeEnabled()) {
+				bind(LongDistanceSurchargeContext.class).in(Singleton.class);
+				bind(DefaultRaptorStopFinder.class);
+				bind(RaptorStopFinder.class).toProvider(VrbLongDistanceStopFinderProvider.class).in(Singleton.class);
+				bind(RaptorInVehicleCostCalculator.class).toProvider(VrbLongDistanceRoutingCostProvider.class)
+						.in(Singleton.class);
+			}
+		}
 
 		bind(ModeParameters.class).to(BraunschweigModeParameters.class);
 

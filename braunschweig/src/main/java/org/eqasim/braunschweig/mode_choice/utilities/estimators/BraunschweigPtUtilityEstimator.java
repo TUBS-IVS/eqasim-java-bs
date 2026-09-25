@@ -100,4 +100,14 @@ public class BraunschweigPtUtilityEstimator implements UtilityEstimator {
 
 		return utility;
 	}
+
+	/**
+	 * The monetary cost term alone for an externally supplied cost in EUR. The VRB zone fare estimator uses
+	 * it to correct a cached PT utility by the day-ticket cap without re-estimating the other terms.
+	 */
+	protected double estimateMonetaryCostUtilityAtCost(Person person, DiscreteModeChoiceTrip trip,
+			List<? extends PlanElement> elements, double cost_EUR) {
+		return estimateMonetaryCostUtility(ptPredictor.predictVariables(person, trip, elements), cost_EUR,
+				personPredictor.predictVariables(person, trip, elements));
+	}
 }

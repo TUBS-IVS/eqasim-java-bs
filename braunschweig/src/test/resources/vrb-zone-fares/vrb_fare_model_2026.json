@@ -1,0 +1,6457 @@
+{
+  "assumptions": [
+    "ASSUMPTION: the VRB price-stage matrix printed 01.01.2022 is applied to the 2026 scenario (ADR-0133 D3).",
+    "ASSUMPTION: ticket validity windows are not modelled; every PT trip is priced on its own (D4).",
+    "ASSUMPTION: job/semester tickets count as Germany-wide flat; monthly and weekly passes as VRB-network flat (D5).",
+    "ASSUMPTION: external local single 370 ct for every non-VRB bus/tram ride (D7).",
+    "ASSUMPTION: rail tariff distance = ridden stop distance x 1.0 (D7).",
+    "ASSUMPTION: every journey with a long-distance ride costs 21.90 EUR for every traveller of 6 or older, the DB Sparpreis entry price 2026 (D6)."
+  ],
+  "category_holder": {
+    "deutschlandticket": "national_flat",
+    "job_or_semester_ticket": "national_flat",
+    "monthly_or_annual_subscription": "vrb_flat",
+    "multi_ride_ticket": "none",
+    "never_pt": "none",
+    "no_answer": "none",
+    "other_ticket": "none",
+    "single_ticket": "none",
+    "weekly_monthly_no_subscription": "vrb_flat"
+  },
+  "child_maximum_age": 14,
+  "child_minimum_age": 6,
+  "city_zones": [
+    "20",
+    "40",
+    "80"
+  ],
+  "currency": "EUR",
+  "day_ticket_cents": {
+    "city": 720,
+    "ps1": 780,
+    "ps2": 1120,
+    "ps3": 1540,
+    "ps4": 2460
+  },
+  "external": {
+    "distance_factor": 1.0,
+    "local_single_cents": 370,
+    "rail_distance_bands_adult": [
+      {
+        "price_cents": 150,
+        "up_to_km": 1
+      },
+      {
+        "price_cents": 180,
+        "up_to_km": 2
+      },
+      {
+        "price_cents": 210,
+        "up_to_km": 3
+      },
+      {
+        "price_cents": 250,
+        "up_to_km": 4
+      },
+      {
+        "price_cents": 270,
+        "up_to_km": 5
+      },
+      {
+        "price_cents": 290,
+        "up_to_km": 6
+      },
+      {
+        "price_cents": 310,
+        "up_to_km": 7
+      },
+      {
+        "price_cents": 350,
+        "up_to_km": 8
+      },
+      {
+        "price_cents": 370,
+        "up_to_km": 9
+      },
+      {
+        "price_cents": 400,
+        "up_to_km": 10
+      },
+      {
+        "price_cents": 420,
+        "up_to_km": 11
+      },
+      {
+        "price_cents": 440,
+        "up_to_km": 12
+      },
+      {
+        "price_cents": 460,
+        "up_to_km": 13
+      },
+      {
+        "price_cents": 480,
+        "up_to_km": 14
+      },
+      {
+        "price_cents": 500,
+        "up_to_km": 15
+      },
+      {
+        "price_cents": 530,
+        "up_to_km": 16
+      },
+      {
+        "price_cents": 570,
+        "up_to_km": 17
+      },
+      {
+        "price_cents": 590,
+        "up_to_km": 18
+      },
+      {
+        "price_cents": 610,
+        "up_to_km": 19
+      },
+      {
+        "price_cents": 630,
+        "up_to_km": 20
+      },
+      {
+        "price_cents": 650,
+        "up_to_km": 21
+      },
+      {
+        "price_cents": 690,
+        "up_to_km": 22
+      },
+      {
+        "price_cents": 720,
+        "up_to_km": 23
+      },
+      {
+        "price_cents": 740,
+        "up_to_km": 24
+      },
+      {
+        "price_cents": 770,
+        "up_to_km": 25
+      },
+      {
+        "price_cents": 790,
+        "up_to_km": 26
+      },
+      {
+        "price_cents": 810,
+        "up_to_km": 27
+      },
+      {
+        "price_cents": 830,
+        "up_to_km": 28
+      },
+      {
+        "price_cents": 850,
+        "up_to_km": 29
+      },
+      {
+        "price_cents": 890,
+        "up_to_km": 30
+      },
+      {
+        "price_cents": 910,
+        "up_to_km": 31
+      },
+      {
+        "price_cents": 940,
+        "up_to_km": 32
+      },
+      {
+        "price_cents": 960,
+        "up_to_km": 33
+      },
+      {
+        "price_cents": 990,
+        "up_to_km": 34
+      },
+      {
+        "price_cents": 1010,
+        "up_to_km": 35
+      },
+      {
+        "price_cents": 1030,
+        "up_to_km": 36
+      },
+      {
+        "price_cents": 1050,
+        "up_to_km": 37
+      },
+      {
+        "price_cents": 1070,
+        "up_to_km": 38
+      },
+      {
+        "price_cents": 1090,
+        "up_to_km": 39
+      },
+      {
+        "price_cents": 1120,
+        "up_to_km": 40
+      },
+      {
+        "price_cents": 1160,
+        "up_to_km": 41
+      },
+      {
+        "price_cents": 1170,
+        "up_to_km": 42
+      },
+      {
+        "price_cents": 1190,
+        "up_to_km": 43
+      },
+      {
+        "price_cents": 1210,
+        "up_to_km": 44
+      },
+      {
+        "price_cents": 1220,
+        "up_to_km": 45
+      },
+      {
+        "price_cents": 1230,
+        "up_to_km": 46
+      },
+      {
+        "price_cents": 1240,
+        "up_to_km": 47
+      },
+      {
+        "price_cents": 1250,
+        "up_to_km": 48
+      },
+      {
+        "price_cents": 1260,
+        "up_to_km": 49
+      },
+      {
+        "price_cents": 1270,
+        "up_to_km": 50
+      },
+      {
+        "price_cents": 1280,
+        "up_to_km": 51
+      },
+      {
+        "price_cents": 1310,
+        "up_to_km": 52
+      },
+      {
+        "price_cents": 1330,
+        "up_to_km": 53
+      },
+      {
+        "price_cents": 1350,
+        "up_to_km": 54
+      },
+      {
+        "price_cents": 1360,
+        "up_to_km": 55
+      },
+      {
+        "price_cents": 1380,
+        "up_to_km": 56
+      },
+      {
+        "price_cents": 1410,
+        "up_to_km": 57
+      },
+      {
+        "price_cents": 1450,
+        "up_to_km": 58
+      },
+      {
+        "price_cents": 1460,
+        "up_to_km": 59
+      },
+      {
+        "price_cents": 1480,
+        "up_to_km": 60
+      },
+      {
+        "price_cents": 1500,
+        "up_to_km": 61
+      },
+      {
+        "price_cents": 1530,
+        "up_to_km": 62
+      },
+      {
+        "price_cents": 1560,
+        "up_to_km": 63
+      },
+      {
+        "price_cents": 1580,
+        "up_to_km": 64
+      },
+      {
+        "price_cents": 1600,
+        "up_to_km": 65
+      },
+      {
+        "price_cents": 1630,
+        "up_to_km": 66
+      },
+      {
+        "price_cents": 1650,
+        "up_to_km": 67
+      },
+      {
+        "price_cents": 1680,
+        "up_to_km": 68
+      },
+      {
+        "price_cents": 1700,
+        "up_to_km": 69
+      },
+      {
+        "price_cents": 1710,
+        "up_to_km": 70
+      },
+      {
+        "price_cents": 1730,
+        "up_to_km": 71
+      },
+      {
+        "price_cents": 1750,
+        "up_to_km": 72
+      },
+      {
+        "price_cents": 1770,
+        "up_to_km": 73
+      },
+      {
+        "price_cents": 1790,
+        "up_to_km": 74
+      },
+      {
+        "price_cents": 1810,
+        "up_to_km": 75
+      },
+      {
+        "price_cents": 1840,
+        "up_to_km": 76
+      },
+      {
+        "price_cents": 1860,
+        "up_to_km": 77
+      },
+      {
+        "price_cents": 1880,
+        "up_to_km": 78
+      },
+      {
+        "price_cents": 1910,
+        "up_to_km": 79
+      },
+      {
+        "price_cents": 1940,
+        "up_to_km": 80
+      },
+      {
+        "price_cents": 1950,
+        "up_to_km": 81
+      },
+      {
+        "price_cents": 1990,
+        "up_to_km": 82
+      },
+      {
+        "price_cents": 2010,
+        "up_to_km": 83
+      },
+      {
+        "price_cents": 2030,
+        "up_to_km": 84
+      },
+      {
+        "price_cents": 2070,
+        "up_to_km": 85
+      },
+      {
+        "price_cents": 2090,
+        "up_to_km": 86
+      },
+      {
+        "price_cents": 2110,
+        "up_to_km": 87
+      },
+      {
+        "price_cents": 2130,
+        "up_to_km": 88
+      },
+      {
+        "price_cents": 2150,
+        "up_to_km": 89
+      },
+      {
+        "price_cents": 2170,
+        "up_to_km": 90
+      },
+      {
+        "price_cents": 2180,
+        "up_to_km": 91
+      },
+      {
+        "price_cents": 2200,
+        "up_to_km": 92
+      },
+      {
+        "price_cents": 2220,
+        "up_to_km": 93
+      },
+      {
+        "price_cents": 2260,
+        "up_to_km": 94
+      },
+      {
+        "price_cents": 2290,
+        "up_to_km": 95
+      },
+      {
+        "price_cents": 2300,
+        "up_to_km": 96
+      },
+      {
+        "price_cents": 2320,
+        "up_to_km": 97
+      },
+      {
+        "price_cents": 2340,
+        "up_to_km": 98
+      },
+      {
+        "price_cents": 2360,
+        "up_to_km": 99
+      },
+      {
+        "price_cents": 2380,
+        "up_to_km": 100
+      },
+      {
+        "price_cents": 2400,
+        "up_to_km": 101
+      },
+      {
+        "price_cents": 2430,
+        "up_to_km": 102
+      },
+      {
+        "price_cents": 2450,
+        "up_to_km": 103
+      },
+      {
+        "price_cents": 2470,
+        "up_to_km": 104
+      },
+      {
+        "price_cents": 2500,
+        "up_to_km": 105
+      },
+      {
+        "price_cents": 2520,
+        "up_to_km": 106
+      },
+      {
+        "price_cents": 2550,
+        "up_to_km": 107
+      },
+      {
+        "price_cents": 2580,
+        "up_to_km": 108
+      },
+      {
+        "price_cents": 2600,
+        "up_to_km": 109
+      },
+      {
+        "price_cents": 2620,
+        "up_to_km": 110
+      },
+      {
+        "price_cents": 2640,
+        "up_to_km": 111
+      },
+      {
+        "price_cents": 2660,
+        "up_to_km": 112
+      },
+      {
+        "price_cents": 2680,
+        "up_to_km": 113
+      },
+      {
+        "price_cents": 2720,
+        "up_to_km": 114
+      },
+      {
+        "price_cents": 2740,
+        "up_to_km": 115
+      },
+      {
+        "price_cents": 2760,
+        "up_to_km": 116
+      },
+      {
+        "price_cents": 2770,
+        "up_to_km": 117
+      },
+      {
+        "price_cents": 2800,
+        "up_to_km": 118
+      },
+      {
+        "price_cents": 2820,
+        "up_to_km": 119
+      },
+      {
+        "price_cents": 2850,
+        "up_to_km": 120
+      },
+      {
+        "price_cents": 2870,
+        "up_to_km": 121
+      },
+      {
+        "price_cents": 2880,
+        "up_to_km": 122
+      },
+      {
+        "price_cents": 2900,
+        "up_to_km": 123
+      },
+      {
+        "price_cents": 2940,
+        "up_to_km": 124
+      },
+      {
+        "price_cents": 2960,
+        "up_to_km": 125
+      },
+      {
+        "price_cents": 2990,
+        "up_to_km": 126
+      },
+      {
+        "price_cents": 3000,
+        "up_to_km": 127
+      },
+      {
+        "price_cents": 3020,
+        "up_to_km": 128
+      },
+      {
+        "price_cents": 3040,
+        "up_to_km": 129
+      },
+      {
+        "price_cents": 3070,
+        "up_to_km": 130
+      },
+      {
+        "price_cents": 3090,
+        "up_to_km": 131
+      },
+      {
+        "price_cents": 3110,
+        "up_to_km": 132
+      },
+      {
+        "price_cents": 3140,
+        "up_to_km": 133
+      },
+      {
+        "price_cents": 3170,
+        "up_to_km": 134
+      },
+      {
+        "price_cents": 3190,
+        "up_to_km": 135
+      },
+      {
+        "price_cents": 3210,
+        "up_to_km": 136
+      },
+      {
+        "price_cents": 3220,
+        "up_to_km": 137
+      },
+      {
+        "price_cents": 3240,
+        "up_to_km": 138
+      },
+      {
+        "price_cents": 3280,
+        "up_to_km": 139
+      },
+      {
+        "price_cents": 3300,
+        "up_to_km": 140
+      },
+      {
+        "price_cents": 3320,
+        "up_to_km": 141
+      },
+      {
+        "price_cents": 3330,
+        "up_to_km": 142
+      },
+      {
+        "price_cents": 3360,
+        "up_to_km": 143
+      },
+      {
+        "price_cents": 3380,
+        "up_to_km": 144
+      },
+      {
+        "price_cents": 3400,
+        "up_to_km": 145
+      },
+      {
+        "price_cents": 3430,
+        "up_to_km": 146
+      },
+      {
+        "price_cents": 3450,
+        "up_to_km": 147
+      },
+      {
+        "price_cents": 3480,
+        "up_to_km": 148
+      },
+      {
+        "price_cents": 3500,
+        "up_to_km": 149
+      },
+      {
+        "price_cents": 3530,
+        "up_to_km": 150
+      },
+      {
+        "price_cents": 3550,
+        "up_to_km": 151
+      },
+      {
+        "price_cents": 3580,
+        "up_to_km": 152
+      },
+      {
+        "price_cents": 3590,
+        "up_to_km": 153
+      },
+      {
+        "price_cents": 3620,
+        "up_to_km": 154
+      },
+      {
+        "price_cents": 3640,
+        "up_to_km": 155
+      },
+      {
+        "price_cents": 3660,
+        "up_to_km": 156
+      },
+      {
+        "price_cents": 3680,
+        "up_to_km": 157
+      },
+      {
+        "price_cents": 3710,
+        "up_to_km": 158
+      },
+      {
+        "price_cents": 3730,
+        "up_to_km": 159
+      },
+      {
+        "price_cents": 3740,
+        "up_to_km": 160
+      },
+      {
+        "price_cents": 3750,
+        "up_to_km": 161
+      },
+      {
+        "price_cents": 3760,
+        "up_to_km": 162
+      },
+      {
+        "price_cents": 3770,
+        "up_to_km": 163
+      },
+      {
+        "price_cents": 3790,
+        "up_to_km": 164
+      },
+      {
+        "price_cents": 3800,
+        "up_to_km": 165
+      },
+      {
+        "price_cents": 3810,
+        "up_to_km": 166
+      },
+      {
+        "price_cents": 3810,
+        "up_to_km": 167
+      },
+      {
+        "price_cents": 3820,
+        "up_to_km": 168
+      },
+      {
+        "price_cents": 3830,
+        "up_to_km": 169
+      },
+      {
+        "price_cents": 3840,
+        "up_to_km": 170
+      },
+      {
+        "price_cents": 3850,
+        "up_to_km": 171
+      },
+      {
+        "price_cents": 3860,
+        "up_to_km": 172
+      },
+      {
+        "price_cents": 3900,
+        "up_to_km": 173
+      },
+      {
+        "price_cents": 3910,
+        "up_to_km": 174
+      },
+      {
+        "price_cents": 3920,
+        "up_to_km": 175
+      },
+      {
+        "price_cents": 3930,
+        "up_to_km": 176
+      },
+      {
+        "price_cents": 3930,
+        "up_to_km": 177
+      },
+      {
+        "price_cents": 3940,
+        "up_to_km": 178
+      },
+      {
+        "price_cents": 3960,
+        "up_to_km": 179
+      },
+      {
+        "price_cents": 3970,
+        "up_to_km": 180
+      },
+      {
+        "price_cents": 3980,
+        "up_to_km": 181
+      },
+      {
+        "price_cents": 3990,
+        "up_to_km": 182
+      },
+      {
+        "price_cents": 4010,
+        "up_to_km": 183
+      },
+      {
+        "price_cents": 4020,
+        "up_to_km": 184
+      },
+      {
+        "price_cents": 4030,
+        "up_to_km": 185
+      },
+      {
+        "price_cents": 4040,
+        "up_to_km": 186
+      },
+      {
+        "price_cents": 4050,
+        "up_to_km": 187
+      },
+      {
+        "price_cents": 4050,
+        "up_to_km": 188
+      },
+      {
+        "price_cents": 4060,
+        "up_to_km": 189
+      },
+      {
+        "price_cents": 4070,
+        "up_to_km": 190
+      },
+      {
+        "price_cents": 4080,
+        "up_to_km": 191
+      },
+      {
+        "price_cents": 4090,
+        "up_to_km": 192
+      },
+      {
+        "price_cents": 4100,
+        "up_to_km": 193
+      },
+      {
+        "price_cents": 4110,
+        "up_to_km": 194
+      },
+      {
+        "price_cents": 4120,
+        "up_to_km": 195
+      },
+      {
+        "price_cents": 4140,
+        "up_to_km": 196
+      },
+      {
+        "price_cents": 4150,
+        "up_to_km": 197
+      },
+      {
+        "price_cents": 4150,
+        "up_to_km": 198
+      },
+      {
+        "price_cents": 4160,
+        "up_to_km": 199
+      },
+      {
+        "price_cents": 4170,
+        "up_to_km": 200
+      },
+      {
+        "price_cents": 4180,
+        "up_to_km": 201
+      },
+      {
+        "price_cents": 4190,
+        "up_to_km": 202
+      },
+      {
+        "price_cents": 4200,
+        "up_to_km": 203
+      },
+      {
+        "price_cents": 4220,
+        "up_to_km": 204
+      },
+      {
+        "price_cents": 4250,
+        "up_to_km": 205
+      },
+      {
+        "price_cents": 4260,
+        "up_to_km": 206
+      },
+      {
+        "price_cents": 4280,
+        "up_to_km": 207
+      },
+      {
+        "price_cents": 4280,
+        "up_to_km": 208
+      },
+      {
+        "price_cents": 4310,
+        "up_to_km": 209
+      },
+      {
+        "price_cents": 4320,
+        "up_to_km": 210
+      },
+      {
+        "price_cents": 4330,
+        "up_to_km": 211
+      },
+      {
+        "price_cents": 4350,
+        "up_to_km": 212
+      },
+      {
+        "price_cents": 4360,
+        "up_to_km": 213
+      },
+      {
+        "price_cents": 4370,
+        "up_to_km": 214
+      },
+      {
+        "price_cents": 4380,
+        "up_to_km": 215
+      },
+      {
+        "price_cents": 4390,
+        "up_to_km": 216
+      },
+      {
+        "price_cents": 4400,
+        "up_to_km": 217
+      },
+      {
+        "price_cents": 4400,
+        "up_to_km": 218
+      },
+      {
+        "price_cents": 4410,
+        "up_to_km": 219
+      },
+      {
+        "price_cents": 4420,
+        "up_to_km": 220
+      },
+      {
+        "price_cents": 4440,
+        "up_to_km": 221
+      },
+      {
+        "price_cents": 4450,
+        "up_to_km": 222
+      },
+      {
+        "price_cents": 4460,
+        "up_to_km": 223
+      },
+      {
+        "price_cents": 4470,
+        "up_to_km": 224
+      },
+      {
+        "price_cents": 4480,
+        "up_to_km": 225
+      },
+      {
+        "price_cents": 4490,
+        "up_to_km": 226
+      },
+      {
+        "price_cents": 4500,
+        "up_to_km": 227
+      },
+      {
+        "price_cents": 4510,
+        "up_to_km": 228
+      },
+      {
+        "price_cents": 4510,
+        "up_to_km": 229
+      },
+      {
+        "price_cents": 4520,
+        "up_to_km": 230
+      },
+      {
+        "price_cents": 4530,
+        "up_to_km": 231
+      },
+      {
+        "price_cents": 4540,
+        "up_to_km": 232
+      },
+      {
+        "price_cents": 4550,
+        "up_to_km": 233
+      },
+      {
+        "price_cents": 4570,
+        "up_to_km": 234
+      },
+      {
+        "price_cents": 4580,
+        "up_to_km": 235
+      },
+      {
+        "price_cents": 4590,
+        "up_to_km": 236
+      },
+      {
+        "price_cents": 4600,
+        "up_to_km": 237
+      },
+      {
+        "price_cents": 4610,
+        "up_to_km": 238
+      },
+      {
+        "price_cents": 4610,
+        "up_to_km": 239
+      },
+      {
+        "price_cents": 4620,
+        "up_to_km": 240
+      },
+      {
+        "price_cents": 4660,
+        "up_to_km": 241
+      },
+      {
+        "price_cents": 4670,
+        "up_to_km": 242
+      },
+      {
+        "price_cents": 4680,
+        "up_to_km": 243
+      },
+      {
+        "price_cents": 4690,
+        "up_to_km": 244
+      },
+      {
+        "price_cents": 4710,
+        "up_to_km": 245
+      },
+      {
+        "price_cents": 4720,
+        "up_to_km": 246
+      },
+      {
+        "price_cents": 4730,
+        "up_to_km": 247
+      },
+      {
+        "price_cents": 4740,
+        "up_to_km": 248
+      },
+      {
+        "price_cents": 4750,
+        "up_to_km": 249
+      },
+      {
+        "price_cents": 4750,
+        "up_to_km": 250
+      },
+      {
+        "price_cents": 4760,
+        "up_to_km": 251
+      },
+      {
+        "price_cents": 4770,
+        "up_to_km": 252
+      },
+      {
+        "price_cents": 4780,
+        "up_to_km": 253
+      },
+      {
+        "price_cents": 4800,
+        "up_to_km": 254
+      },
+      {
+        "price_cents": 4820,
+        "up_to_km": 255
+      },
+      {
+        "price_cents": 4830,
+        "up_to_km": 256
+      },
+      {
+        "price_cents": 4840,
+        "up_to_km": 257
+      },
+      {
+        "price_cents": 4850,
+        "up_to_km": 258
+      },
+      {
+        "price_cents": 4870,
+        "up_to_km": 259
+      },
+      {
+        "price_cents": 4870,
+        "up_to_km": 260
+      },
+      {
+        "price_cents": 4880,
+        "up_to_km": 261
+      },
+      {
+        "price_cents": 4890,
+        "up_to_km": 262
+      },
+      {
+        "price_cents": 4900,
+        "up_to_km": 263
+      },
+      {
+        "price_cents": 4910,
+        "up_to_km": 264
+      },
+      {
+        "price_cents": 4920,
+        "up_to_km": 265
+      },
+      {
+        "price_cents": 4930,
+        "up_to_km": 266
+      },
+      {
+        "price_cents": 4940,
+        "up_to_km": 267
+      },
+      {
+        "price_cents": 4950,
+        "up_to_km": 268
+      },
+      {
+        "price_cents": 4960,
+        "up_to_km": 269
+      },
+      {
+        "price_cents": 4970,
+        "up_to_km": 270
+      },
+      {
+        "price_cents": 4970,
+        "up_to_km": 271
+      },
+      {
+        "price_cents": 4990,
+        "up_to_km": 272
+      },
+      {
+        "price_cents": 5020,
+        "up_to_km": 273
+      },
+      {
+        "price_cents": 5040,
+        "up_to_km": 274
+      },
+      {
+        "price_cents": 5050,
+        "up_to_km": 275
+      },
+      {
+        "price_cents": 5060,
+        "up_to_km": 276
+      },
+      {
+        "price_cents": 5070,
+        "up_to_km": 277
+      },
+      {
+        "price_cents": 5090,
+        "up_to_km": 278
+      },
+      {
+        "price_cents": 5100,
+        "up_to_km": 279
+      },
+      {
+        "price_cents": 5110,
+        "up_to_km": 280
+      },
+      {
+        "price_cents": 5120,
+        "up_to_km": 281
+      },
+      {
+        "price_cents": 5130,
+        "up_to_km": 282
+      },
+      {
+        "price_cents": 5140,
+        "up_to_km": 283
+      },
+      {
+        "price_cents": 5150,
+        "up_to_km": 284
+      },
+      {
+        "price_cents": 5160,
+        "up_to_km": 285
+      },
+      {
+        "price_cents": 5170,
+        "up_to_km": 286
+      },
+      {
+        "price_cents": 5180,
+        "up_to_km": 287
+      },
+      {
+        "price_cents": 5190,
+        "up_to_km": 288
+      },
+      {
+        "price_cents": 5200,
+        "up_to_km": 289
+      },
+      {
+        "price_cents": 5210,
+        "up_to_km": 290
+      },
+      {
+        "price_cents": 5210,
+        "up_to_km": 291
+      },
+      {
+        "price_cents": 5220,
+        "up_to_km": 292
+      },
+      {
+        "price_cents": 5230,
+        "up_to_km": 293
+      },
+      {
+        "price_cents": 5250,
+        "up_to_km": 294
+      },
+      {
+        "price_cents": 5260,
+        "up_to_km": 295
+      },
+      {
+        "price_cents": 5270,
+        "up_to_km": 296
+      },
+      {
+        "price_cents": 5280,
+        "up_to_km": 297
+      },
+      {
+        "price_cents": 5300,
+        "up_to_km": 298
+      },
+      {
+        "price_cents": 5310,
+        "up_to_km": 299
+      },
+      {
+        "price_cents": 5330,
+        "up_to_km": 300
+      },
+      {
+        "price_cents": 5340,
+        "up_to_km": 301
+      },
+      {
+        "price_cents": 5340,
+        "up_to_km": 302
+      },
+      {
+        "price_cents": 5350,
+        "up_to_km": 303
+      },
+      {
+        "price_cents": 5360,
+        "up_to_km": 304
+      },
+      {
+        "price_cents": 5380,
+        "up_to_km": 305
+      },
+      {
+        "price_cents": 5400,
+        "up_to_km": 306
+      },
+      {
+        "price_cents": 5410,
+        "up_to_km": 307
+      },
+      {
+        "price_cents": 5420,
+        "up_to_km": 308
+      },
+      {
+        "price_cents": 5430,
+        "up_to_km": 309
+      },
+      {
+        "price_cents": 5440,
+        "up_to_km": 310
+      },
+      {
+        "price_cents": 5450,
+        "up_to_km": 311
+      },
+      {
+        "price_cents": 5460,
+        "up_to_km": 312
+      },
+      {
+        "price_cents": 5470,
+        "up_to_km": 313
+      },
+      {
+        "price_cents": 5480,
+        "up_to_km": 314
+      },
+      {
+        "price_cents": 5490,
+        "up_to_km": 315
+      },
+      {
+        "price_cents": 5500,
+        "up_to_km": 316
+      },
+      {
+        "price_cents": 5530,
+        "up_to_km": 317
+      },
+      {
+        "price_cents": 5540,
+        "up_to_km": 318
+      },
+      {
+        "price_cents": 5550,
+        "up_to_km": 319
+      },
+      {
+        "price_cents": 5560,
+        "up_to_km": 320
+      },
+      {
+        "price_cents": 5560,
+        "up_to_km": 321
+      },
+      {
+        "price_cents": 5570,
+        "up_to_km": 322
+      },
+      {
+        "price_cents": 5580,
+        "up_to_km": 323
+      },
+      {
+        "price_cents": 5590,
+        "up_to_km": 324
+      },
+      {
+        "price_cents": 5600,
+        "up_to_km": 325
+      },
+      {
+        "price_cents": 5610,
+        "up_to_km": 326
+      },
+      {
+        "price_cents": 5620,
+        "up_to_km": 327
+      },
+      {
+        "price_cents": 5630,
+        "up_to_km": 328
+      },
+      {
+        "price_cents": 5640,
+        "up_to_km": 329
+      },
+      {
+        "price_cents": 5650,
+        "up_to_km": 330
+      },
+      {
+        "price_cents": 5670,
+        "up_to_km": 331
+      },
+      {
+        "price_cents": 5670,
+        "up_to_km": 332
+      },
+      {
+        "price_cents": 5680,
+        "up_to_km": 333
+      },
+      {
+        "price_cents": 5690,
+        "up_to_km": 334
+      },
+      {
+        "price_cents": 5710,
+        "up_to_km": 335
+      },
+      {
+        "price_cents": 5720,
+        "up_to_km": 336
+      },
+      {
+        "price_cents": 5740,
+        "up_to_km": 337
+      },
+      {
+        "price_cents": 5750,
+        "up_to_km": 338
+      },
+      {
+        "price_cents": 5770,
+        "up_to_km": 339
+      },
+      {
+        "price_cents": 5780,
+        "up_to_km": 340
+      },
+      {
+        "price_cents": 5790,
+        "up_to_km": 341
+      },
+      {
+        "price_cents": 5810,
+        "up_to_km": 342
+      },
+      {
+        "price_cents": 5820,
+        "up_to_km": 343
+      },
+      {
+        "price_cents": 5820,
+        "up_to_km": 344
+      },
+      {
+        "price_cents": 5830,
+        "up_to_km": 345
+      },
+      {
+        "price_cents": 5840,
+        "up_to_km": 346
+      },
+      {
+        "price_cents": 5850,
+        "up_to_km": 347
+      },
+      {
+        "price_cents": 5860,
+        "up_to_km": 348
+      },
+      {
+        "price_cents": 5870,
+        "up_to_km": 349
+      },
+      {
+        "price_cents": 5890,
+        "up_to_km": 350
+      },
+      {
+        "price_cents": 5900,
+        "up_to_km": 351
+      },
+      {
+        "price_cents": 5910,
+        "up_to_km": 352
+      },
+      {
+        "price_cents": 5920,
+        "up_to_km": 353
+      },
+      {
+        "price_cents": 5950,
+        "up_to_km": 354
+      },
+      {
+        "price_cents": 5960,
+        "up_to_km": 355
+      },
+      {
+        "price_cents": 5970,
+        "up_to_km": 356
+      },
+      {
+        "price_cents": 5980,
+        "up_to_km": 357
+      },
+      {
+        "price_cents": 5990,
+        "up_to_km": 358
+      },
+      {
+        "price_cents": 6000,
+        "up_to_km": 359
+      },
+      {
+        "price_cents": 6020,
+        "up_to_km": 360
+      },
+      {
+        "price_cents": 6030,
+        "up_to_km": 361
+      },
+      {
+        "price_cents": 6040,
+        "up_to_km": 362
+      },
+      {
+        "price_cents": 6040,
+        "up_to_km": 363
+      },
+      {
+        "price_cents": 6050,
+        "up_to_km": 364
+      },
+      {
+        "price_cents": 6060,
+        "up_to_km": 365
+      },
+      {
+        "price_cents": 6070,
+        "up_to_km": 366
+      },
+      {
+        "price_cents": 6080,
+        "up_to_km": 367
+      },
+      {
+        "price_cents": 6090,
+        "up_to_km": 368
+      },
+      {
+        "price_cents": 6100,
+        "up_to_km": 369
+      },
+      {
+        "price_cents": 6110,
+        "up_to_km": 370
+      },
+      {
+        "price_cents": 6130,
+        "up_to_km": 371
+      },
+      {
+        "price_cents": 6140,
+        "up_to_km": 372
+      },
+      {
+        "price_cents": 6150,
+        "up_to_km": 373
+      },
+      {
+        "price_cents": 6150,
+        "up_to_km": 374
+      },
+      {
+        "price_cents": 6180,
+        "up_to_km": 375
+      },
+      {
+        "price_cents": 6190,
+        "up_to_km": 376
+      },
+      {
+        "price_cents": 6200,
+        "up_to_km": 377
+      },
+      {
+        "price_cents": 6210,
+        "up_to_km": 378
+      },
+      {
+        "price_cents": 6220,
+        "up_to_km": 379
+      },
+      {
+        "price_cents": 6230,
+        "up_to_km": 380
+      },
+      {
+        "price_cents": 6240,
+        "up_to_km": 381
+      },
+      {
+        "price_cents": 6250,
+        "up_to_km": 382
+      },
+      {
+        "price_cents": 6260,
+        "up_to_km": 383
+      },
+      {
+        "price_cents": 6270,
+        "up_to_km": 384
+      },
+      {
+        "price_cents": 6270,
+        "up_to_km": 385
+      },
+      {
+        "price_cents": 6280,
+        "up_to_km": 386
+      },
+      {
+        "price_cents": 6290,
+        "up_to_km": 387
+      },
+      {
+        "price_cents": 6310,
+        "up_to_km": 388
+      },
+      {
+        "price_cents": 6320,
+        "up_to_km": 389
+      },
+      {
+        "price_cents": 6340,
+        "up_to_km": 390
+      },
+      {
+        "price_cents": 6360,
+        "up_to_km": 391
+      },
+      {
+        "price_cents": 6370,
+        "up_to_km": 392
+      },
+      {
+        "price_cents": 6390,
+        "up_to_km": 393
+      },
+      {
+        "price_cents": 6390,
+        "up_to_km": 394
+      },
+      {
+        "price_cents": 6400,
+        "up_to_km": 395
+      },
+      {
+        "price_cents": 6410,
+        "up_to_km": 396
+      },
+      {
+        "price_cents": 6420,
+        "up_to_km": 397
+      },
+      {
+        "price_cents": 6430,
+        "up_to_km": 398
+      },
+      {
+        "price_cents": 6440,
+        "up_to_km": 399
+      },
+      {
+        "price_cents": 6450,
+        "up_to_km": 400
+      },
+      {
+        "price_cents": 6460,
+        "up_to_km": 401
+      },
+      {
+        "price_cents": 6470,
+        "up_to_km": 402
+      },
+      {
+        "price_cents": 6480,
+        "up_to_km": 403
+      },
+      {
+        "price_cents": 6490,
+        "up_to_km": 404
+      },
+      {
+        "price_cents": 6510,
+        "up_to_km": 405
+      },
+      {
+        "price_cents": 6520,
+        "up_to_km": 406
+      },
+      {
+        "price_cents": 6530,
+        "up_to_km": 407
+      },
+      {
+        "price_cents": 6540,
+        "up_to_km": 408
+      },
+      {
+        "price_cents": 6550,
+        "up_to_km": 409
+      },
+      {
+        "price_cents": 6570,
+        "up_to_km": 410
+      },
+      {
+        "price_cents": 6580,
+        "up_to_km": 411
+      },
+      {
+        "price_cents": 6600,
+        "up_to_km": 412
+      },
+      {
+        "price_cents": 6610,
+        "up_to_km": 413
+      },
+      {
+        "price_cents": 6630,
+        "up_to_km": 414
+      },
+      {
+        "price_cents": 6630,
+        "up_to_km": 415
+      },
+      {
+        "price_cents": 6640,
+        "up_to_km": 416
+      },
+      {
+        "price_cents": 6650,
+        "up_to_km": 417
+      },
+      {
+        "price_cents": 6660,
+        "up_to_km": 418
+      },
+      {
+        "price_cents": 6670,
+        "up_to_km": 419
+      },
+      {
+        "price_cents": 6680,
+        "up_to_km": 420
+      },
+      {
+        "price_cents": 6700,
+        "up_to_km": 421
+      },
+      {
+        "price_cents": 6710,
+        "up_to_km": 422
+      },
+      {
+        "price_cents": 6720,
+        "up_to_km": 423
+      },
+      {
+        "price_cents": 6730,
+        "up_to_km": 424
+      },
+      {
+        "price_cents": 6740,
+        "up_to_km": 425
+      },
+      {
+        "price_cents": 6740,
+        "up_to_km": 426
+      },
+      {
+        "price_cents": 6770,
+        "up_to_km": 427
+      },
+      {
+        "price_cents": 6780,
+        "up_to_km": 428
+      },
+      {
+        "price_cents": 6790,
+        "up_to_km": 429
+      },
+      {
+        "price_cents": 6800,
+        "up_to_km": 430
+      },
+      {
+        "price_cents": 6820,
+        "up_to_km": 431
+      },
+      {
+        "price_cents": 6830,
+        "up_to_km": 432
+      },
+      {
+        "price_cents": 6840,
+        "up_to_km": 433
+      },
+      {
+        "price_cents": 6850,
+        "up_to_km": 434
+      },
+      {
+        "price_cents": 6860,
+        "up_to_km": 435
+      },
+      {
+        "price_cents": 6860,
+        "up_to_km": 436
+      },
+      {
+        "price_cents": 6880,
+        "up_to_km": 437
+      },
+      {
+        "price_cents": 6890,
+        "up_to_km": 438
+      },
+      {
+        "price_cents": 6900,
+        "up_to_km": 439
+      },
+      {
+        "price_cents": 6910,
+        "up_to_km": 440
+      },
+      {
+        "price_cents": 6920,
+        "up_to_km": 441
+      },
+      {
+        "price_cents": 6930,
+        "up_to_km": 442
+      },
+      {
+        "price_cents": 6940,
+        "up_to_km": 443
+      },
+      {
+        "price_cents": 6950,
+        "up_to_km": 444
+      },
+      {
+        "price_cents": 6960,
+        "up_to_km": 445
+      },
+      {
+        "price_cents": 6970,
+        "up_to_km": 446
+      },
+      {
+        "price_cents": 6970,
+        "up_to_km": 447
+      },
+      {
+        "price_cents": 6980,
+        "up_to_km": 448
+      },
+      {
+        "price_cents": 6990,
+        "up_to_km": 449
+      },
+      {
+        "price_cents": 7000,
+        "up_to_km": 450
+      },
+      {
+        "price_cents": 7010,
+        "up_to_km": 451
+      },
+      {
+        "price_cents": 7030,
+        "up_to_km": 452
+      },
+      {
+        "price_cents": 7050,
+        "up_to_km": 453
+      },
+      {
+        "price_cents": 7060,
+        "up_to_km": 454
+      },
+      {
+        "price_cents": 7090,
+        "up_to_km": 455
+      },
+      {
+        "price_cents": 7100,
+        "up_to_km": 456
+      },
+      {
+        "price_cents": 7100,
+        "up_to_km": 457
+      },
+      {
+        "price_cents": 7110,
+        "up_to_km": 458
+      },
+      {
+        "price_cents": 7120,
+        "up_to_km": 459
+      },
+      {
+        "price_cents": 7130,
+        "up_to_km": 460
+      },
+      {
+        "price_cents": 7140,
+        "up_to_km": 461
+      },
+      {
+        "price_cents": 7150,
+        "up_to_km": 462
+      },
+      {
+        "price_cents": 7170,
+        "up_to_km": 463
+      },
+      {
+        "price_cents": 7180,
+        "up_to_km": 464
+      },
+      {
+        "price_cents": 7200,
+        "up_to_km": 465
+      },
+      {
+        "price_cents": 7200,
+        "up_to_km": 466
+      },
+      {
+        "price_cents": 7210,
+        "up_to_km": 467
+      },
+      {
+        "price_cents": 7220,
+        "up_to_km": 468
+      },
+      {
+        "price_cents": 7250,
+        "up_to_km": 469
+      },
+      {
+        "price_cents": 7260,
+        "up_to_km": 470
+      },
+      {
+        "price_cents": 7270,
+        "up_to_km": 471
+      },
+      {
+        "price_cents": 7280,
+        "up_to_km": 472
+      },
+      {
+        "price_cents": 7290,
+        "up_to_km": 473
+      },
+      {
+        "price_cents": 7300,
+        "up_to_km": 474
+      },
+      {
+        "price_cents": 7310,
+        "up_to_km": 475
+      },
+      {
+        "price_cents": 7320,
+        "up_to_km": 476
+      },
+      {
+        "price_cents": 7320,
+        "up_to_km": 477
+      },
+      {
+        "price_cents": 7330,
+        "up_to_km": 478
+      },
+      {
+        "price_cents": 7350,
+        "up_to_km": 479
+      },
+      {
+        "price_cents": 7360,
+        "up_to_km": 480
+      },
+      {
+        "price_cents": 7370,
+        "up_to_km": 481
+      },
+      {
+        "price_cents": 7390,
+        "up_to_km": 482
+      },
+      {
+        "price_cents": 7400,
+        "up_to_km": 483
+      },
+      {
+        "price_cents": 7410,
+        "up_to_km": 484
+      },
+      {
+        "price_cents": 7420,
+        "up_to_km": 485
+      },
+      {
+        "price_cents": 7430,
+        "up_to_km": 486
+      },
+      {
+        "price_cents": 7440,
+        "up_to_km": 487
+      },
+      {
+        "price_cents": 7440,
+        "up_to_km": 488
+      },
+      {
+        "price_cents": 7450,
+        "up_to_km": 489
+      },
+      {
+        "price_cents": 7470,
+        "up_to_km": 490
+      },
+      {
+        "price_cents": 7480,
+        "up_to_km": 491
+      },
+      {
+        "price_cents": 7490,
+        "up_to_km": 492
+      },
+      {
+        "price_cents": 7500,
+        "up_to_km": 493
+      },
+      {
+        "price_cents": 7510,
+        "up_to_km": 494
+      },
+      {
+        "price_cents": 7520,
+        "up_to_km": 495
+      },
+      {
+        "price_cents": 7540,
+        "up_to_km": 496
+      },
+      {
+        "price_cents": 7550,
+        "up_to_km": 497
+      },
+      {
+        "price_cents": 7560,
+        "up_to_km": 498
+      },
+      {
+        "price_cents": 7570,
+        "up_to_km": 499
+      },
+      {
+        "price_cents": 7580,
+        "up_to_km": 500
+      }
+    ],
+    "rail_distance_bands_child": [
+      {
+        "price_cents": 75,
+        "up_to_km": 1
+      },
+      {
+        "price_cents": 90,
+        "up_to_km": 2
+      },
+      {
+        "price_cents": 105,
+        "up_to_km": 3
+      },
+      {
+        "price_cents": 125,
+        "up_to_km": 4
+      },
+      {
+        "price_cents": 135,
+        "up_to_km": 5
+      },
+      {
+        "price_cents": 145,
+        "up_to_km": 6
+      },
+      {
+        "price_cents": 155,
+        "up_to_km": 7
+      },
+      {
+        "price_cents": 175,
+        "up_to_km": 8
+      },
+      {
+        "price_cents": 185,
+        "up_to_km": 9
+      },
+      {
+        "price_cents": 200,
+        "up_to_km": 10
+      },
+      {
+        "price_cents": 210,
+        "up_to_km": 11
+      },
+      {
+        "price_cents": 220,
+        "up_to_km": 12
+      },
+      {
+        "price_cents": 230,
+        "up_to_km": 13
+      },
+      {
+        "price_cents": 240,
+        "up_to_km": 14
+      },
+      {
+        "price_cents": 250,
+        "up_to_km": 15
+      },
+      {
+        "price_cents": 265,
+        "up_to_km": 16
+      },
+      {
+        "price_cents": 285,
+        "up_to_km": 17
+      },
+      {
+        "price_cents": 295,
+        "up_to_km": 18
+      },
+      {
+        "price_cents": 305,
+        "up_to_km": 19
+      },
+      {
+        "price_cents": 315,
+        "up_to_km": 20
+      },
+      {
+        "price_cents": 325,
+        "up_to_km": 21
+      },
+      {
+        "price_cents": 345,
+        "up_to_km": 22
+      },
+      {
+        "price_cents": 360,
+        "up_to_km": 23
+      },
+      {
+        "price_cents": 370,
+        "up_to_km": 24
+      },
+      {
+        "price_cents": 385,
+        "up_to_km": 25
+      },
+      {
+        "price_cents": 395,
+        "up_to_km": 26
+      },
+      {
+        "price_cents": 405,
+        "up_to_km": 27
+      },
+      {
+        "price_cents": 415,
+        "up_to_km": 28
+      },
+      {
+        "price_cents": 425,
+        "up_to_km": 29
+      },
+      {
+        "price_cents": 445,
+        "up_to_km": 30
+      },
+      {
+        "price_cents": 455,
+        "up_to_km": 31
+      },
+      {
+        "price_cents": 470,
+        "up_to_km": 32
+      },
+      {
+        "price_cents": 480,
+        "up_to_km": 33
+      },
+      {
+        "price_cents": 495,
+        "up_to_km": 34
+      },
+      {
+        "price_cents": 505,
+        "up_to_km": 35
+      },
+      {
+        "price_cents": 515,
+        "up_to_km": 36
+      },
+      {
+        "price_cents": 525,
+        "up_to_km": 37
+      },
+      {
+        "price_cents": 535,
+        "up_to_km": 38
+      },
+      {
+        "price_cents": 545,
+        "up_to_km": 39
+      },
+      {
+        "price_cents": 560,
+        "up_to_km": 40
+      },
+      {
+        "price_cents": 580,
+        "up_to_km": 41
+      },
+      {
+        "price_cents": 585,
+        "up_to_km": 42
+      },
+      {
+        "price_cents": 595,
+        "up_to_km": 43
+      },
+      {
+        "price_cents": 605,
+        "up_to_km": 44
+      },
+      {
+        "price_cents": 610,
+        "up_to_km": 45
+      },
+      {
+        "price_cents": 615,
+        "up_to_km": 46
+      },
+      {
+        "price_cents": 620,
+        "up_to_km": 47
+      },
+      {
+        "price_cents": 625,
+        "up_to_km": 48
+      },
+      {
+        "price_cents": 630,
+        "up_to_km": 49
+      },
+      {
+        "price_cents": 635,
+        "up_to_km": 50
+      },
+      {
+        "price_cents": 640,
+        "up_to_km": 51
+      },
+      {
+        "price_cents": 655,
+        "up_to_km": 52
+      },
+      {
+        "price_cents": 665,
+        "up_to_km": 53
+      },
+      {
+        "price_cents": 675,
+        "up_to_km": 54
+      },
+      {
+        "price_cents": 680,
+        "up_to_km": 55
+      },
+      {
+        "price_cents": 690,
+        "up_to_km": 56
+      },
+      {
+        "price_cents": 705,
+        "up_to_km": 57
+      },
+      {
+        "price_cents": 725,
+        "up_to_km": 58
+      },
+      {
+        "price_cents": 730,
+        "up_to_km": 59
+      },
+      {
+        "price_cents": 740,
+        "up_to_km": 60
+      },
+      {
+        "price_cents": 750,
+        "up_to_km": 61
+      },
+      {
+        "price_cents": 765,
+        "up_to_km": 62
+      },
+      {
+        "price_cents": 780,
+        "up_to_km": 63
+      },
+      {
+        "price_cents": 790,
+        "up_to_km": 64
+      },
+      {
+        "price_cents": 800,
+        "up_to_km": 65
+      },
+      {
+        "price_cents": 815,
+        "up_to_km": 66
+      },
+      {
+        "price_cents": 825,
+        "up_to_km": 67
+      },
+      {
+        "price_cents": 840,
+        "up_to_km": 68
+      },
+      {
+        "price_cents": 850,
+        "up_to_km": 69
+      },
+      {
+        "price_cents": 855,
+        "up_to_km": 70
+      },
+      {
+        "price_cents": 865,
+        "up_to_km": 71
+      },
+      {
+        "price_cents": 875,
+        "up_to_km": 72
+      },
+      {
+        "price_cents": 885,
+        "up_to_km": 73
+      },
+      {
+        "price_cents": 895,
+        "up_to_km": 74
+      },
+      {
+        "price_cents": 905,
+        "up_to_km": 75
+      },
+      {
+        "price_cents": 920,
+        "up_to_km": 76
+      },
+      {
+        "price_cents": 930,
+        "up_to_km": 77
+      },
+      {
+        "price_cents": 940,
+        "up_to_km": 78
+      },
+      {
+        "price_cents": 955,
+        "up_to_km": 79
+      },
+      {
+        "price_cents": 970,
+        "up_to_km": 80
+      },
+      {
+        "price_cents": 975,
+        "up_to_km": 81
+      },
+      {
+        "price_cents": 995,
+        "up_to_km": 82
+      },
+      {
+        "price_cents": 1005,
+        "up_to_km": 83
+      },
+      {
+        "price_cents": 1015,
+        "up_to_km": 84
+      },
+      {
+        "price_cents": 1035,
+        "up_to_km": 85
+      },
+      {
+        "price_cents": 1045,
+        "up_to_km": 86
+      },
+      {
+        "price_cents": 1055,
+        "up_to_km": 87
+      },
+      {
+        "price_cents": 1065,
+        "up_to_km": 88
+      },
+      {
+        "price_cents": 1075,
+        "up_to_km": 89
+      },
+      {
+        "price_cents": 1085,
+        "up_to_km": 90
+      },
+      {
+        "price_cents": 1090,
+        "up_to_km": 91
+      },
+      {
+        "price_cents": 1100,
+        "up_to_km": 92
+      },
+      {
+        "price_cents": 1110,
+        "up_to_km": 93
+      },
+      {
+        "price_cents": 1130,
+        "up_to_km": 94
+      },
+      {
+        "price_cents": 1145,
+        "up_to_km": 95
+      },
+      {
+        "price_cents": 1150,
+        "up_to_km": 96
+      },
+      {
+        "price_cents": 1160,
+        "up_to_km": 97
+      },
+      {
+        "price_cents": 1170,
+        "up_to_km": 98
+      },
+      {
+        "price_cents": 1180,
+        "up_to_km": 99
+      },
+      {
+        "price_cents": 1190,
+        "up_to_km": 100
+      },
+      {
+        "price_cents": 1200,
+        "up_to_km": 101
+      },
+      {
+        "price_cents": 1215,
+        "up_to_km": 102
+      },
+      {
+        "price_cents": 1225,
+        "up_to_km": 103
+      },
+      {
+        "price_cents": 1235,
+        "up_to_km": 104
+      },
+      {
+        "price_cents": 1250,
+        "up_to_km": 105
+      },
+      {
+        "price_cents": 1260,
+        "up_to_km": 106
+      },
+      {
+        "price_cents": 1275,
+        "up_to_km": 107
+      },
+      {
+        "price_cents": 1290,
+        "up_to_km": 108
+      },
+      {
+        "price_cents": 1300,
+        "up_to_km": 109
+      },
+      {
+        "price_cents": 1310,
+        "up_to_km": 110
+      },
+      {
+        "price_cents": 1320,
+        "up_to_km": 111
+      },
+      {
+        "price_cents": 1330,
+        "up_to_km": 112
+      },
+      {
+        "price_cents": 1340,
+        "up_to_km": 113
+      },
+      {
+        "price_cents": 1360,
+        "up_to_km": 114
+      },
+      {
+        "price_cents": 1370,
+        "up_to_km": 115
+      },
+      {
+        "price_cents": 1380,
+        "up_to_km": 116
+      },
+      {
+        "price_cents": 1385,
+        "up_to_km": 117
+      },
+      {
+        "price_cents": 1400,
+        "up_to_km": 118
+      },
+      {
+        "price_cents": 1410,
+        "up_to_km": 119
+      },
+      {
+        "price_cents": 1425,
+        "up_to_km": 120
+      },
+      {
+        "price_cents": 1435,
+        "up_to_km": 121
+      },
+      {
+        "price_cents": 1440,
+        "up_to_km": 122
+      },
+      {
+        "price_cents": 1450,
+        "up_to_km": 123
+      },
+      {
+        "price_cents": 1470,
+        "up_to_km": 124
+      },
+      {
+        "price_cents": 1480,
+        "up_to_km": 125
+      },
+      {
+        "price_cents": 1495,
+        "up_to_km": 126
+      },
+      {
+        "price_cents": 1500,
+        "up_to_km": 127
+      },
+      {
+        "price_cents": 1510,
+        "up_to_km": 128
+      },
+      {
+        "price_cents": 1520,
+        "up_to_km": 129
+      },
+      {
+        "price_cents": 1535,
+        "up_to_km": 130
+      },
+      {
+        "price_cents": 1545,
+        "up_to_km": 131
+      },
+      {
+        "price_cents": 1555,
+        "up_to_km": 132
+      },
+      {
+        "price_cents": 1570,
+        "up_to_km": 133
+      },
+      {
+        "price_cents": 1585,
+        "up_to_km": 134
+      },
+      {
+        "price_cents": 1595,
+        "up_to_km": 135
+      },
+      {
+        "price_cents": 1605,
+        "up_to_km": 136
+      },
+      {
+        "price_cents": 1610,
+        "up_to_km": 137
+      },
+      {
+        "price_cents": 1620,
+        "up_to_km": 138
+      },
+      {
+        "price_cents": 1640,
+        "up_to_km": 139
+      },
+      {
+        "price_cents": 1650,
+        "up_to_km": 140
+      },
+      {
+        "price_cents": 1660,
+        "up_to_km": 141
+      },
+      {
+        "price_cents": 1665,
+        "up_to_km": 142
+      },
+      {
+        "price_cents": 1680,
+        "up_to_km": 143
+      },
+      {
+        "price_cents": 1690,
+        "up_to_km": 144
+      },
+      {
+        "price_cents": 1700,
+        "up_to_km": 145
+      },
+      {
+        "price_cents": 1715,
+        "up_to_km": 146
+      },
+      {
+        "price_cents": 1725,
+        "up_to_km": 147
+      },
+      {
+        "price_cents": 1740,
+        "up_to_km": 148
+      },
+      {
+        "price_cents": 1750,
+        "up_to_km": 149
+      },
+      {
+        "price_cents": 1765,
+        "up_to_km": 150
+      },
+      {
+        "price_cents": 1775,
+        "up_to_km": 151
+      },
+      {
+        "price_cents": 1790,
+        "up_to_km": 152
+      },
+      {
+        "price_cents": 1795,
+        "up_to_km": 153
+      },
+      {
+        "price_cents": 1810,
+        "up_to_km": 154
+      },
+      {
+        "price_cents": 1820,
+        "up_to_km": 155
+      },
+      {
+        "price_cents": 1830,
+        "up_to_km": 156
+      },
+      {
+        "price_cents": 1840,
+        "up_to_km": 157
+      },
+      {
+        "price_cents": 1855,
+        "up_to_km": 158
+      },
+      {
+        "price_cents": 1865,
+        "up_to_km": 159
+      },
+      {
+        "price_cents": 1870,
+        "up_to_km": 160
+      },
+      {
+        "price_cents": 1875,
+        "up_to_km": 161
+      },
+      {
+        "price_cents": 1880,
+        "up_to_km": 162
+      },
+      {
+        "price_cents": 1885,
+        "up_to_km": 163
+      },
+      {
+        "price_cents": 1895,
+        "up_to_km": 164
+      },
+      {
+        "price_cents": 1900,
+        "up_to_km": 165
+      },
+      {
+        "price_cents": 1905,
+        "up_to_km": 166
+      },
+      {
+        "price_cents": 1905,
+        "up_to_km": 167
+      },
+      {
+        "price_cents": 1910,
+        "up_to_km": 168
+      },
+      {
+        "price_cents": 1915,
+        "up_to_km": 169
+      },
+      {
+        "price_cents": 1920,
+        "up_to_km": 170
+      },
+      {
+        "price_cents": 1925,
+        "up_to_km": 171
+      },
+      {
+        "price_cents": 1930,
+        "up_to_km": 172
+      },
+      {
+        "price_cents": 1950,
+        "up_to_km": 173
+      },
+      {
+        "price_cents": 1955,
+        "up_to_km": 174
+      },
+      {
+        "price_cents": 1960,
+        "up_to_km": 175
+      },
+      {
+        "price_cents": 1965,
+        "up_to_km": 176
+      },
+      {
+        "price_cents": 1965,
+        "up_to_km": 177
+      },
+      {
+        "price_cents": 1970,
+        "up_to_km": 178
+      },
+      {
+        "price_cents": 1980,
+        "up_to_km": 179
+      },
+      {
+        "price_cents": 1985,
+        "up_to_km": 180
+      },
+      {
+        "price_cents": 1990,
+        "up_to_km": 181
+      },
+      {
+        "price_cents": 1995,
+        "up_to_km": 182
+      },
+      {
+        "price_cents": 2005,
+        "up_to_km": 183
+      },
+      {
+        "price_cents": 2010,
+        "up_to_km": 184
+      },
+      {
+        "price_cents": 2015,
+        "up_to_km": 185
+      },
+      {
+        "price_cents": 2020,
+        "up_to_km": 186
+      },
+      {
+        "price_cents": 2025,
+        "up_to_km": 187
+      },
+      {
+        "price_cents": 2025,
+        "up_to_km": 188
+      },
+      {
+        "price_cents": 2030,
+        "up_to_km": 189
+      },
+      {
+        "price_cents": 2035,
+        "up_to_km": 190
+      },
+      {
+        "price_cents": 2040,
+        "up_to_km": 191
+      },
+      {
+        "price_cents": 2045,
+        "up_to_km": 192
+      },
+      {
+        "price_cents": 2050,
+        "up_to_km": 193
+      },
+      {
+        "price_cents": 2055,
+        "up_to_km": 194
+      },
+      {
+        "price_cents": 2060,
+        "up_to_km": 195
+      },
+      {
+        "price_cents": 2070,
+        "up_to_km": 196
+      },
+      {
+        "price_cents": 2075,
+        "up_to_km": 197
+      },
+      {
+        "price_cents": 2075,
+        "up_to_km": 198
+      },
+      {
+        "price_cents": 2080,
+        "up_to_km": 199
+      },
+      {
+        "price_cents": 2085,
+        "up_to_km": 200
+      },
+      {
+        "price_cents": 2090,
+        "up_to_km": 201
+      },
+      {
+        "price_cents": 2095,
+        "up_to_km": 202
+      },
+      {
+        "price_cents": 2100,
+        "up_to_km": 203
+      },
+      {
+        "price_cents": 2110,
+        "up_to_km": 204
+      },
+      {
+        "price_cents": 2125,
+        "up_to_km": 205
+      },
+      {
+        "price_cents": 2130,
+        "up_to_km": 206
+      },
+      {
+        "price_cents": 2140,
+        "up_to_km": 207
+      },
+      {
+        "price_cents": 2140,
+        "up_to_km": 208
+      },
+      {
+        "price_cents": 2155,
+        "up_to_km": 209
+      },
+      {
+        "price_cents": 2160,
+        "up_to_km": 210
+      },
+      {
+        "price_cents": 2165,
+        "up_to_km": 211
+      },
+      {
+        "price_cents": 2175,
+        "up_to_km": 212
+      },
+      {
+        "price_cents": 2180,
+        "up_to_km": 213
+      },
+      {
+        "price_cents": 2185,
+        "up_to_km": 214
+      },
+      {
+        "price_cents": 2190,
+        "up_to_km": 215
+      },
+      {
+        "price_cents": 2195,
+        "up_to_km": 216
+      },
+      {
+        "price_cents": 2200,
+        "up_to_km": 217
+      },
+      {
+        "price_cents": 2200,
+        "up_to_km": 218
+      },
+      {
+        "price_cents": 2205,
+        "up_to_km": 219
+      },
+      {
+        "price_cents": 2210,
+        "up_to_km": 220
+      },
+      {
+        "price_cents": 2220,
+        "up_to_km": 221
+      },
+      {
+        "price_cents": 2225,
+        "up_to_km": 222
+      },
+      {
+        "price_cents": 2230,
+        "up_to_km": 223
+      },
+      {
+        "price_cents": 2235,
+        "up_to_km": 224
+      },
+      {
+        "price_cents": 2240,
+        "up_to_km": 225
+      },
+      {
+        "price_cents": 2245,
+        "up_to_km": 226
+      },
+      {
+        "price_cents": 2250,
+        "up_to_km": 227
+      },
+      {
+        "price_cents": 2255,
+        "up_to_km": 228
+      },
+      {
+        "price_cents": 2255,
+        "up_to_km": 229
+      },
+      {
+        "price_cents": 2260,
+        "up_to_km": 230
+      },
+      {
+        "price_cents": 2265,
+        "up_to_km": 231
+      },
+      {
+        "price_cents": 2270,
+        "up_to_km": 232
+      },
+      {
+        "price_cents": 2275,
+        "up_to_km": 233
+      },
+      {
+        "price_cents": 2285,
+        "up_to_km": 234
+      },
+      {
+        "price_cents": 2290,
+        "up_to_km": 235
+      },
+      {
+        "price_cents": 2295,
+        "up_to_km": 236
+      },
+      {
+        "price_cents": 2300,
+        "up_to_km": 237
+      },
+      {
+        "price_cents": 2305,
+        "up_to_km": 238
+      },
+      {
+        "price_cents": 2305,
+        "up_to_km": 239
+      },
+      {
+        "price_cents": 2310,
+        "up_to_km": 240
+      },
+      {
+        "price_cents": 2330,
+        "up_to_km": 241
+      },
+      {
+        "price_cents": 2335,
+        "up_to_km": 242
+      },
+      {
+        "price_cents": 2340,
+        "up_to_km": 243
+      },
+      {
+        "price_cents": 2345,
+        "up_to_km": 244
+      },
+      {
+        "price_cents": 2355,
+        "up_to_km": 245
+      },
+      {
+        "price_cents": 2360,
+        "up_to_km": 246
+      },
+      {
+        "price_cents": 2365,
+        "up_to_km": 247
+      },
+      {
+        "price_cents": 2370,
+        "up_to_km": 248
+      },
+      {
+        "price_cents": 2375,
+        "up_to_km": 249
+      },
+      {
+        "price_cents": 2375,
+        "up_to_km": 250
+      },
+      {
+        "price_cents": 2380,
+        "up_to_km": 251
+      },
+      {
+        "price_cents": 2385,
+        "up_to_km": 252
+      },
+      {
+        "price_cents": 2390,
+        "up_to_km": 253
+      },
+      {
+        "price_cents": 2400,
+        "up_to_km": 254
+      },
+      {
+        "price_cents": 2410,
+        "up_to_km": 255
+      },
+      {
+        "price_cents": 2415,
+        "up_to_km": 256
+      },
+      {
+        "price_cents": 2420,
+        "up_to_km": 257
+      },
+      {
+        "price_cents": 2425,
+        "up_to_km": 258
+      },
+      {
+        "price_cents": 2435,
+        "up_to_km": 259
+      },
+      {
+        "price_cents": 2435,
+        "up_to_km": 260
+      },
+      {
+        "price_cents": 2440,
+        "up_to_km": 261
+      },
+      {
+        "price_cents": 2445,
+        "up_to_km": 262
+      },
+      {
+        "price_cents": 2450,
+        "up_to_km": 263
+      },
+      {
+        "price_cents": 2455,
+        "up_to_km": 264
+      },
+      {
+        "price_cents": 2460,
+        "up_to_km": 265
+      },
+      {
+        "price_cents": 2465,
+        "up_to_km": 266
+      },
+      {
+        "price_cents": 2470,
+        "up_to_km": 267
+      },
+      {
+        "price_cents": 2475,
+        "up_to_km": 268
+      },
+      {
+        "price_cents": 2480,
+        "up_to_km": 269
+      },
+      {
+        "price_cents": 2485,
+        "up_to_km": 270
+      },
+      {
+        "price_cents": 2485,
+        "up_to_km": 271
+      },
+      {
+        "price_cents": 2495,
+        "up_to_km": 272
+      },
+      {
+        "price_cents": 2510,
+        "up_to_km": 273
+      },
+      {
+        "price_cents": 2520,
+        "up_to_km": 274
+      },
+      {
+        "price_cents": 2525,
+        "up_to_km": 275
+      },
+      {
+        "price_cents": 2530,
+        "up_to_km": 276
+      },
+      {
+        "price_cents": 2535,
+        "up_to_km": 277
+      },
+      {
+        "price_cents": 2545,
+        "up_to_km": 278
+      },
+      {
+        "price_cents": 2550,
+        "up_to_km": 279
+      },
+      {
+        "price_cents": 2555,
+        "up_to_km": 280
+      },
+      {
+        "price_cents": 2560,
+        "up_to_km": 281
+      },
+      {
+        "price_cents": 2565,
+        "up_to_km": 282
+      },
+      {
+        "price_cents": 2570,
+        "up_to_km": 283
+      },
+      {
+        "price_cents": 2575,
+        "up_to_km": 284
+      },
+      {
+        "price_cents": 2580,
+        "up_to_km": 285
+      },
+      {
+        "price_cents": 2585,
+        "up_to_km": 286
+      },
+      {
+        "price_cents": 2590,
+        "up_to_km": 287
+      },
+      {
+        "price_cents": 2595,
+        "up_to_km": 288
+      },
+      {
+        "price_cents": 2600,
+        "up_to_km": 289
+      },
+      {
+        "price_cents": 2605,
+        "up_to_km": 290
+      },
+      {
+        "price_cents": 2605,
+        "up_to_km": 291
+      },
+      {
+        "price_cents": 2610,
+        "up_to_km": 292
+      },
+      {
+        "price_cents": 2615,
+        "up_to_km": 293
+      },
+      {
+        "price_cents": 2625,
+        "up_to_km": 294
+      },
+      {
+        "price_cents": 2630,
+        "up_to_km": 295
+      },
+      {
+        "price_cents": 2635,
+        "up_to_km": 296
+      },
+      {
+        "price_cents": 2640,
+        "up_to_km": 297
+      },
+      {
+        "price_cents": 2650,
+        "up_to_km": 298
+      },
+      {
+        "price_cents": 2655,
+        "up_to_km": 299
+      },
+      {
+        "price_cents": 2665,
+        "up_to_km": 300
+      },
+      {
+        "price_cents": 2670,
+        "up_to_km": 301
+      },
+      {
+        "price_cents": 2670,
+        "up_to_km": 302
+      },
+      {
+        "price_cents": 2675,
+        "up_to_km": 303
+      },
+      {
+        "price_cents": 2680,
+        "up_to_km": 304
+      },
+      {
+        "price_cents": 2690,
+        "up_to_km": 305
+      },
+      {
+        "price_cents": 2700,
+        "up_to_km": 306
+      },
+      {
+        "price_cents": 2705,
+        "up_to_km": 307
+      },
+      {
+        "price_cents": 2710,
+        "up_to_km": 308
+      },
+      {
+        "price_cents": 2715,
+        "up_to_km": 309
+      },
+      {
+        "price_cents": 2720,
+        "up_to_km": 310
+      },
+      {
+        "price_cents": 2725,
+        "up_to_km": 311
+      },
+      {
+        "price_cents": 2730,
+        "up_to_km": 312
+      },
+      {
+        "price_cents": 2735,
+        "up_to_km": 313
+      },
+      {
+        "price_cents": 2740,
+        "up_to_km": 314
+      },
+      {
+        "price_cents": 2745,
+        "up_to_km": 315
+      },
+      {
+        "price_cents": 2750,
+        "up_to_km": 316
+      },
+      {
+        "price_cents": 2765,
+        "up_to_km": 317
+      },
+      {
+        "price_cents": 2770,
+        "up_to_km": 318
+      },
+      {
+        "price_cents": 2775,
+        "up_to_km": 319
+      },
+      {
+        "price_cents": 2780,
+        "up_to_km": 320
+      },
+      {
+        "price_cents": 2780,
+        "up_to_km": 321
+      },
+      {
+        "price_cents": 2785,
+        "up_to_km": 322
+      },
+      {
+        "price_cents": 2790,
+        "up_to_km": 323
+      },
+      {
+        "price_cents": 2795,
+        "up_to_km": 324
+      },
+      {
+        "price_cents": 2800,
+        "up_to_km": 325
+      },
+      {
+        "price_cents": 2805,
+        "up_to_km": 326
+      },
+      {
+        "price_cents": 2810,
+        "up_to_km": 327
+      },
+      {
+        "price_cents": 2815,
+        "up_to_km": 328
+      },
+      {
+        "price_cents": 2820,
+        "up_to_km": 329
+      },
+      {
+        "price_cents": 2825,
+        "up_to_km": 330
+      },
+      {
+        "price_cents": 2835,
+        "up_to_km": 331
+      },
+      {
+        "price_cents": 2835,
+        "up_to_km": 332
+      },
+      {
+        "price_cents": 2840,
+        "up_to_km": 333
+      },
+      {
+        "price_cents": 2845,
+        "up_to_km": 334
+      },
+      {
+        "price_cents": 2855,
+        "up_to_km": 335
+      },
+      {
+        "price_cents": 2860,
+        "up_to_km": 336
+      },
+      {
+        "price_cents": 2870,
+        "up_to_km": 337
+      },
+      {
+        "price_cents": 2875,
+        "up_to_km": 338
+      },
+      {
+        "price_cents": 2885,
+        "up_to_km": 339
+      },
+      {
+        "price_cents": 2890,
+        "up_to_km": 340
+      },
+      {
+        "price_cents": 2895,
+        "up_to_km": 341
+      },
+      {
+        "price_cents": 2905,
+        "up_to_km": 342
+      },
+      {
+        "price_cents": 2910,
+        "up_to_km": 343
+      },
+      {
+        "price_cents": 2910,
+        "up_to_km": 344
+      },
+      {
+        "price_cents": 2915,
+        "up_to_km": 345
+      },
+      {
+        "price_cents": 2920,
+        "up_to_km": 346
+      },
+      {
+        "price_cents": 2925,
+        "up_to_km": 347
+      },
+      {
+        "price_cents": 2930,
+        "up_to_km": 348
+      },
+      {
+        "price_cents": 2935,
+        "up_to_km": 349
+      },
+      {
+        "price_cents": 2945,
+        "up_to_km": 350
+      },
+      {
+        "price_cents": 2950,
+        "up_to_km": 351
+      },
+      {
+        "price_cents": 2955,
+        "up_to_km": 352
+      },
+      {
+        "price_cents": 2960,
+        "up_to_km": 353
+      },
+      {
+        "price_cents": 2975,
+        "up_to_km": 354
+      },
+      {
+        "price_cents": 2980,
+        "up_to_km": 355
+      },
+      {
+        "price_cents": 2985,
+        "up_to_km": 356
+      },
+      {
+        "price_cents": 2990,
+        "up_to_km": 357
+      },
+      {
+        "price_cents": 2995,
+        "up_to_km": 358
+      },
+      {
+        "price_cents": 3000,
+        "up_to_km": 359
+      },
+      {
+        "price_cents": 3010,
+        "up_to_km": 360
+      },
+      {
+        "price_cents": 3015,
+        "up_to_km": 361
+      },
+      {
+        "price_cents": 3020,
+        "up_to_km": 362
+      },
+      {
+        "price_cents": 3020,
+        "up_to_km": 363
+      },
+      {
+        "price_cents": 3025,
+        "up_to_km": 364
+      },
+      {
+        "price_cents": 3030,
+        "up_to_km": 365
+      },
+      {
+        "price_cents": 3035,
+        "up_to_km": 366
+      },
+      {
+        "price_cents": 3040,
+        "up_to_km": 367
+      },
+      {
+        "price_cents": 3045,
+        "up_to_km": 368
+      },
+      {
+        "price_cents": 3050,
+        "up_to_km": 369
+      },
+      {
+        "price_cents": 3055,
+        "up_to_km": 370
+      },
+      {
+        "price_cents": 3065,
+        "up_to_km": 371
+      },
+      {
+        "price_cents": 3070,
+        "up_to_km": 372
+      },
+      {
+        "price_cents": 3075,
+        "up_to_km": 373
+      },
+      {
+        "price_cents": 3075,
+        "up_to_km": 374
+      },
+      {
+        "price_cents": 3090,
+        "up_to_km": 375
+      },
+      {
+        "price_cents": 3095,
+        "up_to_km": 376
+      },
+      {
+        "price_cents": 3100,
+        "up_to_km": 377
+      },
+      {
+        "price_cents": 3105,
+        "up_to_km": 378
+      },
+      {
+        "price_cents": 3110,
+        "up_to_km": 379
+      },
+      {
+        "price_cents": 3115,
+        "up_to_km": 380
+      },
+      {
+        "price_cents": 3120,
+        "up_to_km": 381
+      },
+      {
+        "price_cents": 3125,
+        "up_to_km": 382
+      },
+      {
+        "price_cents": 3130,
+        "up_to_km": 383
+      },
+      {
+        "price_cents": 3135,
+        "up_to_km": 384
+      },
+      {
+        "price_cents": 3135,
+        "up_to_km": 385
+      },
+      {
+        "price_cents": 3140,
+        "up_to_km": 386
+      },
+      {
+        "price_cents": 3145,
+        "up_to_km": 387
+      },
+      {
+        "price_cents": 3155,
+        "up_to_km": 388
+      },
+      {
+        "price_cents": 3160,
+        "up_to_km": 389
+      },
+      {
+        "price_cents": 3170,
+        "up_to_km": 390
+      },
+      {
+        "price_cents": 3180,
+        "up_to_km": 391
+      },
+      {
+        "price_cents": 3185,
+        "up_to_km": 392
+      },
+      {
+        "price_cents": 3195,
+        "up_to_km": 393
+      },
+      {
+        "price_cents": 3195,
+        "up_to_km": 394
+      },
+      {
+        "price_cents": 3200,
+        "up_to_km": 395
+      },
+      {
+        "price_cents": 3205,
+        "up_to_km": 396
+      },
+      {
+        "price_cents": 3210,
+        "up_to_km": 397
+      },
+      {
+        "price_cents": 3215,
+        "up_to_km": 398
+      },
+      {
+        "price_cents": 3220,
+        "up_to_km": 399
+      },
+      {
+        "price_cents": 3225,
+        "up_to_km": 400
+      },
+      {
+        "price_cents": 3230,
+        "up_to_km": 401
+      },
+      {
+        "price_cents": 3235,
+        "up_to_km": 402
+      },
+      {
+        "price_cents": 3240,
+        "up_to_km": 403
+      },
+      {
+        "price_cents": 3245,
+        "up_to_km": 404
+      },
+      {
+        "price_cents": 3255,
+        "up_to_km": 405
+      },
+      {
+        "price_cents": 3260,
+        "up_to_km": 406
+      },
+      {
+        "price_cents": 3265,
+        "up_to_km": 407
+      },
+      {
+        "price_cents": 3270,
+        "up_to_km": 408
+      },
+      {
+        "price_cents": 3275,
+        "up_to_km": 409
+      },
+      {
+        "price_cents": 3285,
+        "up_to_km": 410
+      },
+      {
+        "price_cents": 3290,
+        "up_to_km": 411
+      },
+      {
+        "price_cents": 3300,
+        "up_to_km": 412
+      },
+      {
+        "price_cents": 3305,
+        "up_to_km": 413
+      },
+      {
+        "price_cents": 3315,
+        "up_to_km": 414
+      },
+      {
+        "price_cents": 3315,
+        "up_to_km": 415
+      },
+      {
+        "price_cents": 3320,
+        "up_to_km": 416
+      },
+      {
+        "price_cents": 3325,
+        "up_to_km": 417
+      },
+      {
+        "price_cents": 3330,
+        "up_to_km": 418
+      },
+      {
+        "price_cents": 3335,
+        "up_to_km": 419
+      },
+      {
+        "price_cents": 3340,
+        "up_to_km": 420
+      },
+      {
+        "price_cents": 3350,
+        "up_to_km": 421
+      },
+      {
+        "price_cents": 3355,
+        "up_to_km": 422
+      },
+      {
+        "price_cents": 3360,
+        "up_to_km": 423
+      },
+      {
+        "price_cents": 3365,
+        "up_to_km": 424
+      },
+      {
+        "price_cents": 3370,
+        "up_to_km": 425
+      },
+      {
+        "price_cents": 3370,
+        "up_to_km": 426
+      },
+      {
+        "price_cents": 3385,
+        "up_to_km": 427
+      },
+      {
+        "price_cents": 3390,
+        "up_to_km": 428
+      },
+      {
+        "price_cents": 3395,
+        "up_to_km": 429
+      },
+      {
+        "price_cents": 3400,
+        "up_to_km": 430
+      },
+      {
+        "price_cents": 3410,
+        "up_to_km": 431
+      },
+      {
+        "price_cents": 3415,
+        "up_to_km": 432
+      },
+      {
+        "price_cents": 3420,
+        "up_to_km": 433
+      },
+      {
+        "price_cents": 3425,
+        "up_to_km": 434
+      },
+      {
+        "price_cents": 3430,
+        "up_to_km": 435
+      },
+      {
+        "price_cents": 3430,
+        "up_to_km": 436
+      },
+      {
+        "price_cents": 3440,
+        "up_to_km": 437
+      },
+      {
+        "price_cents": 3445,
+        "up_to_km": 438
+      },
+      {
+        "price_cents": 3450,
+        "up_to_km": 439
+      },
+      {
+        "price_cents": 3455,
+        "up_to_km": 440
+      },
+      {
+        "price_cents": 3460,
+        "up_to_km": 441
+      },
+      {
+        "price_cents": 3465,
+        "up_to_km": 442
+      },
+      {
+        "price_cents": 3470,
+        "up_to_km": 443
+      },
+      {
+        "price_cents": 3475,
+        "up_to_km": 444
+      },
+      {
+        "price_cents": 3480,
+        "up_to_km": 445
+      },
+      {
+        "price_cents": 3485,
+        "up_to_km": 446
+      },
+      {
+        "price_cents": 3485,
+        "up_to_km": 447
+      },
+      {
+        "price_cents": 3490,
+        "up_to_km": 448
+      },
+      {
+        "price_cents": 3495,
+        "up_to_km": 449
+      },
+      {
+        "price_cents": 3500,
+        "up_to_km": 450
+      },
+      {
+        "price_cents": 3505,
+        "up_to_km": 451
+      },
+      {
+        "price_cents": 3515,
+        "up_to_km": 452
+      },
+      {
+        "price_cents": 3525,
+        "up_to_km": 453
+      },
+      {
+        "price_cents": 3530,
+        "up_to_km": 454
+      },
+      {
+        "price_cents": 3545,
+        "up_to_km": 455
+      },
+      {
+        "price_cents": 3550,
+        "up_to_km": 456
+      },
+      {
+        "price_cents": 3550,
+        "up_to_km": 457
+      },
+      {
+        "price_cents": 3555,
+        "up_to_km": 458
+      },
+      {
+        "price_cents": 3560,
+        "up_to_km": 459
+      },
+      {
+        "price_cents": 3565,
+        "up_to_km": 460
+      },
+      {
+        "price_cents": 3570,
+        "up_to_km": 461
+      },
+      {
+        "price_cents": 3575,
+        "up_to_km": 462
+      },
+      {
+        "price_cents": 3585,
+        "up_to_km": 463
+      },
+      {
+        "price_cents": 3590,
+        "up_to_km": 464
+      },
+      {
+        "price_cents": 3600,
+        "up_to_km": 465
+      },
+      {
+        "price_cents": 3600,
+        "up_to_km": 466
+      },
+      {
+        "price_cents": 3605,
+        "up_to_km": 467
+      },
+      {
+        "price_cents": 3610,
+        "up_to_km": 468
+      },
+      {
+        "price_cents": 3625,
+        "up_to_km": 469
+      },
+      {
+        "price_cents": 3630,
+        "up_to_km": 470
+      },
+      {
+        "price_cents": 3635,
+        "up_to_km": 471
+      },
+      {
+        "price_cents": 3640,
+        "up_to_km": 472
+      },
+      {
+        "price_cents": 3645,
+        "up_to_km": 473
+      },
+      {
+        "price_cents": 3650,
+        "up_to_km": 474
+      },
+      {
+        "price_cents": 3655,
+        "up_to_km": 475
+      },
+      {
+        "price_cents": 3660,
+        "up_to_km": 476
+      },
+      {
+        "price_cents": 3660,
+        "up_to_km": 477
+      },
+      {
+        "price_cents": 3665,
+        "up_to_km": 478
+      },
+      {
+        "price_cents": 3675,
+        "up_to_km": 479
+      },
+      {
+        "price_cents": 3680,
+        "up_to_km": 480
+      },
+      {
+        "price_cents": 3685,
+        "up_to_km": 481
+      },
+      {
+        "price_cents": 3695,
+        "up_to_km": 482
+      },
+      {
+        "price_cents": 3700,
+        "up_to_km": 483
+      },
+      {
+        "price_cents": 3705,
+        "up_to_km": 484
+      },
+      {
+        "price_cents": 3710,
+        "up_to_km": 485
+      },
+      {
+        "price_cents": 3715,
+        "up_to_km": 486
+      },
+      {
+        "price_cents": 3720,
+        "up_to_km": 487
+      },
+      {
+        "price_cents": 3720,
+        "up_to_km": 488
+      },
+      {
+        "price_cents": 3725,
+        "up_to_km": 489
+      },
+      {
+        "price_cents": 3735,
+        "up_to_km": 490
+      },
+      {
+        "price_cents": 3740,
+        "up_to_km": 491
+      },
+      {
+        "price_cents": 3745,
+        "up_to_km": 492
+      },
+      {
+        "price_cents": 3750,
+        "up_to_km": 493
+      },
+      {
+        "price_cents": 3755,
+        "up_to_km": 494
+      },
+      {
+        "price_cents": 3760,
+        "up_to_km": 495
+      },
+      {
+        "price_cents": 3770,
+        "up_to_km": 496
+      },
+      {
+        "price_cents": 3775,
+        "up_to_km": 497
+      },
+      {
+        "price_cents": 3780,
+        "up_to_km": 498
+      },
+      {
+        "price_cents": 3785,
+        "up_to_km": 499
+      },
+      {
+        "price_cents": 3790,
+        "up_to_km": 500
+      }
+    ]
+  },
+  "fallback": {
+    "unsupported_ride_cents": 370
+  },
+  "long_distance": {
+    "single_cents": 2190
+  },
+  "money_price_year": 2026,
+  "price_class_by_pair": {
+    "10|10": "ps1",
+    "10|11": "ps2",
+    "10|12": "ps3",
+    "10|13": "ps3",
+    "10|14": "ps3",
+    "10|15": "ps2",
+    "10|16": "ps2",
+    "10|17": "ps2",
+    "10|20": "ps3",
+    "10|30": "ps4",
+    "10|31": "ps4",
+    "10|32": "ps4",
+    "10|33": "ps4",
+    "10|34": "ps4",
+    "10|35": "ps4",
+    "10|36": "ps3",
+    "10|37": "ps4",
+    "10|38": "ps4",
+    "10|40": "ps3",
+    "10|50": "ps4",
+    "10|51": "ps3",
+    "10|52": "ps3",
+    "10|53": "ps4",
+    "10|54": "ps4",
+    "10|55": "ps4",
+    "10|56": "ps3",
+    "10|60": "ps4",
+    "10|70": "ps4",
+    "10|71": "ps4",
+    "10|72": "ps4",
+    "10|73": "ps4",
+    "10|74": "ps4",
+    "10|75": "ps4",
+    "10|76": "ps4",
+    "10|77": "ps4",
+    "10|78": "ps4",
+    "10|79": "ps4",
+    "10|80": "ps4",
+    "10|81": "ps4",
+    "10|82": "ps4",
+    "10|83": "ps4",
+    "10|84": "ps4",
+    "10|85": "ps4",
+    "10|86": "ps4",
+    "10|87": "ps4",
+    "10|88": "ps4",
+    "10|89": "ps4",
+    "10|90": "ps4",
+    "11|10": "ps2",
+    "11|11": "ps1",
+    "11|12": "ps2",
+    "11|13": "ps2",
+    "11|14": "ps3",
+    "11|15": "ps2",
+    "11|16": "ps3",
+    "11|17": "ps3",
+    "11|20": "ps3",
+    "11|30": "ps4",
+    "11|31": "ps4",
+    "11|32": "ps4",
+    "11|33": "ps4",
+    "11|34": "ps4",
+    "11|35": "ps4",
+    "11|36": "ps4",
+    "11|37": "ps4",
+    "11|38": "ps4",
+    "11|40": "ps4",
+    "11|50": "ps4",
+    "11|51": "ps4",
+    "11|52": "ps4",
+    "11|53": "ps4",
+    "11|54": "ps4",
+    "11|55": "ps4",
+    "11|56": "ps4",
+    "11|60": "ps4",
+    "11|70": "ps4",
+    "11|71": "ps4",
+    "11|72": "ps4",
+    "11|73": "ps4",
+    "11|74": "ps4",
+    "11|75": "ps4",
+    "11|76": "ps4",
+    "11|77": "ps4",
+    "11|78": "ps4",
+    "11|79": "ps4",
+    "11|80": "ps4",
+    "11|81": "ps4",
+    "11|82": "ps4",
+    "11|83": "ps4",
+    "11|84": "ps4",
+    "11|85": "ps4",
+    "11|86": "ps4",
+    "11|87": "ps4",
+    "11|88": "ps4",
+    "11|89": "ps4",
+    "11|90": "ps4",
+    "12|10": "ps3",
+    "12|11": "ps2",
+    "12|12": "ps1",
+    "12|13": "ps2",
+    "12|14": "ps3",
+    "12|15": "ps3",
+    "12|16": "ps4",
+    "12|17": "ps4",
+    "12|20": "ps4",
+    "12|30": "ps4",
+    "12|31": "ps4",
+    "12|32": "ps4",
+    "12|33": "ps4",
+    "12|34": "ps4",
+    "12|35": "ps4",
+    "12|36": "ps4",
+    "12|37": "ps4",
+    "12|38": "ps4",
+    "12|40": "ps4",
+    "12|50": "ps4",
+    "12|51": "ps4",
+    "12|52": "ps4",
+    "12|53": "ps4",
+    "12|54": "ps4",
+    "12|55": "ps4",
+    "12|56": "ps4",
+    "12|60": "ps4",
+    "12|70": "ps4",
+    "12|71": "ps4",
+    "12|72": "ps4",
+    "12|73": "ps4",
+    "12|74": "ps4",
+    "12|75": "ps4",
+    "12|76": "ps4",
+    "12|77": "ps4",
+    "12|78": "ps4",
+    "12|79": "ps4",
+    "12|80": "ps4",
+    "12|81": "ps4",
+    "12|82": "ps4",
+    "12|83": "ps4",
+    "12|84": "ps4",
+    "12|85": "ps4",
+    "12|86": "ps4",
+    "12|87": "ps4",
+    "12|88": "ps4",
+    "12|89": "ps4",
+    "12|90": "ps4",
+    "13|10": "ps3",
+    "13|11": "ps2",
+    "13|12": "ps2",
+    "13|13": "ps1",
+    "13|14": "ps2",
+    "13|15": "ps3",
+    "13|16": "ps4",
+    "13|17": "ps4",
+    "13|20": "ps3",
+    "13|30": "ps4",
+    "13|31": "ps4",
+    "13|32": "ps4",
+    "13|33": "ps4",
+    "13|34": "ps4",
+    "13|35": "ps4",
+    "13|36": "ps4",
+    "13|37": "ps4",
+    "13|38": "ps4",
+    "13|40": "ps4",
+    "13|50": "ps4",
+    "13|51": "ps4",
+    "13|52": "ps4",
+    "13|53": "ps4",
+    "13|54": "ps4",
+    "13|55": "ps4",
+    "13|56": "ps4",
+    "13|60": "ps4",
+    "13|70": "ps4",
+    "13|71": "ps4",
+    "13|72": "ps4",
+    "13|73": "ps4",
+    "13|74": "ps4",
+    "13|75": "ps4",
+    "13|76": "ps4",
+    "13|77": "ps4",
+    "13|78": "ps4",
+    "13|79": "ps4",
+    "13|80": "ps4",
+    "13|81": "ps4",
+    "13|82": "ps4",
+    "13|83": "ps4",
+    "13|84": "ps4",
+    "13|85": "ps4",
+    "13|86": "ps4",
+    "13|87": "ps4",
+    "13|88": "ps4",
+    "13|89": "ps4",
+    "13|90": "ps4",
+    "14|10": "ps3",
+    "14|11": "ps3",
+    "14|12": "ps3",
+    "14|13": "ps2",
+    "14|14": "ps1",
+    "14|15": "ps2",
+    "14|16": "ps3",
+    "14|17": "ps4",
+    "14|20": "ps2",
+    "14|30": "ps4",
+    "14|31": "ps4",
+    "14|32": "ps4",
+    "14|33": "ps4",
+    "14|34": "ps4",
+    "14|35": "ps3",
+    "14|36": "ps3",
+    "14|37": "ps3",
+    "14|38": "ps4",
+    "14|40": "ps4",
+    "14|50": "ps4",
+    "14|51": "ps4",
+    "14|52": "ps4",
+    "14|53": "ps4",
+    "14|54": "ps4",
+    "14|55": "ps4",
+    "14|56": "ps4",
+    "14|60": "ps4",
+    "14|70": "ps4",
+    "14|71": "ps4",
+    "14|72": "ps4",
+    "14|73": "ps4",
+    "14|74": "ps4",
+    "14|75": "ps4",
+    "14|76": "ps4",
+    "14|77": "ps4",
+    "14|78": "ps4",
+    "14|79": "ps4",
+    "14|80": "ps4",
+    "14|81": "ps4",
+    "14|82": "ps4",
+    "14|83": "ps4",
+    "14|84": "ps4",
+    "14|85": "ps4",
+    "14|86": "ps4",
+    "14|87": "ps4",
+    "14|88": "ps4",
+    "14|89": "ps4",
+    "14|90": "ps4",
+    "15|10": "ps2",
+    "15|11": "ps2",
+    "15|12": "ps3",
+    "15|13": "ps3",
+    "15|14": "ps2",
+    "15|15": "ps1",
+    "15|16": "ps3",
+    "15|17": "ps3",
+    "15|20": "ps2",
+    "15|30": "ps4",
+    "15|31": "ps4",
+    "15|32": "ps4",
+    "15|33": "ps4",
+    "15|34": "ps4",
+    "15|35": "ps3",
+    "15|36": "ps3",
+    "15|37": "ps3",
+    "15|38": "ps4",
+    "15|40": "ps4",
+    "15|50": "ps4",
+    "15|51": "ps4",
+    "15|52": "ps4",
+    "15|53": "ps4",
+    "15|54": "ps4",
+    "15|55": "ps4",
+    "15|56": "ps4",
+    "15|60": "ps4",
+    "15|70": "ps4",
+    "15|71": "ps4",
+    "15|72": "ps4",
+    "15|73": "ps4",
+    "15|74": "ps4",
+    "15|75": "ps4",
+    "15|76": "ps4",
+    "15|77": "ps4",
+    "15|78": "ps4",
+    "15|79": "ps4",
+    "15|80": "ps4",
+    "15|81": "ps4",
+    "15|82": "ps4",
+    "15|83": "ps4",
+    "15|84": "ps4",
+    "15|85": "ps4",
+    "15|86": "ps4",
+    "15|87": "ps4",
+    "15|88": "ps4",
+    "15|89": "ps4",
+    "15|90": "ps4",
+    "16|10": "ps2",
+    "16|11": "ps3",
+    "16|12": "ps4",
+    "16|13": "ps4",
+    "16|14": "ps3",
+    "16|15": "ps3",
+    "16|16": "ps1",
+    "16|17": "ps2",
+    "16|20": "ps2",
+    "16|30": "ps4",
+    "16|31": "ps4",
+    "16|32": "ps4",
+    "16|33": "ps4",
+    "16|34": "ps4",
+    "16|35": "ps3",
+    "16|36": "ps2",
+    "16|37": "ps3",
+    "16|38": "ps4",
+    "16|40": "ps2",
+    "16|50": "ps3",
+    "16|51": "ps2",
+    "16|52": "ps2",
+    "16|53": "ps3",
+    "16|54": "ps4",
+    "16|55": "ps4",
+    "16|56": "ps3",
+    "16|60": "ps3",
+    "16|70": "ps3",
+    "16|71": "ps3",
+    "16|72": "ps3",
+    "16|73": "ps4",
+    "16|74": "ps4",
+    "16|75": "ps4",
+    "16|76": "ps4",
+    "16|77": "ps4",
+    "16|78": "ps4",
+    "16|79": "ps4",
+    "16|80": "ps4",
+    "16|81": "ps4",
+    "16|82": "ps4",
+    "16|83": "ps4",
+    "16|84": "ps4",
+    "16|85": "ps4",
+    "16|86": "ps4",
+    "16|87": "ps4",
+    "16|88": "ps4",
+    "16|89": "ps4",
+    "16|90": "ps4",
+    "17|10": "ps2",
+    "17|11": "ps3",
+    "17|12": "ps4",
+    "17|13": "ps4",
+    "17|14": "ps4",
+    "17|15": "ps3",
+    "17|16": "ps2",
+    "17|17": "ps1",
+    "17|20": "ps3",
+    "17|30": "ps4",
+    "17|31": "ps4",
+    "17|32": "ps4",
+    "17|33": "ps4",
+    "17|34": "ps4",
+    "17|35": "ps4",
+    "17|36": "ps3",
+    "17|37": "ps4",
+    "17|38": "ps4",
+    "17|40": "ps3",
+    "17|50": "ps3",
+    "17|51": "ps2",
+    "17|52": "ps3",
+    "17|53": "ps4",
+    "17|54": "ps4",
+    "17|55": "ps4",
+    "17|56": "ps2",
+    "17|60": "ps4",
+    "17|70": "ps4",
+    "17|71": "ps4",
+    "17|72": "ps4",
+    "17|73": "ps4",
+    "17|74": "ps4",
+    "17|75": "ps4",
+    "17|76": "ps4",
+    "17|77": "ps4",
+    "17|78": "ps4",
+    "17|79": "ps4",
+    "17|80": "ps4",
+    "17|81": "ps4",
+    "17|82": "ps4",
+    "17|83": "ps4",
+    "17|84": "ps4",
+    "17|85": "ps4",
+    "17|86": "ps4",
+    "17|87": "ps4",
+    "17|88": "ps4",
+    "17|89": "ps4",
+    "17|90": "ps4",
+    "20|10": "ps3",
+    "20|11": "ps3",
+    "20|12": "ps4",
+    "20|13": "ps3",
+    "20|14": "ps2",
+    "20|15": "ps2",
+    "20|16": "ps2",
+    "20|17": "ps3",
+    "20|20": "city",
+    "20|30": "ps4",
+    "20|31": "ps3",
+    "20|32": "ps4",
+    "20|33": "ps4",
+    "20|34": "ps3",
+    "20|35": "ps2",
+    "20|36": "ps2",
+    "20|37": "ps2",
+    "20|38": "ps3",
+    "20|40": "ps3",
+    "20|50": "ps4",
+    "20|51": "ps3",
+    "20|52": "ps3",
+    "20|53": "ps4",
+    "20|54": "ps4",
+    "20|55": "ps4",
+    "20|56": "ps4",
+    "20|60": "ps4",
+    "20|70": "ps4",
+    "20|71": "ps3",
+    "20|72": "ps4",
+    "20|73": "ps4",
+    "20|74": "ps4",
+    "20|75": "ps4",
+    "20|76": "ps4",
+    "20|77": "ps4",
+    "20|78": "ps4",
+    "20|79": "ps4",
+    "20|80": "ps4",
+    "20|81": "ps4",
+    "20|82": "ps4",
+    "20|83": "ps4",
+    "20|84": "ps4",
+    "20|85": "ps4",
+    "20|86": "ps4",
+    "20|87": "ps4",
+    "20|88": "ps4",
+    "20|89": "ps4",
+    "20|90": "ps4",
+    "30|10": "ps4",
+    "30|11": "ps4",
+    "30|12": "ps4",
+    "30|13": "ps4",
+    "30|14": "ps4",
+    "30|15": "ps4",
+    "30|16": "ps4",
+    "30|17": "ps4",
+    "30|20": "ps4",
+    "30|30": "ps1",
+    "30|31": "ps2",
+    "30|32": "ps2",
+    "30|33": "ps3",
+    "30|34": "ps3",
+    "30|35": "ps3",
+    "30|36": "ps4",
+    "30|37": "ps3",
+    "30|38": "ps2",
+    "30|40": "ps4",
+    "30|50": "ps4",
+    "30|51": "ps4",
+    "30|52": "ps4",
+    "30|53": "ps4",
+    "30|54": "ps4",
+    "30|55": "ps4",
+    "30|56": "ps4",
+    "30|60": "ps4",
+    "30|70": "ps4",
+    "30|71": "ps4",
+    "30|72": "ps4",
+    "30|73": "ps4",
+    "30|74": "ps4",
+    "30|75": "ps4",
+    "30|76": "ps4",
+    "30|77": "ps4",
+    "30|78": "ps4",
+    "30|79": "ps4",
+    "30|80": "ps4",
+    "30|81": "ps4",
+    "30|82": "ps4",
+    "30|83": "ps4",
+    "30|84": "ps4",
+    "30|85": "ps4",
+    "30|86": "ps4",
+    "30|87": "ps4",
+    "30|88": "ps4",
+    "30|89": "ps4",
+    "30|90": "ps4",
+    "31|10": "ps4",
+    "31|11": "ps4",
+    "31|12": "ps4",
+    "31|13": "ps4",
+    "31|14": "ps4",
+    "31|15": "ps4",
+    "31|16": "ps4",
+    "31|17": "ps4",
+    "31|20": "ps3",
+    "31|30": "ps2",
+    "31|31": "ps1",
+    "31|32": "ps2",
+    "31|33": "ps3",
+    "31|34": "ps2",
+    "31|35": "ps2",
+    "31|36": "ps3",
+    "31|37": "ps3",
+    "31|38": "ps2",
+    "31|40": "ps4",
+    "31|50": "ps4",
+    "31|51": "ps4",
+    "31|52": "ps4",
+    "31|53": "ps4",
+    "31|54": "ps4",
+    "31|55": "ps4",
+    "31|56": "ps4",
+    "31|60": "ps4",
+    "31|70": "ps4",
+    "31|71": "ps3",
+    "31|72": "ps3",
+    "31|73": "ps3",
+    "31|74": "ps4",
+    "31|75": "ps4",
+    "31|76": "ps4",
+    "31|77": "ps4",
+    "31|78": "ps4",
+    "31|79": "ps4",
+    "31|80": "ps4",
+    "31|81": "ps4",
+    "31|82": "ps4",
+    "31|83": "ps4",
+    "31|84": "ps4",
+    "31|85": "ps4",
+    "31|86": "ps4",
+    "31|87": "ps4",
+    "31|88": "ps4",
+    "31|89": "ps4",
+    "31|90": "ps4",
+    "32|10": "ps4",
+    "32|11": "ps4",
+    "32|12": "ps4",
+    "32|13": "ps4",
+    "32|14": "ps4",
+    "32|15": "ps4",
+    "32|16": "ps4",
+    "32|17": "ps4",
+    "32|20": "ps4",
+    "32|30": "ps2",
+    "32|31": "ps2",
+    "32|32": "ps1",
+    "32|33": "ps2",
+    "32|34": "ps2",
+    "32|35": "ps3",
+    "32|36": "ps4",
+    "32|37": "ps4",
+    "32|38": "ps3",
+    "32|40": "ps4",
+    "32|50": "ps4",
+    "32|51": "ps4",
+    "32|52": "ps4",
+    "32|53": "ps4",
+    "32|54": "ps4",
+    "32|55": "ps4",
+    "32|56": "ps4",
+    "32|60": "ps4",
+    "32|70": "ps4",
+    "32|71": "ps3",
+    "32|72": "ps3",
+    "32|73": "ps3",
+    "32|74": "ps4",
+    "32|75": "ps4",
+    "32|76": "ps4",
+    "32|77": "ps4",
+    "32|78": "ps4",
+    "32|79": "ps4",
+    "32|80": "ps4",
+    "32|81": "ps4",
+    "32|82": "ps4",
+    "32|83": "ps4",
+    "32|84": "ps4",
+    "32|85": "ps4",
+    "32|86": "ps4",
+    "32|87": "ps4",
+    "32|88": "ps4",
+    "32|89": "ps4",
+    "32|90": "ps4",
+    "33|10": "ps4",
+    "33|11": "ps4",
+    "33|12": "ps4",
+    "33|13": "ps4",
+    "33|14": "ps4",
+    "33|15": "ps4",
+    "33|16": "ps4",
+    "33|17": "ps4",
+    "33|20": "ps4",
+    "33|30": "ps3",
+    "33|31": "ps3",
+    "33|32": "ps2",
+    "33|33": "ps1",
+    "33|34": "ps2",
+    "33|35": "ps3",
+    "33|36": "ps4",
+    "33|37": "ps4",
+    "33|38": "ps4",
+    "33|40": "ps4",
+    "33|50": "ps4",
+    "33|51": "ps4",
+    "33|52": "ps4",
+    "33|53": "ps4",
+    "33|54": "ps4",
+    "33|55": "ps4",
+    "33|56": "ps4",
+    "33|60": "ps4",
+    "33|70": "ps4",
+    "33|71": "ps3",
+    "33|72": "ps3",
+    "33|73": "ps2",
+    "33|74": "ps3",
+    "33|75": "ps4",
+    "33|76": "ps4",
+    "33|77": "ps4",
+    "33|78": "ps4",
+    "33|79": "ps4",
+    "33|80": "ps4",
+    "33|81": "ps4",
+    "33|82": "ps4",
+    "33|83": "ps4",
+    "33|84": "ps4",
+    "33|85": "ps4",
+    "33|86": "ps4",
+    "33|87": "ps4",
+    "33|88": "ps4",
+    "33|89": "ps4",
+    "33|90": "ps4",
+    "34|10": "ps4",
+    "34|11": "ps4",
+    "34|12": "ps4",
+    "34|13": "ps4",
+    "34|14": "ps4",
+    "34|15": "ps4",
+    "34|16": "ps4",
+    "34|17": "ps4",
+    "34|20": "ps3",
+    "34|30": "ps3",
+    "34|31": "ps2",
+    "34|32": "ps2",
+    "34|33": "ps2",
+    "34|34": "ps1",
+    "34|35": "ps2",
+    "34|36": "ps3",
+    "34|37": "ps3",
+    "34|38": "ps3",
+    "34|40": "ps3",
+    "34|50": "ps4",
+    "34|51": "ps4",
+    "34|52": "ps4",
+    "34|53": "ps4",
+    "34|54": "ps4",
+    "34|55": "ps4",
+    "34|56": "ps4",
+    "34|60": "ps4",
+    "34|70": "ps3",
+    "34|71": "ps2",
+    "34|72": "ps2",
+    "34|73": "ps2",
+    "34|74": "ps3",
+    "34|75": "ps4",
+    "34|76": "ps4",
+    "34|77": "ps4",
+    "34|78": "ps4",
+    "34|79": "ps4",
+    "34|80": "ps4",
+    "34|81": "ps4",
+    "34|82": "ps4",
+    "34|83": "ps4",
+    "34|84": "ps4",
+    "34|85": "ps4",
+    "34|86": "ps4",
+    "34|87": "ps4",
+    "34|88": "ps4",
+    "34|89": "ps4",
+    "34|90": "ps4",
+    "35|10": "ps4",
+    "35|11": "ps4",
+    "35|12": "ps4",
+    "35|13": "ps4",
+    "35|14": "ps3",
+    "35|15": "ps3",
+    "35|16": "ps3",
+    "35|17": "ps4",
+    "35|20": "ps2",
+    "35|30": "ps3",
+    "35|31": "ps2",
+    "35|32": "ps3",
+    "35|33": "ps3",
+    "35|34": "ps2",
+    "35|35": "ps1",
+    "35|36": "ps2",
+    "35|37": "ps2",
+    "35|38": "ps2",
+    "35|40": "ps3",
+    "35|50": "ps4",
+    "35|51": "ps4",
+    "35|52": "ps4",
+    "35|53": "ps4",
+    "35|54": "ps4",
+    "35|55": "ps4",
+    "35|56": "ps4",
+    "35|60": "ps4",
+    "35|70": "ps4",
+    "35|71": "ps2",
+    "35|72": "ps3",
+    "35|73": "ps3",
+    "35|74": "ps4",
+    "35|75": "ps4",
+    "35|76": "ps4",
+    "35|77": "ps4",
+    "35|78": "ps4",
+    "35|79": "ps4",
+    "35|80": "ps4",
+    "35|81": "ps4",
+    "35|82": "ps4",
+    "35|83": "ps4",
+    "35|84": "ps4",
+    "35|85": "ps4",
+    "35|86": "ps4",
+    "35|87": "ps4",
+    "35|88": "ps4",
+    "35|89": "ps4",
+    "35|90": "ps4",
+    "36|10": "ps3",
+    "36|11": "ps4",
+    "36|12": "ps4",
+    "36|13": "ps4",
+    "36|14": "ps3",
+    "36|15": "ps3",
+    "36|16": "ps2",
+    "36|17": "ps3",
+    "36|20": "ps2",
+    "36|30": "ps4",
+    "36|31": "ps3",
+    "36|32": "ps4",
+    "36|33": "ps4",
+    "36|34": "ps3",
+    "36|35": "ps2",
+    "36|36": "ps1",
+    "36|37": "ps3",
+    "36|38": "ps3",
+    "36|40": "ps2",
+    "36|50": "ps4",
+    "36|51": "ps3",
+    "36|52": "ps3",
+    "36|53": "ps3",
+    "36|54": "ps4",
+    "36|55": "ps4",
+    "36|56": "ps4",
+    "36|60": "ps3",
+    "36|70": "ps3",
+    "36|71": "ps2",
+    "36|72": "ps3",
+    "36|73": "ps4",
+    "36|74": "ps4",
+    "36|75": "ps4",
+    "36|76": "ps4",
+    "36|77": "ps4",
+    "36|78": "ps4",
+    "36|79": "ps4",
+    "36|80": "ps4",
+    "36|81": "ps4",
+    "36|82": "ps4",
+    "36|83": "ps4",
+    "36|84": "ps4",
+    "36|85": "ps4",
+    "36|86": "ps4",
+    "36|87": "ps4",
+    "36|88": "ps4",
+    "36|89": "ps4",
+    "36|90": "ps4",
+    "37|10": "ps4",
+    "37|11": "ps4",
+    "37|12": "ps4",
+    "37|13": "ps4",
+    "37|14": "ps3",
+    "37|15": "ps3",
+    "37|16": "ps3",
+    "37|17": "ps4",
+    "37|20": "ps2",
+    "37|30": "ps3",
+    "37|31": "ps3",
+    "37|32": "ps4",
+    "37|33": "ps4",
+    "37|34": "ps3",
+    "37|35": "ps2",
+    "37|36": "ps3",
+    "37|37": "ps1",
+    "37|38": "ps2",
+    "37|40": "ps4",
+    "37|50": "ps4",
+    "37|51": "ps4",
+    "37|52": "ps4",
+    "37|53": "ps4",
+    "37|54": "ps4",
+    "37|55": "ps4",
+    "37|56": "ps4",
+    "37|60": "ps4",
+    "37|70": "ps4",
+    "37|71": "ps3",
+    "37|72": "ps4",
+    "37|73": "ps4",
+    "37|74": "ps4",
+    "37|75": "ps4",
+    "37|76": "ps4",
+    "37|77": "ps4",
+    "37|78": "ps4",
+    "37|79": "ps4",
+    "37|80": "ps4",
+    "37|81": "ps4",
+    "37|82": "ps4",
+    "37|83": "ps4",
+    "37|84": "ps4",
+    "37|85": "ps4",
+    "37|86": "ps4",
+    "37|87": "ps4",
+    "37|88": "ps4",
+    "37|89": "ps4",
+    "37|90": "ps4",
+    "38|10": "ps4",
+    "38|11": "ps4",
+    "38|12": "ps4",
+    "38|13": "ps4",
+    "38|14": "ps4",
+    "38|15": "ps4",
+    "38|16": "ps4",
+    "38|17": "ps4",
+    "38|20": "ps3",
+    "38|30": "ps2",
+    "38|31": "ps2",
+    "38|32": "ps3",
+    "38|33": "ps4",
+    "38|34": "ps3",
+    "38|35": "ps2",
+    "38|36": "ps3",
+    "38|37": "ps2",
+    "38|38": "ps1",
+    "38|40": "ps4",
+    "38|50": "ps4",
+    "38|51": "ps4",
+    "38|52": "ps4",
+    "38|53": "ps4",
+    "38|54": "ps4",
+    "38|55": "ps4",
+    "38|56": "ps4",
+    "38|60": "ps4",
+    "38|70": "ps4",
+    "38|71": "ps3",
+    "38|72": "ps4",
+    "38|73": "ps4",
+    "38|74": "ps4",
+    "38|75": "ps4",
+    "38|76": "ps4",
+    "38|77": "ps4",
+    "38|78": "ps4",
+    "38|79": "ps4",
+    "38|80": "ps4",
+    "38|81": "ps4",
+    "38|82": "ps4",
+    "38|83": "ps4",
+    "38|84": "ps4",
+    "38|85": "ps4",
+    "38|86": "ps4",
+    "38|87": "ps4",
+    "38|88": "ps4",
+    "38|89": "ps4",
+    "38|90": "ps4",
+    "40|10": "ps3",
+    "40|11": "ps4",
+    "40|12": "ps4",
+    "40|13": "ps4",
+    "40|14": "ps4",
+    "40|15": "ps4",
+    "40|16": "ps2",
+    "40|17": "ps3",
+    "40|20": "ps3",
+    "40|30": "ps4",
+    "40|31": "ps4",
+    "40|32": "ps4",
+    "40|33": "ps4",
+    "40|34": "ps3",
+    "40|35": "ps3",
+    "40|36": "ps2",
+    "40|37": "ps4",
+    "40|38": "ps4",
+    "40|40": "city",
+    "40|50": "ps3",
+    "40|51": "ps3",
+    "40|52": "ps2",
+    "40|53": "ps2",
+    "40|54": "ps4",
+    "40|55": "ps4",
+    "40|56": "ps4",
+    "40|60": "ps2",
+    "40|70": "ps2",
+    "40|71": "ps2",
+    "40|72": "ps2",
+    "40|73": "ps3",
+    "40|74": "ps3",
+    "40|75": "ps3",
+    "40|76": "ps4",
+    "40|77": "ps3",
+    "40|78": "ps3",
+    "40|79": "ps3",
+    "40|80": "ps4",
+    "40|81": "ps4",
+    "40|82": "ps3",
+    "40|83": "ps3",
+    "40|84": "ps4",
+    "40|85": "ps4",
+    "40|86": "ps4",
+    "40|87": "ps4",
+    "40|88": "ps4",
+    "40|89": "ps4",
+    "40|90": "ps4",
+    "50|10": "ps4",
+    "50|11": "ps4",
+    "50|12": "ps4",
+    "50|13": "ps4",
+    "50|14": "ps4",
+    "50|15": "ps4",
+    "50|16": "ps3",
+    "50|17": "ps3",
+    "50|20": "ps4",
+    "50|30": "ps4",
+    "50|31": "ps4",
+    "50|32": "ps4",
+    "50|33": "ps4",
+    "50|34": "ps4",
+    "50|35": "ps4",
+    "50|36": "ps4",
+    "50|37": "ps4",
+    "50|38": "ps4",
+    "50|40": "ps3",
+    "50|50": "ps1",
+    "50|51": "ps2",
+    "50|52": "ps2",
+    "50|53": "ps2",
+    "50|54": "ps2",
+    "50|55": "ps2",
+    "50|56": "ps3",
+    "50|60": "ps3",
+    "50|70": "ps4",
+    "50|71": "ps4",
+    "50|72": "ps4",
+    "50|73": "ps4",
+    "50|74": "ps4",
+    "50|75": "ps4",
+    "50|76": "ps4",
+    "50|77": "ps4",
+    "50|78": "ps4",
+    "50|79": "ps4",
+    "50|80": "ps4",
+    "50|81": "ps4",
+    "50|82": "ps4",
+    "50|83": "ps4",
+    "50|84": "ps4",
+    "50|85": "ps4",
+    "50|86": "ps4",
+    "50|87": "ps4",
+    "50|88": "ps4",
+    "50|89": "ps4",
+    "50|90": "ps4",
+    "51|10": "ps3",
+    "51|11": "ps4",
+    "51|12": "ps4",
+    "51|13": "ps4",
+    "51|14": "ps4",
+    "51|15": "ps4",
+    "51|16": "ps2",
+    "51|17": "ps2",
+    "51|20": "ps3",
+    "51|30": "ps4",
+    "51|31": "ps4",
+    "51|32": "ps4",
+    "51|33": "ps4",
+    "51|34": "ps4",
+    "51|35": "ps4",
+    "51|36": "ps3",
+    "51|37": "ps4",
+    "51|38": "ps4",
+    "51|40": "ps3",
+    "51|50": "ps2",
+    "51|51": "ps1",
+    "51|52": "ps2",
+    "51|53": "ps3",
+    "51|54": "ps3",
+    "51|55": "ps3",
+    "51|56": "ps2",
+    "51|60": "ps4",
+    "51|70": "ps4",
+    "51|71": "ps4",
+    "51|72": "ps4",
+    "51|73": "ps4",
+    "51|74": "ps4",
+    "51|75": "ps4",
+    "51|76": "ps4",
+    "51|77": "ps4",
+    "51|78": "ps4",
+    "51|79": "ps4",
+    "51|80": "ps4",
+    "51|81": "ps4",
+    "51|82": "ps4",
+    "51|83": "ps4",
+    "51|84": "ps4",
+    "51|85": "ps4",
+    "51|86": "ps4",
+    "51|87": "ps4",
+    "51|88": "ps4",
+    "51|89": "ps4",
+    "51|90": "ps4",
+    "52|10": "ps3",
+    "52|11": "ps4",
+    "52|12": "ps4",
+    "52|13": "ps4",
+    "52|14": "ps4",
+    "52|15": "ps4",
+    "52|16": "ps2",
+    "52|17": "ps3",
+    "52|20": "ps3",
+    "52|30": "ps4",
+    "52|31": "ps4",
+    "52|32": "ps4",
+    "52|33": "ps4",
+    "52|34": "ps4",
+    "52|35": "ps4",
+    "52|36": "ps3",
+    "52|37": "ps4",
+    "52|38": "ps4",
+    "52|40": "ps2",
+    "52|50": "ps2",
+    "52|51": "ps2",
+    "52|52": "ps1",
+    "52|53": "ps2",
+    "52|54": "ps3",
+    "52|55": "ps3",
+    "52|56": "ps3",
+    "52|60": "ps3",
+    "52|70": "ps3",
+    "52|71": "ps3",
+    "52|72": "ps3",
+    "52|73": "ps4",
+    "52|74": "ps4",
+    "52|75": "ps4",
+    "52|76": "ps4",
+    "52|77": "ps4",
+    "52|78": "ps4",
+    "52|79": "ps4",
+    "52|80": "ps4",
+    "52|81": "ps4",
+    "52|82": "ps4",
+    "52|83": "ps4",
+    "52|84": "ps4",
+    "52|85": "ps4",
+    "52|86": "ps4",
+    "52|87": "ps4",
+    "52|88": "ps4",
+    "52|89": "ps4",
+    "52|90": "ps4",
+    "53|10": "ps4",
+    "53|11": "ps4",
+    "53|12": "ps4",
+    "53|13": "ps4",
+    "53|14": "ps4",
+    "53|15": "ps4",
+    "53|16": "ps3",
+    "53|17": "ps4",
+    "53|20": "ps4",
+    "53|30": "ps4",
+    "53|31": "ps4",
+    "53|32": "ps4",
+    "53|33": "ps4",
+    "53|34": "ps4",
+    "53|35": "ps4",
+    "53|36": "ps3",
+    "53|37": "ps4",
+    "53|38": "ps4",
+    "53|40": "ps2",
+    "53|50": "ps2",
+    "53|51": "ps3",
+    "53|52": "ps2",
+    "53|53": "ps1",
+    "53|54": "ps3",
+    "53|55": "ps3",
+    "53|56": "ps4",
+    "53|60": "ps2",
+    "53|70": "ps3",
+    "53|71": "ps3",
+    "53|72": "ps3",
+    "53|73": "ps4",
+    "53|74": "ps4",
+    "53|75": "ps4",
+    "53|76": "ps4",
+    "53|77": "ps3",
+    "53|78": "ps3",
+    "53|79": "ps3",
+    "53|80": "ps4",
+    "53|81": "ps4",
+    "53|82": "ps3",
+    "53|83": "ps3",
+    "53|84": "ps4",
+    "53|85": "ps4",
+    "53|86": "ps4",
+    "53|87": "ps4",
+    "53|88": "ps4",
+    "53|89": "ps4",
+    "53|90": "ps4",
+    "54|10": "ps4",
+    "54|11": "ps4",
+    "54|12": "ps4",
+    "54|13": "ps4",
+    "54|14": "ps4",
+    "54|15": "ps4",
+    "54|16": "ps4",
+    "54|17": "ps4",
+    "54|20": "ps4",
+    "54|30": "ps4",
+    "54|31": "ps4",
+    "54|32": "ps4",
+    "54|33": "ps4",
+    "54|34": "ps4",
+    "54|35": "ps4",
+    "54|36": "ps4",
+    "54|37": "ps4",
+    "54|38": "ps4",
+    "54|40": "ps4",
+    "54|50": "ps2",
+    "54|51": "ps3",
+    "54|52": "ps3",
+    "54|53": "ps3",
+    "54|54": "ps1",
+    "54|55": "ps2",
+    "54|56": "ps4",
+    "54|60": "ps4",
+    "54|70": "ps4",
+    "54|71": "ps4",
+    "54|72": "ps4",
+    "54|73": "ps4",
+    "54|74": "ps4",
+    "54|75": "ps4",
+    "54|76": "ps4",
+    "54|77": "ps4",
+    "54|78": "ps4",
+    "54|79": "ps4",
+    "54|80": "ps4",
+    "54|81": "ps4",
+    "54|82": "ps4",
+    "54|83": "ps4",
+    "54|84": "ps4",
+    "54|85": "ps4",
+    "54|86": "ps4",
+    "54|87": "ps4",
+    "54|88": "ps4",
+    "54|89": "ps4",
+    "54|90": "ps4",
+    "55|10": "ps4",
+    "55|11": "ps4",
+    "55|12": "ps4",
+    "55|13": "ps4",
+    "55|14": "ps4",
+    "55|15": "ps4",
+    "55|16": "ps4",
+    "55|17": "ps4",
+    "55|20": "ps4",
+    "55|30": "ps4",
+    "55|31": "ps4",
+    "55|32": "ps4",
+    "55|33": "ps4",
+    "55|34": "ps4",
+    "55|35": "ps4",
+    "55|36": "ps4",
+    "55|37": "ps4",
+    "55|38": "ps4",
+    "55|40": "ps4",
+    "55|50": "ps2",
+    "55|51": "ps3",
+    "55|52": "ps3",
+    "55|53": "ps3",
+    "55|54": "ps2",
+    "55|56": "ps4",
+    "55|60": "ps4",
+    "55|70": "ps4",
+    "55|71": "ps4",
+    "55|72": "ps4",
+    "55|73": "ps4",
+    "55|74": "ps4",
+    "55|75": "ps4",
+    "55|76": "ps4",
+    "55|77": "ps4",
+    "55|78": "ps4",
+    "55|79": "ps4",
+    "55|80": "ps4",
+    "55|81": "ps4",
+    "55|82": "ps4",
+    "55|83": "ps4",
+    "55|84": "ps4",
+    "55|85": "ps4",
+    "55|86": "ps4",
+    "55|87": "ps4",
+    "55|88": "ps4",
+    "55|89": "ps4",
+    "55|90": "ps4",
+    "56|10": "ps3",
+    "56|11": "ps4",
+    "56|12": "ps4",
+    "56|13": "ps4",
+    "56|14": "ps4",
+    "56|15": "ps4",
+    "56|16": "ps3",
+    "56|17": "ps2",
+    "56|20": "ps4",
+    "56|30": "ps4",
+    "56|31": "ps4",
+    "56|32": "ps4",
+    "56|33": "ps4",
+    "56|34": "ps4",
+    "56|35": "ps4",
+    "56|36": "ps4",
+    "56|37": "ps4",
+    "56|38": "ps4",
+    "56|40": "ps4",
+    "56|50": "ps3",
+    "56|51": "ps2",
+    "56|52": "ps3",
+    "56|53": "ps4",
+    "56|54": "ps4",
+    "56|55": "ps4",
+    "56|60": "ps4",
+    "56|70": "ps4",
+    "56|71": "ps4",
+    "56|72": "ps4",
+    "56|73": "ps4",
+    "56|74": "ps4",
+    "56|75": "ps4",
+    "56|76": "ps4",
+    "56|77": "ps4",
+    "56|78": "ps4",
+    "56|79": "ps4",
+    "56|80": "ps4",
+    "56|81": "ps4",
+    "56|82": "ps4",
+    "56|83": "ps4",
+    "56|84": "ps4",
+    "56|85": "ps4",
+    "56|86": "ps4",
+    "56|87": "ps4",
+    "56|88": "ps4",
+    "56|89": "ps4",
+    "56|90": "ps4",
+    "60|10": "ps4",
+    "60|11": "ps4",
+    "60|12": "ps4",
+    "60|13": "ps4",
+    "60|14": "ps4",
+    "60|15": "ps4",
+    "60|16": "ps3",
+    "60|17": "ps4",
+    "60|20": "ps4",
+    "60|30": "ps4",
+    "60|31": "ps4",
+    "60|32": "ps4",
+    "60|33": "ps4",
+    "60|34": "ps4",
+    "60|35": "ps4",
+    "60|36": "ps3",
+    "60|37": "ps4",
+    "60|38": "ps4",
+    "60|40": "ps2",
+    "60|50": "ps3",
+    "60|51": "ps4",
+    "60|52": "ps3",
+    "60|53": "ps2",
+    "60|54": "ps4",
+    "60|55": "ps4",
+    "60|56": "ps4",
+    "60|60": "ps1",
+    "60|70": "ps2",
+    "60|71": "ps3",
+    "60|72": "ps3",
+    "60|73": "ps4",
+    "60|74": "ps3",
+    "60|75": "ps3",
+    "60|76": "ps3",
+    "60|77": "ps2",
+    "60|78": "ps2",
+    "60|79": "ps1",
+    "60|80": "ps3",
+    "60|81": "ps3",
+    "60|82": "ps2",
+    "60|83": "ps2",
+    "60|84": "ps3",
+    "60|85": "ps3",
+    "60|86": "ps4",
+    "60|87": "ps4",
+    "60|88": "ps4",
+    "60|89": "ps4",
+    "60|90": "ps4",
+    "70|10": "ps4",
+    "70|11": "ps4",
+    "70|12": "ps4",
+    "70|13": "ps4",
+    "70|14": "ps4",
+    "70|15": "ps4",
+    "70|16": "ps3",
+    "70|17": "ps4",
+    "70|20": "ps4",
+    "70|30": "ps4",
+    "70|31": "ps4",
+    "70|32": "ps4",
+    "70|33": "ps4",
+    "70|34": "ps3",
+    "70|35": "ps4",
+    "70|36": "ps3",
+    "70|37": "ps4",
+    "70|38": "ps4",
+    "70|40": "ps2",
+    "70|50": "ps4",
+    "70|51": "ps4",
+    "70|52": "ps3",
+    "70|53": "ps3",
+    "70|54": "ps4",
+    "70|55": "ps4",
+    "70|56": "ps4",
+    "70|60": "ps2",
+    "70|70": "ps1",
+    "70|71": "ps3",
+    "70|72": "ps2",
+    "70|73": "ps3",
+    "70|74": "ps2",
+    "70|75": "ps2",
+    "70|76": "ps3",
+    "70|77": "ps2",
+    "70|78": "ps3",
+    "70|79": "ps3",
+    "70|80": "ps4",
+    "70|81": "ps4",
+    "70|82": "ps3",
+    "70|83": "ps3",
+    "70|84": "ps4",
+    "70|85": "ps4",
+    "70|86": "ps4",
+    "70|87": "ps4",
+    "70|88": "ps4",
+    "70|89": "ps4",
+    "70|90": "ps4",
+    "71|10": "ps4",
+    "71|11": "ps4",
+    "71|12": "ps4",
+    "71|13": "ps4",
+    "71|14": "ps4",
+    "71|15": "ps4",
+    "71|16": "ps3",
+    "71|17": "ps4",
+    "71|20": "ps3",
+    "71|30": "ps4",
+    "71|31": "ps3",
+    "71|32": "ps3",
+    "71|33": "ps3",
+    "71|34": "ps2",
+    "71|35": "ps2",
+    "71|36": "ps2",
+    "71|37": "ps3",
+    "71|38": "ps3",
+    "71|40": "ps2",
+    "71|50": "ps4",
+    "71|51": "ps4",
+    "71|52": "ps3",
+    "71|53": "ps3",
+    "71|54": "ps4",
+    "71|55": "ps4",
+    "71|56": "ps4",
+    "71|60": "ps3",
+    "71|70": "ps3",
+    "71|71": "ps1",
+    "71|72": "ps2",
+    "71|73": "ps3",
+    "71|74": "ps3",
+    "71|75": "ps4",
+    "71|76": "ps4",
+    "71|77": "ps4",
+    "71|78": "ps4",
+    "71|79": "ps4",
+    "71|80": "ps4",
+    "71|81": "ps4",
+    "71|82": "ps4",
+    "71|83": "ps4",
+    "71|84": "ps4",
+    "71|85": "ps4",
+    "71|86": "ps4",
+    "71|87": "ps4",
+    "71|88": "ps4",
+    "71|89": "ps4",
+    "71|90": "ps4",
+    "72|10": "ps4",
+    "72|11": "ps4",
+    "72|12": "ps4",
+    "72|13": "ps4",
+    "72|14": "ps4",
+    "72|15": "ps4",
+    "72|16": "ps3",
+    "72|17": "ps4",
+    "72|20": "ps4",
+    "72|30": "ps4",
+    "72|31": "ps3",
+    "72|32": "ps3",
+    "72|33": "ps3",
+    "72|34": "ps2",
+    "72|35": "ps3",
+    "72|36": "ps3",
+    "72|37": "ps4",
+    "72|38": "ps4",
+    "72|40": "ps2",
+    "72|50": "ps4",
+    "72|51": "ps4",
+    "72|52": "ps3",
+    "72|53": "ps3",
+    "72|54": "ps4",
+    "72|55": "ps4",
+    "72|56": "ps4",
+    "72|60": "ps3",
+    "72|70": "ps2",
+    "72|71": "ps2",
+    "72|72": "ps1",
+    "72|73": "ps2",
+    "72|74": "ps2",
+    "72|75": "ps3",
+    "72|76": "ps4",
+    "72|77": "ps3",
+    "72|78": "ps4",
+    "72|79": "ps4",
+    "72|80": "ps4",
+    "72|81": "ps4",
+    "72|82": "ps4",
+    "72|83": "ps4",
+    "72|84": "ps4",
+    "72|85": "ps4",
+    "72|86": "ps4",
+    "72|87": "ps4",
+    "72|88": "ps4",
+    "72|89": "ps4",
+    "72|90": "ps4",
+    "73|10": "ps4",
+    "73|11": "ps4",
+    "73|12": "ps4",
+    "73|13": "ps4",
+    "73|14": "ps4",
+    "73|15": "ps4",
+    "73|16": "ps4",
+    "73|17": "ps4",
+    "73|20": "ps4",
+    "73|30": "ps4",
+    "73|31": "ps3",
+    "73|32": "ps3",
+    "73|33": "ps2",
+    "73|34": "ps2",
+    "73|35": "ps3",
+    "73|36": "ps4",
+    "73|37": "ps4",
+    "73|38": "ps4",
+    "73|40": "ps3",
+    "73|50": "ps4",
+    "73|51": "ps4",
+    "73|52": "ps4",
+    "73|53": "ps4",
+    "73|54": "ps4",
+    "73|55": "ps4",
+    "73|56": "ps4",
+    "73|60": "ps4",
+    "73|70": "ps3",
+    "73|71": "ps3",
+    "73|72": "ps2",
+    "73|73": "ps1",
+    "73|74": "ps2",
+    "73|75": "ps3",
+    "73|76": "ps4",
+    "73|77": "ps4",
+    "73|78": "ps4",
+    "73|79": "ps4",
+    "73|80": "ps4",
+    "73|81": "ps4",
+    "73|82": "ps4",
+    "73|83": "ps4",
+    "73|84": "ps4",
+    "73|85": "ps4",
+    "73|86": "ps4",
+    "73|87": "ps4",
+    "73|88": "ps4",
+    "73|89": "ps4",
+    "73|90": "ps4",
+    "74|10": "ps4",
+    "74|11": "ps4",
+    "74|12": "ps4",
+    "74|13": "ps4",
+    "74|14": "ps4",
+    "74|15": "ps4",
+    "74|16": "ps4",
+    "74|17": "ps4",
+    "74|20": "ps4",
+    "74|30": "ps4",
+    "74|31": "ps4",
+    "74|32": "ps4",
+    "74|33": "ps3",
+    "74|34": "ps3",
+    "74|35": "ps4",
+    "74|36": "ps4",
+    "74|37": "ps4",
+    "74|38": "ps4",
+    "74|40": "ps3",
+    "74|50": "ps4",
+    "74|51": "ps4",
+    "74|52": "ps4",
+    "74|53": "ps4",
+    "74|54": "ps4",
+    "74|55": "ps4",
+    "74|56": "ps4",
+    "74|60": "ps3",
+    "74|70": "ps2",
+    "74|71": "ps3",
+    "74|72": "ps2",
+    "74|73": "ps2",
+    "74|74": "ps1",
+    "74|75": "ps2",
+    "74|76": "ps3",
+    "74|77": "ps3",
+    "74|78": "ps4",
+    "74|79": "ps4",
+    "74|80": "ps4",
+    "74|81": "ps4",
+    "74|82": "ps4",
+    "74|83": "ps4",
+    "74|84": "ps4",
+    "74|85": "ps4",
+    "74|86": "ps4",
+    "74|87": "ps4",
+    "74|88": "ps4",
+    "74|89": "ps4",
+    "74|90": "ps4",
+    "75|10": "ps4",
+    "75|11": "ps4",
+    "75|12": "ps4",
+    "75|13": "ps4",
+    "75|14": "ps4",
+    "75|15": "ps4",
+    "75|16": "ps4",
+    "75|17": "ps4",
+    "75|20": "ps4",
+    "75|30": "ps4",
+    "75|31": "ps4",
+    "75|32": "ps4",
+    "75|33": "ps4",
+    "75|34": "ps4",
+    "75|35": "ps4",
+    "75|36": "ps4",
+    "75|37": "ps4",
+    "75|38": "ps4",
+    "75|40": "ps3",
+    "75|50": "ps4",
+    "75|51": "ps4",
+    "75|52": "ps4",
+    "75|53": "ps4",
+    "75|54": "ps4",
+    "75|55": "ps4",
+    "75|56": "ps4",
+    "75|60": "ps3",
+    "75|70": "ps2",
+    "75|71": "ps4",
+    "75|72": "ps3",
+    "75|73": "ps3",
+    "75|74": "ps2",
+    "75|75": "ps1",
+    "75|76": "ps2",
+    "75|77": "ps3",
+    "75|78": "ps4",
+    "75|79": "ps4",
+    "75|80": "ps4",
+    "75|81": "ps3",
+    "75|82": "ps3",
+    "75|83": "ps4",
+    "75|84": "ps4",
+    "75|85": "ps4",
+    "75|86": "ps4",
+    "75|87": "ps4",
+    "75|88": "ps4",
+    "75|89": "ps4",
+    "75|90": "ps4",
+    "76|10": "ps4",
+    "76|11": "ps4",
+    "76|12": "ps4",
+    "76|13": "ps4",
+    "76|14": "ps4",
+    "76|15": "ps4",
+    "76|16": "ps4",
+    "76|17": "ps4",
+    "76|20": "ps4",
+    "76|30": "ps4",
+    "76|31": "ps4",
+    "76|32": "ps4",
+    "76|33": "ps4",
+    "76|34": "ps4",
+    "76|35": "ps4",
+    "76|36": "ps4",
+    "76|37": "ps4",
+    "76|38": "ps4",
+    "76|40": "ps4",
+    "76|50": "ps4",
+    "76|51": "ps4",
+    "76|52": "ps4",
+    "76|53": "ps4",
+    "76|54": "ps4",
+    "76|55": "ps4",
+    "76|56": "ps4",
+    "76|60": "ps3",
+    "76|70": "ps3",
+    "76|71": "ps4",
+    "76|72": "ps4",
+    "76|73": "ps4",
+    "76|74": "ps3",
+    "76|75": "ps2",
+    "76|76": "ps1",
+    "76|77": "ps3",
+    "76|78": "ps4",
+    "76|79": "ps4",
+    "76|80": "ps3",
+    "76|81": "ps2",
+    "76|82": "ps2",
+    "76|83": "ps3",
+    "76|84": "ps4",
+    "76|85": "ps3",
+    "76|86": "ps4",
+    "76|87": "ps4",
+    "76|88": "ps4",
+    "76|89": "ps4",
+    "76|90": "ps3",
+    "77|10": "ps4",
+    "77|11": "ps4",
+    "77|12": "ps4",
+    "77|13": "ps4",
+    "77|14": "ps4",
+    "77|15": "ps4",
+    "77|16": "ps4",
+    "77|17": "ps4",
+    "77|20": "ps4",
+    "77|30": "ps4",
+    "77|31": "ps4",
+    "77|32": "ps4",
+    "77|33": "ps4",
+    "77|34": "ps4",
+    "77|35": "ps4",
+    "77|36": "ps4",
+    "77|37": "ps4",
+    "77|38": "ps4",
+    "77|40": "ps3",
+    "77|50": "ps4",
+    "77|51": "ps4",
+    "77|52": "ps4",
+    "77|53": "ps3",
+    "77|54": "ps4",
+    "77|55": "ps4",
+    "77|56": "ps4",
+    "77|60": "ps2",
+    "77|70": "ps2",
+    "77|71": "ps4",
+    "77|72": "ps3",
+    "77|73": "ps4",
+    "77|74": "ps3",
+    "77|75": "ps3",
+    "77|76": "ps3",
+    "77|77": "ps1",
+    "77|78": "ps3",
+    "77|79": "ps3",
+    "77|80": "ps4",
+    "77|81": "ps4",
+    "77|82": "ps3",
+    "77|83": "ps3",
+    "77|84": "ps4",
+    "77|85": "ps4",
+    "77|86": "ps4",
+    "77|87": "ps4",
+    "77|88": "ps4",
+    "77|89": "ps4",
+    "77|90": "ps4",
+    "78|10": "ps4",
+    "78|11": "ps4",
+    "78|12": "ps4",
+    "78|13": "ps4",
+    "78|14": "ps4",
+    "78|15": "ps4",
+    "78|16": "ps4",
+    "78|17": "ps4",
+    "78|20": "ps4",
+    "78|30": "ps4",
+    "78|31": "ps4",
+    "78|32": "ps4",
+    "78|33": "ps4",
+    "78|34": "ps4",
+    "78|35": "ps4",
+    "78|36": "ps4",
+    "78|37": "ps4",
+    "78|38": "ps4",
+    "78|40": "ps3",
+    "78|50": "ps4",
+    "78|51": "ps4",
+    "78|52": "ps4",
+    "78|53": "ps3",
+    "78|54": "ps4",
+    "78|55": "ps4",
+    "78|56": "ps4",
+    "78|60": "ps2",
+    "78|70": "ps3",
+    "78|71": "ps4",
+    "78|72": "ps4",
+    "78|73": "ps4",
+    "78|74": "ps4",
+    "78|75": "ps4",
+    "78|76": "ps4",
+    "78|77": "ps3",
+    "78|78": "ps1",
+    "78|79": "ps1",
+    "78|80": "ps4",
+    "78|81": "ps4",
+    "78|82": "ps3",
+    "78|83": "ps2",
+    "78|84": "ps3",
+    "78|85": "ps3",
+    "78|86": "ps4",
+    "78|87": "ps4",
+    "78|88": "ps4",
+    "78|89": "ps4",
+    "78|90": "ps4",
+    "79|10": "ps4",
+    "79|11": "ps4",
+    "79|12": "ps4",
+    "79|13": "ps4",
+    "79|14": "ps4",
+    "79|15": "ps4",
+    "79|16": "ps4",
+    "79|17": "ps4",
+    "79|20": "ps4",
+    "79|30": "ps4",
+    "79|31": "ps4",
+    "79|32": "ps4",
+    "79|33": "ps4",
+    "79|34": "ps4",
+    "79|35": "ps4",
+    "79|36": "ps4",
+    "79|37": "ps4",
+    "79|38": "ps4",
+    "79|40": "ps3",
+    "79|50": "ps4",
+    "79|51": "ps4",
+    "79|52": "ps4",
+    "79|53": "ps3",
+    "79|54": "ps4",
+    "79|55": "ps4",
+    "79|56": "ps4",
+    "79|60": "ps1",
+    "79|70": "ps3",
+    "79|71": "ps4",
+    "79|72": "ps4",
+    "79|73": "ps4",
+    "79|74": "ps4",
+    "79|75": "ps4",
+    "79|76": "ps4",
+    "79|77": "ps3",
+    "79|78": "ps1",
+    "79|79": "ps1",
+    "79|80": "ps4",
+    "79|81": "ps4",
+    "79|82": "ps3",
+    "79|83": "ps2",
+    "79|84": "ps3",
+    "79|85": "ps3",
+    "79|86": "ps4",
+    "79|87": "ps4",
+    "79|88": "ps4",
+    "79|89": "ps4",
+    "79|90": "ps4",
+    "80|10": "ps4",
+    "80|11": "ps4",
+    "80|12": "ps4",
+    "80|13": "ps4",
+    "80|14": "ps4",
+    "80|15": "ps4",
+    "80|16": "ps4",
+    "80|17": "ps4",
+    "80|20": "ps4",
+    "80|30": "ps4",
+    "80|31": "ps4",
+    "80|32": "ps4",
+    "80|33": "ps4",
+    "80|34": "ps4",
+    "80|35": "ps4",
+    "80|36": "ps4",
+    "80|37": "ps4",
+    "80|38": "ps4",
+    "80|40": "ps4",
+    "80|50": "ps4",
+    "80|51": "ps4",
+    "80|52": "ps4",
+    "80|53": "ps4",
+    "80|54": "ps4",
+    "80|55": "ps4",
+    "80|56": "ps4",
+    "80|60": "ps3",
+    "80|70": "ps4",
+    "80|71": "ps4",
+    "80|72": "ps4",
+    "80|73": "ps4",
+    "80|74": "ps4",
+    "80|75": "ps4",
+    "80|76": "ps3",
+    "80|77": "ps4",
+    "80|78": "ps4",
+    "80|79": "ps4",
+    "80|80": "city",
+    "80|81": "ps2",
+    "80|82": "ps2",
+    "80|83": "ps3",
+    "80|84": "ps3",
+    "80|85": "ps2",
+    "80|86": "ps2",
+    "80|87": "ps2",
+    "80|88": "ps3",
+    "80|89": "ps2",
+    "80|90": "ps2",
+    "81|10": "ps4",
+    "81|11": "ps4",
+    "81|12": "ps4",
+    "81|13": "ps4",
+    "81|14": "ps4",
+    "81|15": "ps4",
+    "81|16": "ps4",
+    "81|17": "ps4",
+    "81|20": "ps4",
+    "81|30": "ps4",
+    "81|31": "ps4",
+    "81|32": "ps4",
+    "81|33": "ps4",
+    "81|34": "ps4",
+    "81|35": "ps4",
+    "81|36": "ps4",
+    "81|37": "ps4",
+    "81|38": "ps4",
+    "81|40": "ps4",
+    "81|50": "ps4",
+    "81|51": "ps4",
+    "81|52": "ps4",
+    "81|53": "ps4",
+    "81|54": "ps4",
+    "81|55": "ps4",
+    "81|56": "ps4",
+    "81|60": "ps3",
+    "81|70": "ps4",
+    "81|71": "ps4",
+    "81|72": "ps4",
+    "81|73": "ps4",
+    "81|74": "ps4",
+    "81|75": "ps3",
+    "81|76": "ps2",
+    "81|77": "ps4",
+    "81|78": "ps4",
+    "81|79": "ps4",
+    "81|80": "ps2",
+    "81|81": "ps1",
+    "81|82": "ps2",
+    "81|83": "ps3",
+    "81|84": "ps4",
+    "81|85": "ps3",
+    "81|86": "ps3",
+    "81|87": "ps3",
+    "81|88": "ps4",
+    "81|89": "ps3",
+    "81|90": "ps2",
+    "82|10": "ps4",
+    "82|11": "ps4",
+    "82|12": "ps4",
+    "82|13": "ps4",
+    "82|14": "ps4",
+    "82|15": "ps4",
+    "82|16": "ps4",
+    "82|17": "ps4",
+    "82|20": "ps4",
+    "82|30": "ps4",
+    "82|31": "ps4",
+    "82|32": "ps4",
+    "82|33": "ps4",
+    "82|34": "ps4",
+    "82|35": "ps4",
+    "82|36": "ps4",
+    "82|37": "ps4",
+    "82|38": "ps4",
+    "82|40": "ps3",
+    "82|50": "ps4",
+    "82|51": "ps4",
+    "82|52": "ps4",
+    "82|53": "ps3",
+    "82|54": "ps4",
+    "82|55": "ps4",
+    "82|56": "ps4",
+    "82|60": "ps2",
+    "82|70": "ps3",
+    "82|71": "ps4",
+    "82|72": "ps4",
+    "82|73": "ps4",
+    "82|74": "ps4",
+    "82|75": "ps3",
+    "82|76": "ps2",
+    "82|77": "ps3",
+    "82|78": "ps3",
+    "82|79": "ps3",
+    "82|80": "ps2",
+    "82|81": "ps2",
+    "82|82": "ps1",
+    "82|83": "ps2",
+    "82|84": "ps3",
+    "82|85": "ps2",
+    "82|86": "ps3",
+    "82|87": "ps3",
+    "82|88": "ps4",
+    "82|89": "ps3",
+    "82|90": "ps3",
+    "83|10": "ps4",
+    "83|11": "ps4",
+    "83|12": "ps4",
+    "83|13": "ps4",
+    "83|14": "ps4",
+    "83|15": "ps4",
+    "83|16": "ps4",
+    "83|17": "ps4",
+    "83|20": "ps4",
+    "83|30": "ps4",
+    "83|31": "ps4",
+    "83|32": "ps4",
+    "83|33": "ps4",
+    "83|34": "ps4",
+    "83|35": "ps4",
+    "83|36": "ps4",
+    "83|37": "ps4",
+    "83|38": "ps4",
+    "83|40": "ps3",
+    "83|50": "ps4",
+    "83|51": "ps4",
+    "83|52": "ps4",
+    "83|53": "ps3",
+    "83|54": "ps4",
+    "83|55": "ps4",
+    "83|56": "ps4",
+    "83|60": "ps2",
+    "83|70": "ps3",
+    "83|71": "ps4",
+    "83|72": "ps4",
+    "83|73": "ps4",
+    "83|74": "ps4",
+    "83|75": "ps4",
+    "83|76": "ps3",
+    "83|77": "ps3",
+    "83|78": "ps2",
+    "83|79": "ps2",
+    "83|80": "ps3",
+    "83|81": "ps3",
+    "83|82": "ps2",
+    "83|83": "ps1",
+    "83|84": "ps2",
+    "83|85": "ps2",
+    "83|86": "ps3",
+    "83|87": "ps3",
+    "83|88": "ps4",
+    "83|89": "ps4",
+    "83|90": "ps4",
+    "84|10": "ps4",
+    "84|11": "ps4",
+    "84|12": "ps4",
+    "84|13": "ps4",
+    "84|14": "ps4",
+    "84|15": "ps4",
+    "84|16": "ps4",
+    "84|17": "ps4",
+    "84|20": "ps4",
+    "84|30": "ps4",
+    "84|31": "ps4",
+    "84|32": "ps4",
+    "84|33": "ps4",
+    "84|34": "ps4",
+    "84|35": "ps4",
+    "84|36": "ps4",
+    "84|37": "ps4",
+    "84|38": "ps4",
+    "84|40": "ps4",
+    "84|50": "ps4",
+    "84|51": "ps4",
+    "84|52": "ps4",
+    "84|53": "ps4",
+    "84|54": "ps4",
+    "84|55": "ps4",
+    "84|56": "ps4",
+    "84|60": "ps3",
+    "84|70": "ps4",
+    "84|71": "ps4",
+    "84|72": "ps4",
+    "84|73": "ps4",
+    "84|74": "ps4",
+    "84|75": "ps4",
+    "84|76": "ps4",
+    "84|77": "ps4",
+    "84|78": "ps3",
+    "84|79": "ps3",
+    "84|80": "ps3",
+    "84|81": "ps4",
+    "84|82": "ps3",
+    "84|83": "ps2",
+    "84|84": "ps1",
+    "84|85": "ps2",
+    "84|86": "ps3",
+    "84|87": "ps3",
+    "84|88": "ps4",
+    "84|89": "ps4",
+    "84|90": "ps4",
+    "85|10": "ps4",
+    "85|11": "ps4",
+    "85|12": "ps4",
+    "85|13": "ps4",
+    "85|14": "ps4",
+    "85|15": "ps4",
+    "85|16": "ps4",
+    "85|17": "ps4",
+    "85|20": "ps4",
+    "85|30": "ps4",
+    "85|31": "ps4",
+    "85|32": "ps4",
+    "85|33": "ps4",
+    "85|34": "ps4",
+    "85|35": "ps4",
+    "85|36": "ps4",
+    "85|37": "ps4",
+    "85|38": "ps4",
+    "85|40": "ps4",
+    "85|50": "ps4",
+    "85|51": "ps4",
+    "85|52": "ps4",
+    "85|53": "ps4",
+    "85|54": "ps4",
+    "85|55": "ps4",
+    "85|56": "ps4",
+    "85|60": "ps3",
+    "85|70": "ps4",
+    "85|71": "ps4",
+    "85|72": "ps4",
+    "85|73": "ps4",
+    "85|74": "ps4",
+    "85|75": "ps4",
+    "85|76": "ps3",
+    "85|77": "ps4",
+    "85|78": "ps3",
+    "85|79": "ps3",
+    "85|80": "ps2",
+    "85|81": "ps3",
+    "85|82": "ps2",
+    "85|83": "ps2",
+    "85|84": "ps2",
+    "85|85": "ps1",
+    "85|86": "ps2",
+    "85|87": "ps2",
+    "85|88": "ps3",
+    "85|89": "ps3",
+    "85|90": "ps3",
+    "86|10": "ps4",
+    "86|11": "ps4",
+    "86|12": "ps4",
+    "86|13": "ps4",
+    "86|14": "ps4",
+    "86|15": "ps4",
+    "86|16": "ps4",
+    "86|17": "ps4",
+    "86|20": "ps4",
+    "86|30": "ps4",
+    "86|31": "ps4",
+    "86|32": "ps4",
+    "86|33": "ps4",
+    "86|34": "ps4",
+    "86|35": "ps4",
+    "86|36": "ps4",
+    "86|37": "ps4",
+    "86|38": "ps4",
+    "86|40": "ps4",
+    "86|50": "ps4",
+    "86|51": "ps4",
+    "86|52": "ps4",
+    "86|53": "ps4",
+    "86|54": "ps4",
+    "86|55": "ps4",
+    "86|56": "ps4",
+    "86|60": "ps4",
+    "86|70": "ps4",
+    "86|71": "ps4",
+    "86|72": "ps4",
+    "86|73": "ps4",
+    "86|74": "ps4",
+    "86|75": "ps4",
+    "86|76": "ps4",
+    "86|77": "ps4",
+    "86|78": "ps4",
+    "86|79": "ps4",
+    "86|80": "ps2",
+    "86|81": "ps3",
+    "86|82": "ps3",
+    "86|83": "ps3",
+    "86|84": "ps3",
+    "86|85": "ps2",
+    "86|86": "ps1",
+    "86|87": "ps2",
+    "86|88": "ps3",
+    "86|89": "ps3",
+    "86|90": "ps3",
+    "87|10": "ps4",
+    "87|11": "ps4",
+    "87|12": "ps4",
+    "87|13": "ps4",
+    "87|14": "ps4",
+    "87|15": "ps4",
+    "87|16": "ps4",
+    "87|17": "ps4",
+    "87|20": "ps4",
+    "87|30": "ps4",
+    "87|31": "ps4",
+    "87|32": "ps4",
+    "87|33": "ps4",
+    "87|34": "ps4",
+    "87|35": "ps4",
+    "87|36": "ps4",
+    "87|37": "ps4",
+    "87|38": "ps4",
+    "87|40": "ps4",
+    "87|50": "ps4",
+    "87|51": "ps4",
+    "87|52": "ps4",
+    "87|53": "ps4",
+    "87|54": "ps4",
+    "87|55": "ps4",
+    "87|56": "ps4",
+    "87|60": "ps4",
+    "87|70": "ps4",
+    "87|71": "ps4",
+    "87|72": "ps4",
+    "87|73": "ps4",
+    "87|74": "ps4",
+    "87|75": "ps4",
+    "87|76": "ps4",
+    "87|77": "ps4",
+    "87|78": "ps4",
+    "87|79": "ps4",
+    "87|80": "ps2",
+    "87|81": "ps3",
+    "87|82": "ps3",
+    "87|83": "ps3",
+    "87|84": "ps3",
+    "87|85": "ps2",
+    "87|86": "ps2",
+    "87|87": "ps1",
+    "87|88": "ps2",
+    "87|89": "ps2",
+    "87|90": "ps3",
+    "88|10": "ps4",
+    "88|11": "ps4",
+    "88|12": "ps4",
+    "88|13": "ps4",
+    "88|14": "ps4",
+    "88|15": "ps4",
+    "88|16": "ps4",
+    "88|17": "ps4",
+    "88|20": "ps4",
+    "88|30": "ps4",
+    "88|31": "ps4",
+    "88|32": "ps4",
+    "88|33": "ps4",
+    "88|34": "ps4",
+    "88|35": "ps4",
+    "88|36": "ps4",
+    "88|37": "ps4",
+    "88|38": "ps4",
+    "88|40": "ps4",
+    "88|50": "ps4",
+    "88|51": "ps4",
+    "88|52": "ps4",
+    "88|53": "ps4",
+    "88|54": "ps4",
+    "88|55": "ps4",
+    "88|56": "ps4",
+    "88|60": "ps4",
+    "88|70": "ps4",
+    "88|71": "ps4",
+    "88|72": "ps4",
+    "88|73": "ps4",
+    "88|74": "ps4",
+    "88|75": "ps4",
+    "88|76": "ps4",
+    "88|77": "ps4",
+    "88|78": "ps4",
+    "88|79": "ps4",
+    "88|80": "ps3",
+    "88|81": "ps4",
+    "88|82": "ps4",
+    "88|83": "ps4",
+    "88|84": "ps4",
+    "88|85": "ps3",
+    "88|86": "ps3",
+    "88|87": "ps2",
+    "88|88": "ps1",
+    "88|89": "ps2",
+    "88|90": "ps3",
+    "89|10": "ps4",
+    "89|11": "ps4",
+    "89|12": "ps4",
+    "89|13": "ps4",
+    "89|14": "ps4",
+    "89|15": "ps4",
+    "89|16": "ps4",
+    "89|17": "ps4",
+    "89|20": "ps4",
+    "89|30": "ps4",
+    "89|31": "ps4",
+    "89|32": "ps4",
+    "89|33": "ps4",
+    "89|34": "ps4",
+    "89|35": "ps4",
+    "89|36": "ps4",
+    "89|37": "ps4",
+    "89|38": "ps4",
+    "89|40": "ps4",
+    "89|50": "ps4",
+    "89|51": "ps4",
+    "89|52": "ps4",
+    "89|53": "ps4",
+    "89|54": "ps4",
+    "89|55": "ps4",
+    "89|56": "ps4",
+    "89|60": "ps4",
+    "89|70": "ps4",
+    "89|71": "ps4",
+    "89|72": "ps4",
+    "89|73": "ps4",
+    "89|74": "ps4",
+    "89|75": "ps4",
+    "89|76": "ps4",
+    "89|77": "ps4",
+    "89|78": "ps4",
+    "89|79": "ps4",
+    "89|80": "ps2",
+    "89|81": "ps3",
+    "89|82": "ps3",
+    "89|83": "ps4",
+    "89|84": "ps4",
+    "89|85": "ps3",
+    "89|86": "ps3",
+    "89|87": "ps2",
+    "89|88": "ps2",
+    "89|89": "ps1",
+    "89|90": "ps2",
+    "90|10": "ps4",
+    "90|11": "ps4",
+    "90|12": "ps4",
+    "90|13": "ps4",
+    "90|14": "ps4",
+    "90|15": "ps4",
+    "90|16": "ps4",
+    "90|17": "ps4",
+    "90|20": "ps4",
+    "90|30": "ps4",
+    "90|31": "ps4",
+    "90|32": "ps4",
+    "90|33": "ps4",
+    "90|34": "ps4",
+    "90|35": "ps4",
+    "90|36": "ps4",
+    "90|37": "ps4",
+    "90|38": "ps4",
+    "90|40": "ps4",
+    "90|50": "ps4",
+    "90|51": "ps4",
+    "90|52": "ps4",
+    "90|53": "ps4",
+    "90|54": "ps4",
+    "90|55": "ps4",
+    "90|56": "ps4",
+    "90|60": "ps4",
+    "90|70": "ps4",
+    "90|71": "ps4",
+    "90|72": "ps4",
+    "90|73": "ps4",
+    "90|74": "ps4",
+    "90|75": "ps4",
+    "90|76": "ps3",
+    "90|77": "ps4",
+    "90|78": "ps4",
+    "90|79": "ps4",
+    "90|80": "ps2",
+    "90|81": "ps2",
+    "90|82": "ps3",
+    "90|83": "ps4",
+    "90|84": "ps4",
+    "90|85": "ps3",
+    "90|86": "ps3",
+    "90|87": "ps3",
+    "90|88": "ps3",
+    "90|89": "ps2",
+    "90|90": "ps1"
+  },
+  "price_classes": [
+    "city",
+    "ps1",
+    "ps2",
+    "ps3",
+    "ps4"
+  ],
+  "schema_version": 2,
+  "short_trip_cents": 200,
+  "short_trip_maximum_stop_intervals": 3,
+  "single_adult_cents": {
+    "city": 360,
+    "ps1": 390,
+    "ps2": 560,
+    "ps3": 770,
+    "ps4": 1230
+  },
+  "single_child_cents": {
+    "city": 210,
+    "ps1": 230,
+    "ps2": 330,
+    "ps3": 460,
+    "ps4": 740
+  },
+  "sources": [
+    {
+      "path": "docs/data/vrb-dated-price-inputs.json",
+      "sha256": "2a324ec693c53f0e01587dc0b67cb26cc8e7d4ba4f2b2b443f7b6d516591ed80",
+      "source_id": "vrb_prices_2026"
+    },
+    {
+      "path": "docs/data/vrb-price-stage-matrix-2022.csv",
+      "sha256": "31894631c450c30085e48818403654025f0904fbd9442246d1f4b524a34f6c78",
+      "source_id": "vrb_matrix_2022"
+    },
+    {
+      "path": "docs/data/external-regional-rail-single-fares-2026.json",
+      "sha256": "dd4dce35c44cedae7fc215e5d2264fe507d4399fe46332a1acbd9d2ebcef0210",
+      "source_document_sha256": "9e0aa1b359def0589ed02f4b5d2d2b8e390f17370daa4fdcf4c1fde110d5d035",
+      "source_id": "niedersachsentarif_single_table",
+      "url": "https://www.niedersachsentarif.de/wp-content/uploads/2025/12/Preismatrix_Niedersachsentarif_gueltig_ab_14.12.2025.pdf",
+      "valid_from": "2025-12-14"
+    }
+  ],
+  "tariff_snapshot_date": "2026-06-20",
+  "validity_minutes": {
+    "city": 90,
+    "ps1": 90,
+    "ps2": 90,
+    "ps3": 120,
+    "ps4": 150
+  },
+  "zones": [
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "20",
+    "30",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38",
+    "40",
+    "50",
+    "51",
+    "52",
+    "53",
+    "54",
+    "55",
+    "56",
+    "60",
+    "70",
+    "71",
+    "72",
+    "73",
+    "74",
+    "75",
+    "76",
+    "77",
+    "78",
+    "79",
+    "80",
+    "81",
+    "82",
+    "83",
+    "84",
+    "85",
+    "86",
+    "87",
+    "88",
+    "89",
+    "90"
+  ]
+}
