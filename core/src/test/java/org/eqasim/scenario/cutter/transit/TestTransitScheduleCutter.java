@@ -34,6 +34,7 @@ public class TestTransitScheduleCutter {
 	private static final Id<TransitRoute> ROUTE_ID = Id.create("route", TransitRoute.class);
 	private static final double DEPARTURE_TIME_S = 8.0 * 3600.0;
 	private static final double SECONDS_PER_STOP = 60.0;
+	private static final double DWELL_S = 10.0;
 
 	@Test
 	public void keepsTheLastInsideStopOfARouteThatLeavesTheExtent() {
@@ -67,6 +68,26 @@ public class TestTransitScheduleCutter {
 	}
 
 	@Test
+	public void keepsTheTimetableAtTheStopsOfARouteThatEntersTheExtent() {
+		// outside, inside, inside, outside: the vehicle reaches fac2 at 08:01 and fac3 at 08:02
+		TransitSchedule schedule = cut(new int[] { 1, 2, 3, 4 }, 2, 3);
+
+		TransitRoute route = cutRoute(schedule);
+		assertTimetable(route, 0, 1);
+		assertTimetable(route, 1, 2);
+	}
+
+	@Test
+	public void keepsTheTimetableAtTheStopsOfARouteThatLeavesTheExtent() {
+		// inside, inside, outside
+		TransitSchedule schedule = cut(new int[] { 1, 2, 3 }, 1, 2);
+
+		TransitRoute route = cutRoute(schedule);
+		assertTimetable(route, 0, 0);
+		assertTimetable(route, 1, 1);
+	}
+
+	@Test
 	public void dropsARouteThatKeepsOnlyOneInsideStop() {
 		// outside, inside, outside: a single stop inside cannot form a route
 		TransitSchedule schedule = cut(new int[] { 1, 2, 3 }, 2);
@@ -87,7 +108,11 @@ public class TestTransitScheduleCutter {
 					Id.create("fac" + stopXs[k], TransitStopFacility.class), new Coord(stopXs[k], 0.0), false);
 			facility.setLinkId(linkId);
 			schedule.addStopFacility(facility);
-			stops.add(factory.createTransitRouteStop(facility, k * SECONDS_PER_STOP, k * SECONDS_PER_STOP));
+			// arrive DWELL_S before departing (except at the first stop), as a GTFS-converted schedule may
+			TransitRouteStop stop = factory.createTransitRouteStop(facility,
+					k == 0 ? 0.0 : k * SECONDS_PER_STOP - DWELL_S, k * SECONDS_PER_STOP);
+			stop.setAwaitDepartureTime(true);
+			stops.add(stop);
 			linkIds.add(linkId);
 		}
 
@@ -142,5 +167,21 @@ public class TestTransitScheduleCutter {
 
 	private static Set<String> facilityIds(TransitSchedule schedule) {
 		return schedule.getFacilities().keySet().stream().map(Id::toString).collect(Collectors.toSet());
+	}
+
+	/**
+	 * The cut route's stop at {@code cutIndex} is served at the times of the original route's stop at
+	 * {@code originalIndex} (departure time plus the stop's offsets), and still awaits its departure time.
+	 */
+	private static void assertTimetable(TransitRoute route, int cutIndex, int originalIndex) {
+		double departureTime = route.getDepartures().values().iterator().next().getDepartureTime();
+		TransitRouteStop stop = route.getStops().get(cutIndex);
+		double expectedDeparture = DEPARTURE_TIME_S + originalIndex * SECONDS_PER_STOP;
+		double expectedArrival = originalIndex == 0 ? DEPARTURE_TIME_S : expectedDeparture - DWELL_S;
+		Assert.assertEquals("departure at " + stop.getStopFacility().getId(), expectedDeparture,
+				departureTime + stop.getDepartureOffset().seconds(), 1e-9);
+		Assert.assertEquals("arrival at " + stop.getStopFacility().getId(), expectedArrival,
+				departureTime + stop.getArrivalOffset().seconds(), 1e-9);
+		Assert.assertTrue(stop.isAwaitDepartureTime());
 	}
 }
