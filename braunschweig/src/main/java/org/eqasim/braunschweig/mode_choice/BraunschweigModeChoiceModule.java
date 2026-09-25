@@ -12,6 +12,7 @@ import org.eqasim.core.simulation.mode_choice.tour_finder.ActivityTourFinderWith
 import org.eqasim.core.simulation.mode_choice.utilities.estimators.BikeUtilityEstimator;
 import org.eqasim.braunschweig.fares.zonal.DayTicketCapAdjustment;
 import org.eqasim.braunschweig.fares.zonal.DayTicketCapTourEstimator;
+import org.eqasim.braunschweig.fares.zonal.LongDistanceSurchargeContext;
 import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.fares.zonal.VrbFareModule;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
@@ -34,7 +35,9 @@ import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoic
 import org.matsim.core.config.CommandLine;
 import org.matsim.core.config.CommandLine.ConfigurationException;
 
+import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorStopFinder;
 import ch.sbb.matsim.routing.pt.raptor.RaptorInVehicleCostCalculator;
+import ch.sbb.matsim.routing.pt.raptor.RaptorStopFinder;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 
@@ -94,6 +97,9 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 			install(new VrbFareModule());
 			// Overrides SwissRailRaptorModule's default in-vehicle cost: this module is added after it.
 			if (vrbFare.isLongDistanceRoutingSurchargeEnabled()) {
+				bind(LongDistanceSurchargeContext.class).in(Singleton.class);
+				bind(DefaultRaptorStopFinder.class);
+				bind(RaptorStopFinder.class).toProvider(VrbLongDistanceStopFinderProvider.class).in(Singleton.class);
 				bind(RaptorInVehicleCostCalculator.class).toProvider(VrbLongDistanceRoutingCostProvider.class)
 						.in(Singleton.class);
 			}

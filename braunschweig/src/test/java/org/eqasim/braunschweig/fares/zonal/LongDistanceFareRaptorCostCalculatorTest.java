@@ -40,6 +40,8 @@ import org.matsim.vehicles.VehicleUtils;
 import org.matsim.vehicles.Vehicles;
 
 import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorInVehicleCostCalculator;
+import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorIntermodalAccessEgress;
+import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorStopFinder;
 import ch.sbb.matsim.routing.pt.raptor.RaptorUtils;
 import ch.sbb.matsim.routing.pt.raptor.SwissRailRaptor;
 import ch.sbb.matsim.routing.pt.raptor.SwissRailRaptorData;
@@ -108,15 +110,23 @@ public class LongDistanceFareRaptorCostCalculatorTest {
 	}
 
 	private String routedLine(double surchargeSeconds, Integer age) {
-		LongDistanceFareRaptorCostCalculator calculator = LongDistanceFareRaptorCostCalculator.create(
-				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), surchargeSeconds, 6);
-		SwissRailRaptorData data = SwissRailRaptorData.create(scenario.getTransitSchedule(), scenario.getTransitVehicles(),
-				RaptorUtils.createStaticConfig(scenario.getConfig()), scenario.getNetwork(), null);
-		SwissRailRaptor raptor = new SwissRailRaptor.Builder(data, scenario.getConfig()).with(calculator).build();
 		Person person = PopulationUtils.getFactory().createPerson(Id.createPersonId("p"));
 		if (age != null) {
 			PersonUtils.setAge(person, age);
 		}
+		LongDistanceFareRaptorCostCalculator calculator = LongDistanceFareRaptorCostCalculator.create(
+				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), new LongDistanceSurchargeContext(),
+				surchargeSeconds, 6);
+		SwissRailRaptor raptor = new SwissRailRaptor.Builder(data(), scenario.getConfig()).with(calculator).build();
+		return lineOf(raptor, person);
+	}
+
+	private SwissRailRaptorData data() {
+		return SwissRailRaptorData.create(scenario.getTransitSchedule(), scenario.getTransitVehicles(),
+				RaptorUtils.createStaticConfig(scenario.getConfig()), scenario.getNetwork(), null);
+	}
+
+	private String lineOf(SwissRailRaptor raptor, Person person) {
 		List<? extends PlanElement> legs = raptor.calcRoute(DefaultRoutingRequest.withoutAttributes(from, to, 8 * 3600.0 - 60,
 				person));
 		List<String> lines = new ArrayList<>();
@@ -150,7 +160,8 @@ public class LongDistanceFareRaptorCostCalculatorTest {
 	@Test
 	public void surchargeIsAddedOnceToTheDefaultInVehicleCostOfLongDistanceVehiclesOnly() {
 		LongDistanceFareRaptorCostCalculator calculator = LongDistanceFareRaptorCostCalculator.create(
-				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), 1000.0, 6);
+				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), new LongDistanceSurchargeContext(),
+				1000.0, 6);
 		Vehicles vehicles = scenario.getTransitVehicles();
 		Person adult = PopulationUtils.getFactory().createPerson(Id.createPersonId("adult"));
 		PersonUtils.setAge(adult, 40);
@@ -170,7 +181,51 @@ public class LongDistanceFareRaptorCostCalculatorTest {
 		ice.getRoutes().values().iterator().next().getDepartures().values().iterator().next()
 				.setVehicleId(Id.createVehicleId("unknown_vehicle"));
 		assertThrows(IllegalStateException.class, () -> LongDistanceFareRaptorCostCalculator.create(
-				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), 1000.0, 6));
+				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), new LongDistanceSurchargeContext(),
+				1000.0, 6));
+	}
+
+	@Test
+	public void stopFinderValuesTheSurchargeForThisPersonAndTripDistance() {
+		// A valuation that exempts one person: the router sends that person onto the ICE and everyone else onto
+		// the RE; the valuation sees the 30 km straight-line distance of the request.
+		List<Double> distances = new ArrayList<>();
+		SurchargeValuation valuation = new SurchargeValuation() {
+			@Override
+			public double surchargeSeconds(Person person, double tripDistanceKm) {
+				distances.add(tripDistanceKm);
+				return "exempt".equals(person.getId().toString()) ? 0.0 : SURCHARGE_SECONDS;
+			}
+
+			@Override
+			public double referenceSurchargeSeconds() {
+				return SURCHARGE_SECONDS;
+			}
+		};
+		LongDistanceSurchargeContext context = new LongDistanceSurchargeContext();
+		LongDistanceFareRaptorCostCalculator calculator = LongDistanceFareRaptorCostCalculator.create(
+				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), context,
+				valuation.referenceSurchargeSeconds(), 6);
+		LongDistanceSurchargeStopFinder stopFinder = new LongDistanceSurchargeStopFinder(
+				new DefaultRaptorStopFinder(new DefaultRaptorIntermodalAccessEgress(), Map.of()), valuation, context);
+		SwissRailRaptor raptor = new SwissRailRaptor.Builder(data(), scenario.getConfig()).with(calculator).with(stopFinder)
+				.build();
+		assertEquals("ICE", lineOf(raptor, PopulationUtils.getFactory().createPerson(Id.createPersonId("exempt"))));
+		assertEquals("RE", lineOf(raptor, PopulationUtils.getFactory().createPerson(Id.createPersonId("paying"))));
+		assertEquals(30.0, distances.get(0), 1e-9);
+		// Every long-distance evaluation found this request's valuation; none fell back to the reference.
+		assertEquals(0, calculator.referenceFallbacks());
+	}
+
+	@Test
+	public void rideWithoutARecordedValuationFallsBackToTheReferenceAndIsCounted() {
+		LongDistanceFareRaptorCostCalculator calculator = LongDistanceFareRaptorCostCalculator.create(
+				scenario.getTransitSchedule(), scenario.getTransitVehicles(), scopes(), new LongDistanceSurchargeContext(),
+				1000.0, 6);
+		Person adult = PopulationUtils.getFactory().createPerson(Id.createPersonId("adult"));
+		calculator.getInVehicleCost(600.0, -0.002, adult,
+				scenario.getTransitVehicles().getVehicles().get(Id.createVehicleId("ICE_veh")), null, null);
+		assertEquals(1, calculator.referenceFallbacks());
 	}
 
 	@Test

@@ -12,6 +12,7 @@ import org.eqasim.braunschweig.fares.zonal.DayTicketCapAdjustment;
 import org.eqasim.braunschweig.fares.zonal.DayTicketCapTourEstimator;
 import org.eqasim.braunschweig.fares.zonal.FareQuoteSource;
 import org.eqasim.braunschweig.fares.zonal.LongDistanceFareRaptorCostCalculator;
+import org.eqasim.braunschweig.fares.zonal.LongDistanceSurchargeStopFinder;
 import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
 import org.eqasim.braunschweig.mode_choice.BraunschweigModeChoiceModule;
@@ -35,7 +36,9 @@ import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 import org.matsim.core.scenario.ScenarioUtils;
 
 import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorInVehicleCostCalculator;
+import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorStopFinder;
 import ch.sbb.matsim.routing.pt.raptor.RaptorInVehicleCostCalculator;
+import ch.sbb.matsim.routing.pt.raptor.RaptorStopFinder;
 
 import com.google.inject.Injector;
 import com.google.inject.Key;
@@ -117,11 +120,13 @@ public class VrbFareInjectorTest {
 		assertTrue(dmc.getCachedModes().contains("pt"));
 		// The router prices long-distance rides (ADR-0133 D6); this overrides SwissRailRaptorModule's default.
 		assertTrue(injector.getInstance(RaptorInVehicleCostCalculator.class) instanceof LongDistanceFareRaptorCostCalculator);
+		assertTrue(injector.getInstance(RaptorStopFinder.class) instanceof LongDistanceSurchargeStopFinder);
 	}
 
 	@Test
 	public void switchedOffRoutingSurchargeKeepsTheDefaultRaptorInVehicleCost() throws Exception {
-		assertTrue(onInjector(false).getInstance(RaptorInVehicleCostCalculator.class)
-				instanceof DefaultRaptorInVehicleCostCalculator);
+		Injector injector = onInjector(false);
+		assertTrue(injector.getInstance(RaptorInVehicleCostCalculator.class) instanceof DefaultRaptorInVehicleCostCalculator);
+		assertTrue(injector.getInstance(RaptorStopFinder.class) instanceof DefaultRaptorStopFinder);
 	}
 }

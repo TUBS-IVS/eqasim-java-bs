@@ -2,7 +2,9 @@ package org.eqasim.braunschweig.fares.zonal;
 
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.OptionalDouble;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -24,8 +26,10 @@ import ch.sbb.matsim.routing.pt.raptor.RaptorParameters;
  * SwissRailRaptor in-vehicle cost with the long-distance flat price (ADR-0133 D6): a ride on a
  * long-distance vehicle (DB Fernverkehr, Flix; tariff scope {@code long_distance}) costs the default
  * in-vehicle cost plus the fare converted into equivalent in-vehicle seconds, valued at the ride's
- * marginal utility of travel time. The router therefore takes a regional train instead of an ICE unless
- * the time saving is worth the fare, as the mode choice values it.
+ * marginal utility of travel time. The seconds come from the {@link LongDistanceSurchargeContext}, where
+ * {@link LongDistanceSurchargeStopFinder} left them valued for this person and trip; without a value the
+ * reference surcharge is used and counted. The router therefore takes a regional train instead of an ICE
+ * unless the time saving is worth the fare, as the mode choice values it for this person and trip.
  *
  * <p>SwissRailRaptorCore calls the calculator once per ride, with the time from boarding to the candidate
  * alighting stop, and adds the result to the cost at boarding, so the surcharge counts once per ride.
@@ -39,13 +43,16 @@ public final class LongDistanceFareRaptorCostCalculator implements RaptorInVehic
 
 	private final RaptorInVehicleCostCalculator delegate = new DefaultRaptorInVehicleCostCalculator();
 	private final Set<Id<Vehicle>> longDistanceVehicles;
-	private final double surchargeSeconds;
+	private final LongDistanceSurchargeContext context;
+	private final double referenceSurchargeSeconds;
 	private final int childMinimumAge;
+	private final AtomicLong referenceFallbacks = new AtomicLong();
 
-	private LongDistanceFareRaptorCostCalculator(Set<Id<Vehicle>> longDistanceVehicles, double surchargeSeconds,
-			int childMinimumAge) {
+	private LongDistanceFareRaptorCostCalculator(Set<Id<Vehicle>> longDistanceVehicles, LongDistanceSurchargeContext context,
+			double referenceSurchargeSeconds, int childMinimumAge) {
 		this.longDistanceVehicles = Set.copyOf(longDistanceVehicles);
-		this.surchargeSeconds = surchargeSeconds;
+		this.context = context;
+		this.referenceSurchargeSeconds = referenceSurchargeSeconds;
 		this.childMinimumAge = childMinimumAge;
 	}
 
@@ -55,9 +62,11 @@ public final class LongDistanceFareRaptorCostCalculator implements RaptorInVehic
 	 * and the surcharge would silently never apply.
 	 */
 	public static LongDistanceFareRaptorCostCalculator create(TransitSchedule schedule, Vehicles transitVehicles,
-			PtLineScopes lineScopes, double surchargeSeconds, int childMinimumAge) {
-		if (!(surchargeSeconds >= 0.0)) {
-			throw new IllegalArgumentException("long-distance routing surcharge must be >= 0 seconds, got " + surchargeSeconds);
+			PtLineScopes lineScopes, LongDistanceSurchargeContext context, double referenceSurchargeSeconds,
+			int childMinimumAge) {
+		if (!(referenceSurchargeSeconds >= 0.0)) {
+			throw new IllegalArgumentException("long-distance routing surcharge must be >= 0 seconds, got "
+					+ referenceSurchargeSeconds);
 		}
 		Set<Id<Vehicle>> vehicles = new HashSet<>();
 		int lines = 0;
@@ -81,16 +90,16 @@ public final class LongDistanceFareRaptorCostCalculator implements RaptorInVehic
 			}
 		}
 		LOGGER.info(String.format(Locale.ROOT,
-				"[vrb-fares] long-distance routing surcharge: %.0f s (%.1f min) of in-vehicle time on %d vehicles of %d lines",
-				surchargeSeconds, surchargeSeconds / 60.0, vehicles.size(), lines));
-		return new LongDistanceFareRaptorCostCalculator(vehicles, surchargeSeconds, childMinimumAge);
+				"[vrb-fares] long-distance routing surcharge on %d vehicles of %d lines; reference person %.0f s (%.1f min)"
+						+ " of in-vehicle time, valued per person and trip during routing",
+				vehicles.size(), lines, referenceSurchargeSeconds, referenceSurchargeSeconds / 60.0));
+		return new LongDistanceFareRaptorCostCalculator(vehicles, context, referenceSurchargeSeconds, childMinimumAge);
 	}
 
 	/**
-	 * The fare in equivalent PT in-vehicle seconds at the mode choice's value of time: cost / (beta_time /
-	 * beta_cost). ASSUMPTION: the reference person of the cost term (reference distance and income, where
-	 * both interaction factors are 1); the model's value of time grows with distance, so long journeys get
-	 * a somewhat larger surcharge than their own valuation.
+	 * The fare in equivalent PT in-vehicle seconds at the mode choice's value of time of the reference person
+	 * (reference distance and income, where both interaction factors of the cost term are 1): cost /
+	 * (beta_time / beta_cost). The per-trip valuation scales it by the person's and trip's cost weight.
 	 *
 	 * @param fareCents the flat price in euro cents
 	 * @param betaInVehicleTimePerMinute PT in-vehicle time utility per minute (negative)
@@ -110,9 +119,26 @@ public final class LongDistanceFareRaptorCostCalculator implements RaptorInVehic
 			RaptorParameters parameters, RouteSegmentIterator iterator) {
 		double cost = delegate.getInVehicleCost(inVehicleTime, marginalUtility_utl_s, person, vehicle, parameters, iterator);
 		if (vehicle != null && longDistanceVehicles.contains(vehicle.getId()) && pays(person)) {
-			cost += surchargeSeconds * -marginalUtility_utl_s;
+			cost += surchargeSeconds(person) * -marginalUtility_utl_s;
 		}
 		return cost;
+	}
+
+	private double surchargeSeconds(Person person) {
+		OptionalDouble valued = context.surchargeSecondsFor(person);
+		if (valued.isPresent()) {
+			return valued.getAsDouble();
+		}
+		if (referenceFallbacks.incrementAndGet() == 1L) {
+			LOGGER.warn("[vrb-fares] a long-distance ride was routed without a surcharge valued for its trip; the reference"
+					+ " person's surcharge is used (count: referenceFallbacks)");
+		}
+		return referenceSurchargeSeconds;
+	}
+
+	/** Long-distance ride evaluations that used the reference surcharge because no trip valuation was recorded. */
+	long referenceFallbacks() {
+		return referenceFallbacks.get();
 	}
 
 	private boolean pays(Person person) {
