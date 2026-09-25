@@ -55,12 +55,11 @@ public class AddVrbTariffZoneInformation {
 		int ties = 0;
 		Map<String, int[]> byMode = new TreeMap<>();
 		for (TransitStopFacility facility : scenario.getTransitSchedule().getFacilities().values()) {
-			TariffZoneAssigner.Assignment assignment = assigner.assign(facility.getCoord());
+			TariffZoneAssigner.Assignment assignment = attributeZone(facility, assigner);
 			int[] counts = byMode.computeIfAbsent(modeByFacility.getOrDefault(facility.getId().toString(), "unused"),
 					key -> new int[2]);
 			counts[0]++;
 			if (assignment.zoneId() != null) {
-				facility.getAttributes().putAttribute(VrbZoneFareCostModel.ZONE_ATTRIBUTE, assignment.zoneId());
 				zoned++;
 				counts[1]++;
 			}
@@ -75,6 +74,20 @@ public class AddVrbTariffZoneInformation {
 				"[vrb-fares] zone attribution: facilities=%d zoned=%d (%.2f%%) unzoned=%d boundary_ties=%d", total, zoned,
 				100.0 * zoned / Math.max(total, 1), total - zoned, ties));
 		new TransitScheduleWriter(scenario.getTransitSchedule()).writeFile(cmd.getOptionStrict("output-path"));
+	}
+
+	/**
+	 * Assigns the facility's zone and writes it into the {@code vrbTariffZone} attribute. A facility outside every
+	 * polygon loses an attribute from an earlier attribution, so the fare model treats it as external, not as zoned.
+	 */
+	static TariffZoneAssigner.Assignment attributeZone(TransitStopFacility facility, TariffZoneAssigner assigner) {
+		TariffZoneAssigner.Assignment assignment = assigner.assign(facility.getCoord());
+		if (assignment.zoneId() != null) {
+			facility.getAttributes().putAttribute(VrbZoneFareCostModel.ZONE_ATTRIBUTE, assignment.zoneId());
+		} else {
+			facility.getAttributes().removeAttribute(VrbZoneFareCostModel.ZONE_ATTRIBUTE);
+		}
+		return assignment;
 	}
 
 	static String report(int total, int zoned, int ties, Map<String, int[]> byMode) {
