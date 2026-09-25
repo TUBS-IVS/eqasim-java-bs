@@ -53,7 +53,9 @@ public class TransitScheduleCutter {
 			StopSequenceCrossingPoint lastCrossingPoint = crossingPoints.get(crossingPoints.size() - 1);
 
 			int firstIndex = firstCrossingPoint.isOutgoing ? 0 : firstCrossingPoint.index + 1;
-			int lastIndex = lastCrossingPoint.isOutgoing ? lastCrossingPoint.index : originalSequence.size();
+			// An outgoing crossing's index is its inside stop, which the route still serves; subList excludes
+			// its end index, so the end is index + 1 (with index alone, the last inside stop was dropped).
+			int lastIndex = lastCrossingPoint.isOutgoing ? lastCrossingPoint.index + 1 : originalSequence.size();
 
 			return originalSequence.subList(firstIndex, lastIndex);
 		}
