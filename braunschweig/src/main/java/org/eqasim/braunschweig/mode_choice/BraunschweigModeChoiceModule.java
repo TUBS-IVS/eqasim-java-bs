@@ -34,6 +34,7 @@ import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoic
 import org.matsim.core.config.CommandLine;
 import org.matsim.core.config.CommandLine.ConfigurationException;
 
+import ch.sbb.matsim.routing.pt.raptor.RaptorInVehicleCostCalculator;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 
@@ -84,12 +85,18 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 
 		// The legacy names above stay bound; BraunschweigConfigurator switches the pt cost model and
 		// estimator names to the VRB zone fare ones only when the vrbFare module is enabled.
-		if (VrbFareConfigGroup.active(getConfig()) != null) {
+		VrbFareConfigGroup vrbFare = VrbFareConfigGroup.active(getConfig());
+		if (vrbFare != null) {
 			bindCostModel(VRB_FARE_PT_COST_MODEL_NAME).to(VrbZoneFareCostModel.class);
 			bindUtilityEstimator(VRB_FARE_PT_ESTIMATOR_NAME).to(VrbZoneFarePtUtilityEstimator.class);
 			bindTourEstimator(DAY_TICKET_CAP_TOUR_ESTIMATOR_NAME).to(DayTicketCapTourEstimator.class);
 			bind(DayTicketCapAdjustment.class).to(VrbZoneFarePtUtilityEstimator.class);
 			install(new VrbFareModule());
+			// Overrides SwissRailRaptorModule's default in-vehicle cost: this module is added after it.
+			if (vrbFare.isLongDistanceRoutingSurchargeEnabled()) {
+				bind(RaptorInVehicleCostCalculator.class).toProvider(VrbLongDistanceRoutingCostProvider.class)
+						.in(Singleton.class);
+			}
 		}
 
 		bind(ModeParameters.class).to(BraunschweigModeParameters.class);

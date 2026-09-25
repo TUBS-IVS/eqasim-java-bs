@@ -20,6 +20,7 @@ public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 	private String fareModelPath;
 	private String lineScopesPath;
 	private boolean dayTicketCapEnabled = true;
+	private boolean longDistanceRoutingSurchargeEnabled = true;
 	private double maximumUnsupportedShare = 0.05;
 
 	public VrbFareConfigGroup() {
@@ -74,6 +75,20 @@ public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 		return dayTicketCapEnabled;
 	}
 
+	@StringGetter("longDistanceRoutingSurchargeEnabled")
+	public String getLongDistanceRoutingSurchargeEnabled() {
+		return Boolean.toString(longDistanceRoutingSurchargeEnabled);
+	}
+
+	@StringSetter("longDistanceRoutingSurchargeEnabled")
+	public void setLongDistanceRoutingSurchargeEnabled(String value) {
+		longDistanceRoutingSurchargeEnabled = literalBoolean("longDistanceRoutingSurchargeEnabled", value);
+	}
+
+	public boolean isLongDistanceRoutingSurchargeEnabled() {
+		return longDistanceRoutingSurchargeEnabled;
+	}
+
 	@StringGetter("maximumUnsupportedShare")
 	public String getMaximumUnsupportedShare() {
 		return Double.toString(maximumUnsupportedShare);
@@ -101,6 +116,9 @@ public final class VrbFareConfigGroup extends ReflectiveConfigGroup {
 		comments.put("dayTicketCapEnabled",
 				"price a person's VRB trips of a day at the cheapest of all singles or one day ticket plus the singles above its"
 						+ " price class (ASSUMPTION, ADR-0133 D9)");
+		comments.put("longDistanceRoutingSurchargeEnabled",
+				"route PT with the long-distance flat price as extra in-vehicle cost, converted with the mode choice's value"
+						+ " of time (ADR-0133 D6)");
 		comments.put("maximumUnsupportedShare",
 				"the run fails after an iteration whose fallback share exceeds this value (ASSUMPTION for diagnostics)");
 		return comments;

@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 import org.matsim.core.config.Config;
@@ -22,6 +23,7 @@ public class VrbFareConfigGroupTest {
 		fare.addParam("lineScopesPath", "vrb_line_scopes.csv");
 		fare.addParam("dayTicketCapEnabled", "false");
 		fare.addParam("maximumUnsupportedShare", "0.05");
+		fare.addParam("longDistanceRoutingSurchargeEnabled", "false");
 		Config config = ConfigUtils.createConfig();
 		config.addModule(fare);
 		assertSame(fare, VrbFareConfigGroup.active(config));
@@ -29,6 +31,9 @@ public class VrbFareConfigGroupTest {
 		assertEquals("vrb_fare_model_2026.json", fare.getFareModelPath());
 		assertFalse(fare.isDayTicketCapEnabled());
 		assertEquals(0.05, fare.maximumUnsupportedShare(), 0.0);
+		assertFalse(fare.isLongDistanceRoutingSurchargeEnabled());
+		// The router prices long-distance rides by default (ADR-0133 D6).
+		assertTrue(new VrbFareConfigGroup().isLongDistanceRoutingSurchargeEnabled());
 	}
 
 	@Test

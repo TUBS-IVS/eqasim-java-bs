@@ -11,6 +11,7 @@ import java.util.Map;
 import org.eqasim.braunschweig.fares.zonal.DayTicketCapAdjustment;
 import org.eqasim.braunschweig.fares.zonal.DayTicketCapTourEstimator;
 import org.eqasim.braunschweig.fares.zonal.FareQuoteSource;
+import org.eqasim.braunschweig.fares.zonal.LongDistanceFareRaptorCostCalculator;
 import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
 import org.eqasim.braunschweig.mode_choice.BraunschweigModeChoiceModule;
@@ -33,6 +34,9 @@ import org.matsim.core.controler.Controler;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 import org.matsim.core.scenario.ScenarioUtils;
 
+import ch.sbb.matsim.routing.pt.raptor.DefaultRaptorInVehicleCostCalculator;
+import ch.sbb.matsim.routing.pt.raptor.RaptorInVehicleCostCalculator;
+
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.Provider;
@@ -49,6 +53,10 @@ public class VrbFareInjectorTest {
 	public TemporaryFolder folder = new TemporaryFolder();
 
 	private Injector onInjector() throws Exception {
+		return onInjector(true);
+	}
+
+	private Injector onInjector(boolean routingSurcharge) throws Exception {
 		Path fareModel = Path.of(getClass().getResource("/vrb-zone-fares/vrb_fare_model_2026.json").toURI());
 		Path lineScopes = folder.newFile("vrb_line_scopes.csv").toPath();
 		Files.writeString(lineScopes, "line_id,agency_id,agency_name,route_type,mode_class,tariff_scope\n");
@@ -66,6 +74,7 @@ public class VrbFareInjectorTest {
 		raw.addParam("enabled", "true");
 		raw.addParam("fareModelPath", fareModel.toString());
 		raw.addParam("lineScopesPath", lineScopes.toString());
+		raw.addParam("longDistanceRoutingSurchargeEnabled", Boolean.toString(routingSurcharge));
 		config.addModule(raw);
 		config.controller().setOutputDirectory(folder.newFolder("output").toString());
 		config.controller().setOverwriteFileSetting(OverwriteFileSetting.deleteDirectoryIfExists);
@@ -106,5 +115,13 @@ public class VrbFareInjectorTest {
 		assertTrue(injector.getInstance(DayTicketCapAdjustment.class) instanceof VrbZoneFarePtUtilityEstimator);
 		// The cap is a correction in the tour estimator, so the pt estimate cache of the generated config stays.
 		assertTrue(dmc.getCachedModes().contains("pt"));
+		// The router prices long-distance rides (ADR-0133 D6); this overrides SwissRailRaptorModule's default.
+		assertTrue(injector.getInstance(RaptorInVehicleCostCalculator.class) instanceof LongDistanceFareRaptorCostCalculator);
+	}
+
+	@Test
+	public void switchedOffRoutingSurchargeKeepsTheDefaultRaptorInVehicleCost() throws Exception {
+		assertTrue(onInjector(false).getInstance(RaptorInVehicleCostCalculator.class)
+				instanceof DefaultRaptorInVehicleCostCalculator);
 	}
 }
