@@ -17,8 +17,9 @@ import com.google.inject.Singleton;
  * Guice wiring of the zone-based parking costs (design "parking cost zones", sections 3.6 and 5.2; eqasim-bs issue
  * #436); installed by BraunschweigModeChoiceModule only when the braunschweigParking module is enabled. Provides the
  * tariff model read from {@code braunschweigParking.tariffsPath}, resolved relative to the config file like every
- * MATSim input path (the preparation stage writes the JSON next to the prepared config), and binds the outcome counter
- * and the per-iteration outcome report.
+ * MATSim input path (the preparation stage writes the JSON next to the prepared config), and binds the outcome counter,
+ * the per-iteration outcome report and the startup check of the plans ({@link ParkingPopulationCheck}), which takes the
+ * tariff model and so makes it load when the controller starts.
  *
  * <p>{@link ParkingConfigGroup} is not bound here: MATSim's bootstrap injector already binds every typed config group
  * of the config, and a second binding in this module fails the controller start (as for VrbFareModule).
@@ -29,10 +30,12 @@ public final class ParkingModule extends AbstractModule {
 	public void install() {
 		bind(ParkingOutcomeCounter.class).asEagerSingleton();
 		addControlerListenerBinding().to(ParkingOutcomeReportListener.class);
+		addControlerListenerBinding().to(ParkingPopulationCheck.class);
 	}
 
 	/**
-	 * The tariff model of the run, read once.
+	 * The tariff model of the run, read once, at the latest when the controller builds its listeners (the population
+	 * check takes it); ParkingTariffs.read logs its one line then.
 	 *
 	 * @throws IllegalArgumentException when the resolved path is not a file, naming the parameter and the resolved path
 	 * @throws IOException when the file cannot be read or is not valid JSON
