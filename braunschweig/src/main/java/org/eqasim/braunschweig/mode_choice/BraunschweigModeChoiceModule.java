@@ -29,6 +29,9 @@ import org.eqasim.braunschweig.mode_choice.utilities.estimators.VrbZoneFarePtUti
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigCarPassengerPredictor;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPersonPredictor;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPtPredictor;
+import org.eqasim.braunschweig.parking.ParkingConfigGroup;
+import org.eqasim.braunschweig.parking.ParkingModule;
+import org.eqasim.braunschweig.parking.ZoneParkingCarCostModel;
 import org.matsim.contribs.discrete_mode_choice.components.tour_finder.ActivityTourFinder;
 import org.matsim.contribs.discrete_mode_choice.modules.config.ActivityTourFinderConfigGroup;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
@@ -64,6 +67,12 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	public static final String VRB_FARE_PT_COST_MODEL_NAME = "VrbZoneFareCostModel";
 	public static final String VRB_FARE_PT_ESTIMATOR_NAME = "VrbZoneFarePtUtilityEstimator";
 	public static final String DAY_TICKET_CAP_TOUR_ESTIMATOR_NAME = "DayTicketCapTourEstimator";
+
+	/**
+	 * Zone-based parking costs (design "parking cost zones", eqasim-bs issue #436): bound only when the
+	 * braunschweigParking config module is enabled.
+	 */
+	public static final String ZONE_PARKING_CAR_COST_MODEL_NAME = "ZoneParkingCarCostModel";
 
 	public BraunschweigModeChoiceModule(CommandLine commandLine) {
 		this.commandLine = commandLine;
@@ -103,6 +112,13 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 				bind(RaptorInVehicleCostCalculator.class).toProvider(VrbLongDistanceRoutingCostProvider.class)
 						.in(Singleton.class);
 			}
+		}
+
+		// Likewise the legacy car cost model stays bound; BraunschweigConfigurator switches the car cost model
+		// name to the zone parking one only when the braunschweigParking module is enabled. Estimators stay.
+		if (ParkingConfigGroup.active(getConfig()) != null) {
+			bindCostModel(ZONE_PARKING_CAR_COST_MODEL_NAME).to(ZoneParkingCarCostModel.class);
+			install(new ParkingModule());
 		}
 
 		bind(ModeParameters.class).to(BraunschweigModeParameters.class);
