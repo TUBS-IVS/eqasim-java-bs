@@ -206,7 +206,9 @@ public class ZoneParkingCarCostModelTest {
 		assertEquals(DRIVING_COST_EUR + 9.00, cost_EUR(visitor), EUR_TOLERANCE);
 		assertEquals(onlyOnce(ParkingOutcome.PAID_LONG_STAY), counter.snapshotAndReset());
 
-		// A resident of another zone is a visitor here (assumption R1: the exemption holds in the own zone only).
+		// A resident of another zone is a visitor here (assumption R1: the exemption holds in the own zone only). The
+		// fixture has one resident zone, so a street zone id stands in for the other one; ParkingPopulationCheck would
+		// reject it at startup, the cost model compares the ids only.
 		CarTrip otherResident = tripTo(inZone(activity("work", 61200.0), "fx_res_a"), 27000, false);
 		otherResident.person().getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, "fx_bs_ia");
 		assertEquals(DRIVING_COST_EUR + 9.00, cost_EUR(otherResident), EUR_TOLERANCE);
@@ -327,6 +329,39 @@ public class ZoneParkingCarCostModelTest {
 		IllegalStateException error = assertThrows(IllegalStateException.class, () -> cost_EUR(carTrip));
 		assertTrue(error.getMessage(), error.getMessage().contains("driver"));
 		assertTrue(error.getMessage(), error.getMessage().contains("shop"));
+	}
+
+	/**
+	 * A routed element without a defined end (a car leg without travel time, in the route or on the leg) leaves the stay
+	 * without an arrival. MATSim's TimeTracker fails with a generic message when a further element follows it; the model
+	 * names the person, the index and type of the element and the car trip instead, whether the element is the last one
+	 * of the trip or not.
+	 */
+	@Test
+	public void anElementWithoutADefinedEndFailsNamingTheElementAndTheTrip() {
+		Leg untimedCarLeg = PopulationUtils.createLeg(TransportMode.car);
+		Route route = RouteUtils.createGenericRouteImpl(Id.createLinkId("from"), Id.createLinkId("to"));
+		route.setDistance(CAR_DISTANCE_M);
+		untimedCarLeg.setRoute(route);
+
+		List<PlanElement> elements = new ArrayList<>();
+		elements.add(leg(TransportMode.walk, 400.0, 300.0));
+		elements.add(PopulationUtils.createStageActivityFromCoordLinkIdAndModePrefix(new Coord(0, 0),
+				Id.createLinkId("from"), TransportMode.car));
+		elements.add(untimedCarLeg);
+		elements.add(PopulationUtils.createStageActivityFromCoordLinkIdAndModePrefix(new Coord(1000, 0),
+				Id.createLinkId("to"), TransportMode.car));
+		elements.add(leg(TransportMode.walk, 400.0, 300.0));
+		CarTrip midTrip = tripTo(inZone(activity("shop", 39600.0), "fx_bs_ia"), 32400, false, elements);
+		IllegalStateException error = assertThrows(IllegalStateException.class, () -> cost_EUR(midTrip));
+		assertTrue(error.getMessage(), error.getMessage().startsWith("person driver: element 2 (leg car) of the car trip"
+				+ " at trip index 0 (home to shop, departing at 32400.0 s) has no defined end time"));
+
+		CarTrip lastElement = tripTo(inZone(activity("shop", 39600.0), "fx_bs_ia"), 32400, false, List.of(untimedCarLeg));
+		error = assertThrows(IllegalStateException.class, () -> cost_EUR(lastElement));
+		assertTrue(error.getMessage(), error.getMessage().startsWith("person driver: element 0 (leg car) of the car trip"
+				+ " at trip index 0 (home to shop, departing at 32400.0 s) has no defined end time"));
+		assertEquals(0L, total(counter.snapshotAndReset()));
 	}
 
 	/** Every priced call records exactly one outcome, so the report shows the outcome mix of all evaluated car trips. */

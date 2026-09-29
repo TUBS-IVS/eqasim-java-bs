@@ -7,6 +7,7 @@ import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigCostParameters
 import org.eqasim.core.simulation.mode_choice.cost.AbstractCostModel;
 import org.matsim.api.core.v01.TransportMode;
 import org.matsim.api.core.v01.population.Activity;
+import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.PlanElement;
@@ -49,7 +50,9 @@ import com.google.inject.Inject;
  * <p>Every call records exactly one outcome in the {@link ParkingOutcomeCounter}, NO_ZONE included, so the
  * per-iteration report shows which rule priced the car trips; a failing call records nothing. An unknown zone id (in
  * either zone attribute), a mistyped attribute, a non-terminal activity without an end and an activity ending before
- * the arrival raise IllegalStateException naming the person, the activity and the attribute.
+ * the arrival raise IllegalStateException naming the person, the activity and the attribute; a routed trip element
+ * without a defined end raises it naming the person, the index and type of the element and the car trip.
+ * {@link ParkingPopulationCheck} checks the attributes of every plan once at the controller start already.
  *
  * <p>Free of side effects apart from the counter: the plan, its activities and the trip are only read. Thread-safe:
  * the state is immutable and every call uses its own TimeTracker; the counter is thread-safe.
@@ -118,12 +121,21 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		Activity destination = trip.getDestinationActivity();
 		TimeTracker timeTracker = new TimeTracker(timeInterpretation);
 		timeTracker.setTime(trip.getDepartureTime());
-		OptionalTime arrival = timeTracker.addElements(elements);
-		if (arrival.isUndefined()) {
-			throw new IllegalStateException("person " + person.getId() + ": the car trip to activity " + destination.getType()
-					+ " has no defined arrival time; every element of the routed trip needs a travel time or a duration");
+		// Element by element, not addElements: after an element without a defined end, TimeTracker fails on the next one
+		// with a message that names neither the element nor the trip.
+		int index = 0;
+		for (PlanElement element : elements) {
+			if (timeTracker.addElement(element).isUndefined()) {
+				throw new IllegalStateException(String.format(Locale.ROOT,
+						"person %s: element %d (%s) of the car trip at trip index %d (%s to %s, departing at %.1f s) has no"
+								+ " defined end time, so the parking stay at the destination has no arrival; every element of"
+								+ " a routed trip needs a travel time (leg) or an end time or maximum duration (activity)",
+						person.getId(), index, describe(element), trip.getIndex(), trip.getOriginActivity().getType(),
+						destination.getType(), trip.getDepartureTime()));
+			}
+			index++;
 		}
-		double arrival_s = arrival.seconds();
+		double arrival_s = timeTracker.getTime().seconds();
 		if (isTerminal(person, destination)) {
 			// Never before the arrival (ParkingCostCalculator.terminalDeparture_s), so no further check is needed.
 			return new Stay(arrival_s, ParkingCostCalculator.terminalDeparture_s(arrival_s, tariff.feeEnd_s()));
@@ -155,6 +167,17 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		}
 		List<PlanElement> planElements = plan.getPlanElements();
 		return destination == planElements.get(planElements.size() - 1);
+	}
+
+	/** A routed trip element for an error message: "leg" and its mode, or "activity" and its type. */
+	private static String describe(PlanElement element) {
+		if (element instanceof Leg leg) {
+			return "leg " + leg.getMode();
+		}
+		if (element instanceof Activity activity) {
+			return "activity " + activity.getType();
+		}
+		return element.getClass().getName();
 	}
 
 	/** The zone id of the destination, or null outside every zone (assumption Z1). */

@@ -30,8 +30,13 @@ import com.google.inject.Singleton;
  * decimals; 0 when no stay was priced). One row per outcome in declaration order, zero counts included, so every
  * iteration file has the same rows.
  *
- * <p>The counts cover every car alternative that mode choice priced in the iteration (the eqasim car predictor caches
- * per trip and route), not only the selected trips; replanning happens before the iteration ends, so the iteration-0
+ * <p>The counts are the calls of the zone parking car cost model in the iteration, one per car alternative that mode
+ * choice priced, chosen or not: numbers of pricing calls, not of distinct trips or persons. The eqasim car predictor
+ * (CarPredictor, a CachedVariablePredictor) calls the cost model whenever it is asked for another trip than on its
+ * previous call: it keeps the variables of that one trip only, keyed by the identity of the DiscreteModeChoiceTrip
+ * object, not by the route. Before it, the trip estimate cache of the discrete mode choice contrib (CachedTripEstimator,
+ * for the cachedModes, which include car in the eqasim and Braunschweig configs) answers a repeated estimate of the same
+ * trip at the same departure second without a call. Replanning happens before the iteration ends, so the iteration-0
  * file, written before any replanning, has zero counts. Version 1 reports only: no threshold, no failure.
  */
 @Singleton
