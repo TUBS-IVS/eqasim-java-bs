@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import org.eqasim.braunschweig.parking.ParkingCostCalculator.Result;
 import org.junit.Test;
@@ -24,13 +25,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * Parking cost of one stay (design section 3.2). The 26 golden cases in {@code parking/parking_golden_cases.json} are
  * the cross-language contract: the Python reference braunschweig.parking.cost (eqasim-bs) evaluates the same file to
- * the same cents and outcomes. The fixture tariffs pin the arithmetic, not real tariffs.
+ * the same cents and outcomes. The fixture tariffs pin the arithmetic, not real tariffs. The file is a byte-for-byte
+ * copy of the one scripts/export_parking_golden_cases.py writes (eqasim-bs tests/fixtures/parking); regenerate it
+ * there and copy it, never edit it here.
  */
 public class ParkingCostCalculatorTest {
 	static final String GOLDEN_CASES_RESOURCE = "/parking/parking_golden_cases.json";
 
 	/** G01..G26 of the plan's golden table; a truncated or replaced fixture must not pass by asserting fewer cases. */
 	private static final int GOLDEN_CASE_COUNT = 26;
+
+	/**
+	 * The keys of one golden case, as the Python generator writes them (braunschweig.parking.golden_cases.CASE_FIELDS):
+	 * a dropped or renamed key fails instead of being read as absent.
+	 */
+	private static final Set<String> CASE_FIELDS = Set.of("id", "zone_id", "arrival_s", "departure_s", "purpose",
+			"parking_free", "resident_of_zone", "terminal", "expected_cents", "expected_outcome", "expected_error");
 
 	private static final int SECONDS_PER_DAY = 86400;
 
@@ -67,15 +77,19 @@ public class ParkingCostCalculatorTest {
 		for (JsonNode goldenCase : cases) {
 			String id = goldenCase.get("id").asText();
 			assertTrue("duplicate golden case id " + id, ids.add(id));
+			assertEquals(id + ": keys of the golden case", CASE_FIELDS, fieldNames(goldenCase));
 			ZoneTariff tariff = tariffs.get(goldenCase.get("zone_id").asText());
 			assertNotNull(id + ": unknown zone " + goldenCase.get("zone_id"), tariff);
 			double arrival_s = wholeSeconds(goldenCase, "arrival_s");
-			double departure_s = departure(id, goldenCase, tariff, failures);
+			double departure_s = departure(goldenCase, tariff);
 			String purpose = goldenCase.get("purpose").asText();
 			boolean parkingFree = literalBoolean(goldenCase, "parking_free");
 			boolean residentOfZone = literalBoolean(goldenCase, "resident_of_zone");
-			JsonNode expectedError = goldenCase.get("expected_error");
-			if (expectedError != null && expectedError.booleanValue()) {
+			if (literalBoolean(goldenCase, "expected_error")) {
+				// The generator writes no expectation for an invalid stay: both fields are JSON null.
+				assertTrue(id + ": an error case carries expected_cents = null", goldenCase.get("expected_cents").isNull());
+				assertTrue(id + ": an error case carries expected_outcome = null",
+						goldenCase.get("expected_outcome").isNull());
 				errorCases++;
 				try {
 					Result result = ParkingCostCalculator.cents(tariff, arrival_s, departure_s, purpose, parkingFree,
@@ -118,20 +132,24 @@ public class ParkingCostCalculatorTest {
 	}
 
 	/**
-	 * A non-terminal case carries its departure. A terminal case departs by the terminal rule (assumption T1); a
-	 * recorded departure_s is then the rule's expected result and is checked, a null one only means "computed".
+	 * A non-terminal case carries its departure. A terminal case carries departure_s = null, as the Python generator
+	 * writes it: the implementation derives the departure from the arrival by the terminal rule (assumption T1). The
+	 * rule's results for G07 and G08 are pinned in {@link #terminalDepartureEndsWithTheFeeWindowOfTheArrivalDay}.
 	 */
-	private static double departure(String id, JsonNode goldenCase, ZoneTariff tariff, List<String> failures) {
+	private static double departure(JsonNode goldenCase, ZoneTariff tariff) {
 		if (!literalBoolean(goldenCase, "terminal")) {
 			return wholeSeconds(goldenCase, "departure_s");
 		}
-		double terminalDeparture_s = ParkingCostCalculator.terminalDeparture_s(wholeSeconds(goldenCase, "arrival_s"),
-				tariff.feeEnd_s());
 		JsonNode recorded = goldenCase.get("departure_s");
-		if (recorded != null && !recorded.isNull() && recorded.asDouble() != terminalDeparture_s) {
-			failures.add(id + ": terminal departure expected " + recorded + " s, got " + terminalDeparture_s + " s");
-		}
-		return terminalDeparture_s;
+		assertTrue(goldenCase.get("id") + ": a terminal case carries departure_s = null, got " + recorded,
+				recorded != null && recorded.isNull());
+		return ParkingCostCalculator.terminalDeparture_s(wholeSeconds(goldenCase, "arrival_s"), tariff.feeEnd_s());
+	}
+
+	private static Set<String> fieldNames(JsonNode node) {
+		Set<String> names = new TreeSet<>();
+		node.fieldNames().forEachRemaining(names::add);
+		return names;
 	}
 
 	/** The closed form equals the day-by-day sum of design section 3.2 (transcribed below) on a grid of stays. */
@@ -177,6 +195,7 @@ public class ParkingCostCalculatorTest {
 
 	@Test
 	public void terminalDepartureEndsWithTheFeeWindowOfTheArrivalDay() {
+		// The car pays until the fee window of its arrival day ends (G07).
 		assertEquals(72000.0, ParkingCostCalculator.terminalDeparture_s(70200, 72000), 0.0);
 		// Arriving after the window: the departure is the arrival itself, the stay is free (G08).
 		assertEquals(75600.0, ParkingCostCalculator.terminalDeparture_s(75600, 72000), 0.0);
@@ -270,23 +289,6 @@ public class ParkingCostCalculatorTest {
 				ParkingCostCalculator.cents(peine, 36000, 36000 + 1800, "shop", false, false));
 		assertEquals(new Result(100, ParkingOutcome.PAID_METERED),
 				ParkingCostCalculator.cents(peine, 36000, 36000 + 1801, "shop", false, false));
-	}
-
-	/** Design 3.1 lists no billing unit for resident zones; their hourly rate is 0, so no unit is needed to charge 0. */
-	@Test
-	public void residentZoneWithoutBillingUnitChargesNothingWithinTheMaximumStay() throws Exception {
-		ZoneTariff residents = zone("""
-				{"zone_type": "resident_zone", "hourly_rate_cents": 0, "billing_unit_min": null,
-				 "free_if_stay_at_most_min": null, "first_period_min": null, "first_period_cents": null,
-				 "daily_cap_cents": null, "max_stay_min": 120, "long_stay_product_cents": 900, "member_day_cents": null,
-				 "guest_day_cents": null, "fee_start_s": 0, "fee_end_s": 86400, "resident_exempt": true}
-				""");
-		assertEquals(new Result(0, ParkingOutcome.FREE_WITHIN_LIMIT),
-				ParkingCostCalculator.cents(residents, 36000, 41400, "shop", false, false));
-		assertEquals(new Result(900, ParkingOutcome.PAID_LONG_STAY),
-				ParkingCostCalculator.cents(residents, 28800, 61200, "work", false, false));
-		assertEquals(new Result(0, ParkingOutcome.RESIDENT_FREE),
-				ParkingCostCalculator.cents(residents, 28800, 61200, "work", false, true));
 	}
 
 	/** Integer money never wraps around: an absurd rate fails loudly instead of producing a small or negative price. */

@@ -187,11 +187,8 @@ public final class ParkingCostCalculator {
 	 * {@code (units * billing_unit_min * hourly_rate_cents + 30) / 60} in euro cents.
 	 */
 	private static long meteredCents(ZoneTariff tariff, long remaining_s) {
-		if (tariff.billingUnitMinutes().isEmpty()) {
-			// ZoneTariff admits a missing billing unit only for a resident zone, whose hourly rate is 0 (design 3.1): the
-			// formula then yields (units * unit * 0 + 30) / 60 = 0 for every unit count, so no unit is needed.
-			return 0;
-		}
+		// ZoneTariff guarantees the billing unit and the hourly rate of every zone type that reaches this step
+		// (street_paid, resident_zone); campus zones are priced by their day products before it.
 		long billingUnitMinutes = tariff.billingUnitMinutes().getAsInt();
 		long units = Math.ceilDiv(remaining_s, billingUnitMinutes * SECONDS_PER_MINUTE);
 		long billedMinutes = Math.multiplyExact(units, billingUnitMinutes);

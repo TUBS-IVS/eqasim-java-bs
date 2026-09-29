@@ -1,18 +1,23 @@
 {
   "assumptions": [
-    "ASSUMPTION: fixture tariff set for tests; it pins the arithmetic, not real tariffs.",
-    "ASSUMPTION Z1: outside every parking zone parking is free.",
-    "ASSUMPTION D1: the simulated day is an average weekday; the fee window repeats every 86400 s.",
-    "ASSUMPTION T1: a car at the last activity of the plan pays until the fee window of its arrival day ends.",
-    "ASSUMPTION M1: a maximum stay is compared with the chargeable duration, in every municipality."
+    "ASSUMPTION Z1: Outside every zone parking is free. Where it bites: Municipalities marked not_audited. Sensitivity: Register status; A/B by adding zones.",
+    "ASSUMPTION D1: The simulated day is an average weekday; Saturday/holiday windows are not modelled. Where it bites: All zones. Sensitivity: none.",
+    "ASSUMPTION T1: A terminal stay pays until the fee window of the arrival day ends. Where it bites: Non-home last activities in zones (rare). Sensitivity: parking_terminal_stay_rule reserved.",
+    "ASSUMPTION M1: Maximum stay compares the chargeable duration; a longer stay buys the zone's long-stay product. Where it bites: Ia, Peine, resident zones. Sensitivity: long_stay_product_eur per zone.",
+    "ASSUMPTION A1: The free share observed for current SrV car commuters applies to all workers/students of the class. Where it bites: Work/education in paid zones. Sensitivity: parking_workplace_free_share_shift.",
+    "ASSUMPTION C1: Members (work/education on campus) pay the day product; passes are not modelled. Where it bites: TU zones. Sensitivity: set member_day_eur to 0 in an arm.",
+    "ASSUMPTION R1: Residence inside a resident zone equals permit possession. Where it bites: Non-home activities of residents in their own zone. Sensitivity: none (small).",
+    "ASSUMPTION H1: Home activities are free everywhere. Where it bites: All. Sensitivity: none.",
+    "ASSUMPTION F1: Fee windows without an ordinance/signage source are marked 'assumption' in the table. Where it bites: Per zone. Sensitivity: documented per row.",
+    "ASSUMPTION S1: Each zone has ONE regime; mixed streets are digitised as separate zones or take the dominant regime with a note. Where it bites: Per zone. Sensitivity: notes."
   ],
   "currency": "EUR",
   "schema_version": 1,
   "sources": [
     {
-      "path": "fixture",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "source_id": "fixture"
+      "path": "scripts/export_parking_golden_cases.py",
+      "sha256": "46fa76a9d058c44389f15ae99ce0b02200759a6dedc1eb553cb49ce3737fdb3e",
+      "source_id": "parking_tariffs_fixture"
     }
   ],
   "tariff_snapshot_date": "2026-09-28",

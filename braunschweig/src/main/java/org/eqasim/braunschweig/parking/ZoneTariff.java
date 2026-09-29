@@ -17,8 +17,9 @@ import java.util.OptionalLong;
  * <li>every zone: {@code 0 <= feeStart_s < feeEnd_s <= 86400}, no negative money, a maximum stay only together with a
  * long-stay product, a first-period length only together with a first-period price;</li>
  * <li>{@code street_paid}: hourly rate and billing unit;</li>
- * <li>{@code resident_zone}: maximum stay (hence a long-stay product), {@code resident_exempt = true} and an hourly rate
- * of exactly 0 (disc parking for non-residents); the billing unit may be absent because a zero rate needs none;</li>
+ * <li>{@code resident_zone}: maximum stay (hence a long-stay product), {@code resident_exempt = true}, an hourly rate
+ * of exactly 0 (disc parking for non-residents) and a billing unit: design section 3.1 does not list it, but the
+ * metered step of section 3.2 divides by it for every non-campus zone, and the Python reference requires it too;</li>
  * <li>{@code campus}: member and guest day products.</li>
  * </ul>
  * Fields that the pseudo-code of design section 3.2 tests for truthiness ({@code if t.daily_cap_cents: ...}) must be
@@ -121,6 +122,7 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 				requirePresent(zone, "billing_unit_min", billingUnitMinutes.isPresent(), zoneType);
 			}
 			case RESIDENT_ZONE -> {
+				requirePresent(zone, "billing_unit_min", billingUnitMinutes.isPresent(), zoneType);
 				requirePresent(zone, "max_stay_min", maxStayMinutes.isPresent(), zoneType);
 				if (!residentExempt) {
 					throw new IllegalArgumentException(zone + "resident_exempt must be true for a resident_zone");

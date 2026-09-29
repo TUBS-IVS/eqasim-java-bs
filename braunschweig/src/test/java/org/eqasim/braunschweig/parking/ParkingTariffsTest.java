@@ -28,8 +28,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Reading the parking tariff model JSON (design section 5.4, schema 1). The rejection cases mutate the parsed fixture
- * tree, so they hold for any formatting of {@code parking/parking_tariffs_fixture.json}, which is replaced by the file
- * the Python exporter writes. Only facts of the plan's fixture tariff table are pinned, not the exporter's metadata.
+ * tree, so they hold for any formatting of {@code parking/parking_tariffs_fixture.json}, a byte-for-byte copy of the
+ * file scripts/export_parking_golden_cases.py writes (eqasim-bs tests/fixtures/parking). Only facts of the plan's
+ * fixture tariff table are pinned, not the exporter's metadata (assumption texts, sources).
  */
 public class ParkingTariffsTest {
 	private static final String FIXTURE_RESOURCE = "/parking/parking_tariffs_fixture.json";
@@ -89,6 +90,7 @@ public class ParkingTariffsTest {
 		assertEquals(ZoneType.RESIDENT_ZONE, residents.zoneType());
 		assertTrue(residents.residentExempt());
 		assertEquals(OptionalLong.of(0), residents.hourlyRateCents());
+		assertEquals(OptionalInt.of(60), residents.billingUnitMinutes());
 		assertEquals(OptionalInt.of(120), residents.maxStayMinutes());
 		assertEquals(OptionalLong.of(900), residents.longStayProductCents());
 
@@ -185,11 +187,16 @@ public class ParkingTariffsTest {
 				"member_day_cents is required for a campus");
 		assertRejected(root -> zone(root, "fx_campus").putNull("guest_day_cents"), "parking zone fx_campus",
 				"guest_day_cents is required for a campus");
+	}
 
-		// Design 3.1 does not require a billing unit for a resident zone: its zero rate needs none.
-		ObjectNode root = fixtureTree();
-		zone(root, "fx_res_a").putNull("billing_unit_min");
-		assertEquals(OptionalInt.empty(), ParkingTariffs.parse(root).zone("fx_res_a").orElseThrow().billingUnitMinutes());
+	/**
+	 * Design 3.1 does not list a billing unit for a resident zone, but the metered step of section 3.2 divides by it for
+	 * every non-campus zone; the Python reference braunschweig.parking.cost requires it, and so does this reader.
+	 */
+	@Test
+	public void rejectsAResidentZoneWithoutBillingUnit() throws Exception {
+		assertRejected(root -> zone(root, "fx_res_a").putNull("billing_unit_min"), "parking zone fx_res_a",
+				"billing_unit_min is required for a resident_zone");
 	}
 
 	@Test
