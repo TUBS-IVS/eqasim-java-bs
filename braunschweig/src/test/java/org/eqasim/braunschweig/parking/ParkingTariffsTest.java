@@ -135,6 +135,25 @@ public class ParkingTariffsTest {
 		assertRejected(root -> root.put("schema_version", "1"), "schema_version", "integral");
 	}
 
+	/**
+	 * The version decides which fields a document has, so it is checked before them: a document of another schema fails
+	 * with its version, not with the fields that schema renamed or added.
+	 */
+	@Test
+	public void checksTheSchemaVersionBeforeTheDocumentFields() throws Exception {
+		ObjectNode schema2 = fixtureTree();
+		schema2.put("schema_version", 2);
+		schema2.remove("weekday_only");
+		schema2.put("service_days", "weekday");
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(schema2));
+		assertEquals("parking_tariffs: schema_version must be 1, got 2", error.getMessage());
+
+		ObjectNode unversioned = fixtureTree();
+		unversioned.remove("schema_version");
+		error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(unversioned));
+		assertTrue(error.getMessage(), error.getMessage().startsWith("parking_tariffs: schema_version must be"));
+	}
+
 	@Test
 	public void rejectsAnUnknownZoneType() throws Exception {
 		assertRejected(root -> zone(root, "fx_pe").put("zone_type", "garage"), "zone fx_pe", "unknown zone_type garage",
@@ -147,9 +166,65 @@ public class ParkingTariffsTest {
 	@Test
 	public void rejectsAMaximumStayWithoutALongStayProduct() throws Exception {
 		assertRejected(root -> zone(root, "fx_bs_ia").putNull("long_stay_product_cents"), "parking zone fx_bs_ia",
-				"long_stay_product_cents is required when max_stay_min is set");
+				"max_stay_min and long_stay_product_cents must be set together");
 		assertRejected(root -> zone(root, "fx_pe").putNull("long_stay_product_cents"), "parking zone fx_pe",
-				"long_stay_product_cents is required when max_stay_min is set");
+				"max_stay_min and long_stay_product_cents must be set together");
+	}
+
+	/**
+	 * The pairing of the Python reference (_PAIRED_FIELDS) holds both ways: a long-stay product without a maximum stay
+	 * would never be sold, because only a stay beyond the maximum buys it.
+	 */
+	@Test
+	public void rejectsALongStayProductWithoutAMaximumStay() throws Exception {
+		assertRejected(root -> zone(root, "fx_bs_ib").put("long_stay_product_cents", 900), "parking zone fx_bs_ib",
+				"max_stay_min and long_stay_product_cents must be set together");
+		assertRejected(root -> zone(root, "fx_bs_ia").putNull("max_stay_min"), "parking zone fx_bs_ia",
+				"max_stay_min and long_stay_product_cents must be set together");
+	}
+
+	/**
+	 * Fields a zone type does not have must be null (design section 3.1; the Python reference's _NOT_APPLICABLE_FIELDS,
+	 * transcribed here field by field): the cost rules of the type never read them, so a value there would be a tariff
+	 * element that is silently ignored. Each field is set alone, to a value its range check accepts.
+	 */
+	@Test
+	public void rejectsFieldsThatDoNotApplyToTheZoneType() throws Exception {
+		Map<String, List<String>> notApplicableByZone = Map.of( //
+				"fx_bs_ib", List.of("member_day_cents", "guest_day_cents"), //
+				"fx_res_a", List.of("free_if_stay_at_most_min", "first_period_min", "first_period_cents", "daily_cap_cents",
+						"member_day_cents", "guest_day_cents"), //
+				"fx_campus", List.of("hourly_rate_cents", "billing_unit_min", "free_if_stay_at_most_min", "first_period_min",
+						"first_period_cents", "daily_cap_cents", "max_stay_min", "long_stay_product_cents"));
+		Map<String, String> zoneTypes = Map.of("fx_bs_ib", "street_paid", "fx_res_a", "resident_zone", "fx_campus",
+				"campus");
+		int rejected = 0;
+		for (Map.Entry<String, List<String>> entry : notApplicableByZone.entrySet()) {
+			String zoneId = entry.getKey();
+			for (String field : entry.getValue()) {
+				assertRejected(root -> zone(root, zoneId).put(field, 1), "parking zone " + zoneId,
+						field + " does not apply to a " + zoneTypes.get(zoneId) + " zone and must be null, got 1");
+				rejected++;
+			}
+		}
+		assertEquals(16, rejected);
+	}
+
+	/**
+	 * A daily cap below the first-period price contradicts the tariff: every metered stay buys the first period, and the
+	 * cap would then price the stay below the block it bought (a rule eqasim-bs issue #436 adds to both implementations).
+	 * A cap equal to the first-period price is consistent.
+	 */
+	@Test
+	public void rejectsADailyCapBelowTheFirstPeriodPrice() throws Exception {
+		assertRejected(root -> zone(root, "fx_wob").put("daily_cap_cents", 109), "parking zone fx_wob",
+				"daily_cap_cents 109 is below first_period_cents 110");
+		assertRejected(root -> zone(root, "fx_sz").put("daily_cap_cents", 69), "parking zone fx_sz",
+				"daily_cap_cents 69 is below first_period_cents 70");
+
+		ObjectNode root = fixtureTree();
+		zone(root, "fx_wob").put("daily_cap_cents", 110);
+		assertEquals(OptionalLong.of(110), ParkingTariffs.parse(root).zone("fx_wob").orElseThrow().dailyCapCents());
 	}
 
 	@Test
@@ -177,12 +252,14 @@ public class ParkingTariffsTest {
 				"billing_unit_min is required for a street_paid");
 		assertRejected(root -> zone(root, "fx_res_a").putNull("max_stay_min"), "parking zone fx_res_a",
 				"max_stay_min is required for a resident_zone");
+		assertRejected(root -> zone(root, "fx_res_a").putNull("long_stay_product_cents"), "parking zone fx_res_a",
+				"long_stay_product_cents is required for a resident_zone");
 		assertRejected(root -> zone(root, "fx_res_a").put("resident_exempt", false), "parking zone fx_res_a",
 				"resident_exempt must be true for a resident_zone");
 		assertRejected(root -> zone(root, "fx_res_a").put("hourly_rate_cents", 50), "parking zone fx_res_a",
 				"hourly_rate_cents must be 0 for a resident_zone");
 		assertRejected(root -> zone(root, "fx_res_a").putNull("hourly_rate_cents"), "parking zone fx_res_a",
-				"hourly_rate_cents must be 0 for a resident_zone");
+				"hourly_rate_cents is required for a resident_zone");
 		assertRejected(root -> zone(root, "fx_campus").putNull("member_day_cents"), "parking zone fx_campus",
 				"member_day_cents is required for a campus");
 		assertRejected(root -> zone(root, "fx_campus").putNull("guest_day_cents"), "parking zone fx_campus",
@@ -299,6 +376,19 @@ public class ParkingTariffsTest {
 		Files.writeString(duplicate, document.formatted("campus_a", campus, "campus_a", campus), StandardCharsets.UTF_8);
 		IOException error = assertThrows(IOException.class, () -> ParkingTariffs.read(duplicate));
 		assertTrue(error.getMessage(), error.getMessage().contains("campus_a"));
+	}
+
+	/**
+	 * Content after the document fails instead of being ignored: Jackson stops reading after the first value by default,
+	 * so a second export appended to the file (a writer that appends instead of replacing) would go unnoticed.
+	 */
+	@Test
+	public void readRejectsContentAfterTheDocument() throws Exception {
+		String document = Files.readString(fixturePath(), StandardCharsets.UTF_8);
+		Path appended = temporary.newFile("parking_tariffs_appended.json").toPath();
+		Files.writeString(appended, document + System.lineSeparator() + document, StandardCharsets.UTF_8);
+		IOException error = assertThrows(IOException.class, () -> ParkingTariffs.read(appended));
+		assertTrue(error.getMessage(), error.getMessage().contains("FAIL_ON_TRAILING_TOKENS"));
 	}
 
 	@Test

@@ -32,11 +32,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * midnight of the simulated weekday; the class holds no tariff constants of its own.
  *
  * <p>The reader is strict so that a contract drift fails at read time instead of silently changing prices: the schema
- * version must be 1, the currency EUR, the terminal-stay rule until_fee_end and weekday_only true (the only semantics
- * ParkingCostCalculator implements); every document, source and zone object must carry exactly its schema-1 keys (a
- * nullable field is written as JSON null, never omitted); money, minutes and seconds must be integral JSON numbers
- * (never a fraction that would be truncated, never a string); an unknown zone type or a zone that violates the
- * per-type rules of {@link ZoneTariff} fails. Error messages name the zone id and the field.
+ * version must be 1 (checked first, as it decides the other fields), the currency EUR, the terminal-stay rule
+ * until_fee_end and weekday_only true (the only semantics ParkingCostCalculator implements); every document, source and
+ * zone object must carry exactly its schema-1 keys (a nullable field is written as JSON null, never omitted); money,
+ * minutes and seconds must be integral JSON numbers (never a fraction that would be truncated, never a string); an
+ * unknown zone type or a zone that violates the rules of {@link ZoneTariff} (aligned with the Python reference that
+ * writes the model) fails. Error messages name the zone id and the field.
  */
 public final class ParkingTariffs {
 	private static final Logger LOG = LogManager.getLogger(ParkingTariffs.class);
@@ -78,11 +79,13 @@ public final class ParkingTariffs {
 		if (root == null || !root.isObject()) {
 			throw fail("the tariff model must be a JSON object");
 		}
-		requireExactFields(root, DOCUMENT_FIELDS, "the tariff model");
+		// The version decides which fields the document has, so it is checked before them: a document of another schema
+		// then fails with its version instead of with the fields that schema renamed or added.
 		int schemaVersion = integralInt(root.get("schema_version"), "schema_version");
 		if (schemaVersion != SCHEMA_VERSION) {
 			throw fail("schema_version must be " + SCHEMA_VERSION + ", got " + schemaVersion);
 		}
+		requireExactFields(root, DOCUMENT_FIELDS, "the tariff model");
 		tariffSnapshotDate = isoDate(root.get("tariff_snapshot_date"), "tariff_snapshot_date");
 		String currency = text(root.get("currency"), "currency");
 		if (!CURRENCY.equals(currency)) {
@@ -105,8 +108,9 @@ public final class ParkingTariffs {
 
 	/**
 	 * Reads and validates a tariff model file. Duplicate keys (for example a zone id listed twice) and trailing content
-	 * fail, instead of the last duplicate silently replacing a tariff. Logs one line with the zone counts per type, the
-	 * snapshot date and the number of sources.
+	 * (for example a second document appended to the file) fail, instead of the last duplicate silently replacing a
+	 * tariff or the rest of the file being ignored. Logs one line with the path, the zone counts per type, the snapshot
+	 * date, the schema version and the number of sources.
 	 *
 	 * @throws IOException for an unreadable file or malformed JSON, including duplicate keys
 	 * @throws IllegalArgumentException for a document that violates the contract; the message names the file

@@ -1,5 +1,8 @@
 package org.eqasim.braunschweig.parking;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -7,20 +10,24 @@ import java.util.OptionalLong;
 
 /**
  * Tariff facts of one parking zone as the tariff model JSON states them (schema 1, design "parking cost zones",
- * section 5.4): money in integer euro cents, durations in whole minutes, the fee window in seconds after midnight of
- * the simulated weekday. An empty optional is a JSON null, i.e. "not applicable in this zone"; the record holds no
- * defaults and no tariff constants. ParkingTariffs builds it from the JSON, ParkingCostCalculator prices stays with it.
+ * section 5.4): money in integer euro cents, durations in whole minutes, the fee window in seconds after midnight of the
+ * simulated weekday. An empty optional is a JSON null, i.e. "not applicable in this zone"; the record holds no defaults
+ * and no tariff constants. ParkingTariffs builds it from the JSON, ParkingCostCalculator prices stays with it.
  *
- * <p>The compact constructor enforces the required fields per zone type of design section 3.1 and the pairing rules,
- * so every instance can be priced without further checks:
+ * <p>The compact constructor applies the rules of the Python reference {@code braunschweig.parking.cost.ZoneTariff}
+ * ({@code _check_tariff}), which validates every tariff row before the exporter writes the tariff model, so that this
+ * reader is never more lenient than the exporter; every instance can then be priced without further checks:
  * <ul>
- * <li>every zone: {@code 0 <= feeStart_s < feeEnd_s <= 86400}, no negative money, a maximum stay only together with a
- * long-stay product, a first-period length only together with a first-period price;</li>
- * <li>{@code street_paid}: hourly rate and billing unit;</li>
- * <li>{@code resident_zone}: maximum stay (hence a long-stay product), {@code resident_exempt = true}, an hourly rate
- * of exactly 0 (disc parking for non-residents) and a billing unit: design section 3.1 does not list it, but the
- * metered step of section 3.2 divides by it for every non-campus zone, and the Python reference requires it too;</li>
- * <li>{@code campus}: member and guest day products.</li>
+ * <li>every zone: {@code 0 <= feeStart_s < feeEnd_s <= 86400} and no negative money;</li>
+ * <li>per zone type, the fields it requires and the fields it does not have, which must be null ({@link ZoneType}):
+ * {@code street_paid} requires hourly rate and billing unit; {@code resident_zone} hourly rate, billing unit, maximum
+ * stay and long-stay product (design section 3.1 does not list the billing unit, but the metered step of section 3.2
+ * divides by it for every non-campus zone); {@code campus} member and guest day products;</li>
+ * <li>set together or both null: first-period length and price, maximum stay and long-stay product;</li>
+ * <li>{@code resident_zone}: {@code resident_exempt = true} and an hourly rate of exactly 0 (disc parking for
+ * non-residents);</li>
+ * <li>a daily cap at least the first-period price when both are set: every metered stay buys the first period, so a
+ * lower cap contradicts the tariff (a rule eqasim-bs issue #436 adds to both implementations).</li>
  * </ul>
  * Fields that the pseudo-code of design section 3.2 tests for truthiness ({@code if t.daily_cap_cents: ...}) must be
  * positive when set: there a 0 reads as "absent", while an optional holding 0 is present, so a 0 could make a literal
@@ -48,24 +55,56 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		OptionalLong dailyCapCents, OptionalInt maxStayMinutes, OptionalLong longStayProductCents,
 		OptionalLong memberDayCents, OptionalLong guestDayCents, int feeStart_s, int feeEnd_s, boolean residentExempt) {
 
-	/** Zone types of design section 3.1 with their JSON names. */
+	/**
+	 * Nullable fields (JSON names) that are set together or both null, as in the Python reference's
+	 * {@code _PAIRED_FIELDS}: a first period has a length and a price, and only a stay beyond a maximum stay buys the
+	 * long-stay product.
+	 */
+	private static final List<List<String>> PAIRED_FIELDS = List.of(List.of("first_period_min", "first_period_cents"),
+			List.of("max_stay_min", "long_stay_product_cents"));
+
+	/**
+	 * Zone types of design section 3.1 with their JSON names and their nullable fields: the ones the type requires and the
+	 * ones it does not have, field by field the tables {@code _REQUIRED_FIELDS} and {@code _NOT_APPLICABLE_FIELDS} of the
+	 * Python reference. A field in neither list is optional for the type.
+	 */
 	public enum ZoneType {
 		/** On-street or municipal-lot paid parking with one regime. */
-		STREET_PAID("street_paid"),
+		STREET_PAID("street_paid", List.of("hourly_rate_cents", "billing_unit_min"),
+				List.of("member_day_cents", "guest_day_cents")),
 		/** Bewohnerparkzone: residents exempt, disc parking with a maximum stay for everyone else. */
-		RESIDENT_ZONE("resident_zone"),
+		RESIDENT_ZONE("resident_zone",
+				List.of("hourly_rate_cents", "billing_unit_min", "max_stay_min", "long_stay_product_cents"),
+				List.of("free_if_stay_at_most_min", "first_period_min", "first_period_cents", "daily_cap_cents",
+						"member_day_cents", "guest_day_cents")),
 		/** Institutional area selling member and guest day products (TU Braunschweig). */
-		CAMPUS("campus");
+		CAMPUS("campus", List.of("member_day_cents", "guest_day_cents"),
+				List.of("hourly_rate_cents", "billing_unit_min", "free_if_stay_at_most_min", "first_period_min",
+						"first_period_cents", "daily_cap_cents", "max_stay_min", "long_stay_product_cents"));
 
 		private final String jsonName;
+		private final List<String> requiredFields;
+		private final List<String> notApplicableFields;
 
-		ZoneType(String jsonName) {
+		ZoneType(String jsonName, List<String> requiredFields, List<String> notApplicableFields) {
 			this.jsonName = jsonName;
+			this.requiredFields = requiredFields;
+			this.notApplicableFields = notApplicableFields;
 		}
 
 		/** The name used by the tariff table and the tariff model JSON. */
 		public String jsonName() {
 			return jsonName;
+		}
+
+		/** The nullable fields (JSON names) a zone of this type must set. */
+		List<String> requiredFields() {
+			return requiredFields;
+		}
+
+		/** The nullable fields (JSON names) a zone of this type does not have; they must be null. */
+		List<String> notApplicableFields() {
+			return notApplicableFields;
 		}
 
 		/** The type with this JSON name; empty for an unknown name, which the caller must reject. */
@@ -108,41 +147,63 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		requirePositive(zone, "first_period_min", firstPeriodMinutes);
 		requirePositive(zone, "max_stay_min", maxStayMinutes);
 
-		if (firstPeriodMinutes.isPresent() != firstPeriodCents.isPresent()) {
-			throw new IllegalArgumentException(zone + "first_period_min and first_period_cents must be set together, got "
-					+ firstPeriodMinutes + " and " + firstPeriodCents);
-		}
-		if (maxStayMinutes.isPresent() && longStayProductCents.isEmpty()) {
-			throw new IllegalArgumentException(zone + "long_stay_product_cents is required when max_stay_min is set");
-		}
+		// The nullable fields by JSON name (minutes widened to long) for the per-type and pairing rules.
+		Map<String, OptionalLong> nullableFields = new LinkedHashMap<>();
+		nullableFields.put("hourly_rate_cents", hourlyRateCents);
+		nullableFields.put("billing_unit_min", widen(billingUnitMinutes));
+		nullableFields.put("free_if_stay_at_most_min", widen(freeIfStayAtMostMinutes));
+		nullableFields.put("first_period_min", widen(firstPeriodMinutes));
+		nullableFields.put("first_period_cents", firstPeriodCents);
+		nullableFields.put("daily_cap_cents", dailyCapCents);
+		nullableFields.put("max_stay_min", widen(maxStayMinutes));
+		nullableFields.put("long_stay_product_cents", longStayProductCents);
+		nullableFields.put("member_day_cents", memberDayCents);
+		nullableFields.put("guest_day_cents", guestDayCents);
 
-		switch (zoneType) {
-			case STREET_PAID -> {
-				requirePresent(zone, "hourly_rate_cents", hourlyRateCents.isPresent(), zoneType);
-				requirePresent(zone, "billing_unit_min", billingUnitMinutes.isPresent(), zoneType);
+		for (String field : zoneType.requiredFields()) {
+			if (nullableFields.get(field).isEmpty()) {
+				throw new IllegalArgumentException(zone + field + " is required for a " + zoneType.jsonName());
 			}
-			case RESIDENT_ZONE -> {
-				requirePresent(zone, "billing_unit_min", billingUnitMinutes.isPresent(), zoneType);
-				requirePresent(zone, "max_stay_min", maxStayMinutes.isPresent(), zoneType);
-				if (!residentExempt) {
-					throw new IllegalArgumentException(zone + "resident_exempt must be true for a resident_zone");
-				}
-				if (hourlyRateCents.isEmpty() || hourlyRateCents.getAsLong() != 0) {
-					throw new IllegalArgumentException(zone + "hourly_rate_cents must be 0 for a resident_zone (disc parking"
-							+ " for non-residents, design section 3.1), got " + hourlyRateCents);
-				}
+		}
+		for (String field : zoneType.notApplicableFields()) {
+			OptionalLong value = nullableFields.get(field);
+			if (value.isPresent()) {
+				// The cost rules of the type never read the field: a value there would be silently ignored.
+				throw new IllegalArgumentException(zone + field + " does not apply to a " + zoneType.jsonName()
+						+ " zone and must be null, got " + value.getAsLong());
 			}
-			case CAMPUS -> {
-				requirePresent(zone, "member_day_cents", memberDayCents.isPresent(), zoneType);
-				requirePresent(zone, "guest_day_cents", guestDayCents.isPresent(), zoneType);
+		}
+		for (List<String> pair : PAIRED_FIELDS) {
+			OptionalLong first = nullableFields.get(pair.get(0));
+			OptionalLong second = nullableFields.get(pair.get(1));
+			if (first.isPresent() != second.isPresent()) {
+				throw new IllegalArgumentException(zone + pair.get(0) + " and " + pair.get(1)
+						+ " must be set together or both be null, got " + text(first) + " and " + text(second));
 			}
+		}
+		if (zoneType == ZoneType.RESIDENT_ZONE) {
+			if (!residentExempt) {
+				throw new IllegalArgumentException(zone + "resident_exempt must be true for a resident_zone");
+			}
+			if (hourlyRateCents.getAsLong() != 0) {
+				throw new IllegalArgumentException(zone + "hourly_rate_cents must be 0 for a resident_zone (disc parking"
+						+ " for non-residents, design section 3.1), got " + hourlyRateCents.getAsLong());
+			}
+		}
+		if (dailyCapCents.isPresent() && firstPeriodCents.isPresent()
+				&& dailyCapCents.getAsLong() < firstPeriodCents.getAsLong()) {
+			throw new IllegalArgumentException(zone + "daily_cap_cents " + dailyCapCents.getAsLong()
+					+ " is below first_period_cents " + firstPeriodCents.getAsLong()
+					+ ": every metered stay buys the first period, so a lower cap contradicts the tariff");
 		}
 	}
 
-	private static void requirePresent(String zone, String field, boolean present, ZoneType zoneType) {
-		if (!present) {
-			throw new IllegalArgumentException(zone + field + " is required for a " + zoneType.jsonName());
-		}
+	private static OptionalLong widen(OptionalInt value) {
+		return value.isPresent() ? OptionalLong.of(value.getAsInt()) : OptionalLong.empty();
+	}
+
+	private static String text(OptionalLong value) {
+		return value.isPresent() ? Long.toString(value.getAsLong()) : "null";
 	}
 
 	private static void requireNonNegative(String zone, String field, OptionalLong cents) {
