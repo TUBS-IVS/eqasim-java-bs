@@ -66,7 +66,8 @@ public class ParkingTariffsTest {
 	@Test
 	public void readsTheFixtureTariffModel() throws Exception {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
-		assertEquals(Set.of("fx_bs_ia", "fx_bs_ib", "fx_sz", "fx_wob", "fx_pe", "fx_res_a", "fx_campus"), tariffs.zones());
+		assertEquals(Set.of("fx_bs_ia", "fx_bs_ib", "fx_sz", "fx_wob", "fx_pe", "fx_res_a", "fx_campus", "fx_frac"),
+				tariffs.zones());
 		assertNotNull(tariffs.tariffSnapshotDate());
 		assertEquals(ParkingCostCalculator.TERMINAL_STAY_RULE_UNTIL_FEE_END, tariffs.terminalStayRule());
 		assertFalse(tariffs.assumptions().isEmpty());
@@ -120,7 +121,7 @@ public class ParkingTariffsTest {
 	public void zoneIdsAreSortedAndImmutableAndAnUnknownIdIsEmpty() throws Exception {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
 		assertTrue(tariffs.zone("bs_zone_unknown").isEmpty());
-		assertEquals(List.of("fx_bs_ia", "fx_bs_ib", "fx_campus", "fx_pe", "fx_res_a", "fx_sz", "fx_wob"),
+		assertEquals(List.of("fx_bs_ia", "fx_bs_ib", "fx_campus", "fx_frac", "fx_pe", "fx_res_a", "fx_sz", "fx_wob"),
 				List.copyOf(tariffs.zones()));
 		assertThrows(UnsupportedOperationException.class, () -> tariffs.zones().add("extra"));
 		assertThrows(UnsupportedOperationException.class, () -> tariffs.zones().remove("fx_sz"));

@@ -23,7 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Parking cost of one stay (design section 3.2). The 26 golden cases in {@code parking/parking_golden_cases.json} are
+ * Parking cost of one stay (design section 3.2). The 38 golden cases in {@code parking/parking_golden_cases.json} are
  * the cross-language contract: the Python reference braunschweig.parking.cost (eqasim-bs) evaluates the same file to
  * the same cents and outcomes. The fixture tariffs pin the arithmetic, not real tariffs. The file is a byte-for-byte
  * copy of the one scripts/export_parking_golden_cases.py writes (eqasim-bs tests/fixtures/parking); regenerate it
@@ -32,8 +32,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class ParkingCostCalculatorTest {
 	static final String GOLDEN_CASES_RESOURCE = "/parking/parking_golden_cases.json";
 
-	/** G01..G26 of the plan's golden table; a truncated or replaced fixture must not pass by asserting fewer cases. */
-	private static final int GOLDEN_CASE_COUNT = 26;
+	/**
+	 * G01..G26 of the plan's golden table plus G27..G38 (half-up rounding with a fractional per-minute price, one
+	 * second past a threshold, the order of the early rules); a truncated or replaced fixture must not pass by
+	 * asserting fewer cases.
+	 */
+	private static final int GOLDEN_CASE_COUNT = 38;
 
 	/**
 	 * The keys of one golden case, as the Python generator writes them (braunschweig.parking.golden_cases.CASE_FIELDS):

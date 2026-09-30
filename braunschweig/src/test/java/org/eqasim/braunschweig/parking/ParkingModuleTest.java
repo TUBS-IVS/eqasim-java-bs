@@ -54,7 +54,7 @@ public class ParkingModuleTest {
 		assertEquals(prepared.resolve("parking_tariffs_2026-09-28.json"),
 				ParkingModule.resolve(config, "parking_tariffs_2026-09-28.json"));
 		ParkingTariffs tariffs = new ParkingModule().provideTariffs(config, enabled("parking_tariffs_2026-09-28.json"));
-		assertEquals(7, tariffs.zones().size());
+		assertEquals(8, tariffs.zones().size());
 		assertTrue(tariffs.zone("fx_bs_ia").isPresent());
 	}
 
@@ -63,7 +63,7 @@ public class ParkingModuleTest {
 		Config config = configIn(folder.newFolder("elsewhere").toPath());
 		Path absolute = fixturePath().toAbsolutePath();
 		assertEquals(absolute, ParkingModule.resolve(config, absolute.toString()));
-		assertEquals(7, new ParkingModule().provideTariffs(config, enabled(absolute.toString())).zones().size());
+		assertEquals(8, new ParkingModule().provideTariffs(config, enabled(absolute.toString())).zones().size());
 	}
 
 	@Test

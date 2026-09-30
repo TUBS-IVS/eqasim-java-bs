@@ -164,6 +164,17 @@ public class ZoneParkingCarCostModelTest {
 		return counts.values().stream().mapToLong(Long::longValue).sum();
 	}
 
+	/**
+	 * NO_ZONE precedes HOME (rule order of design section 3.2): a home activity outside every zone is counted as
+	 * NO_ZONE, like the Python reference braunschweig.parking.cost.parking_cost_cents with tariff None.
+	 */
+	@Test
+	public void aHomeActivityOutsideEveryZoneCountsNoZoneNotHome() {
+		CarTrip carTrip = tripTo(activity("home", 61200.0), 27000, false);
+		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), counter.snapshotAndReset());
+	}
+
 	@Test
 	public void noZoneAttributeCostsTheDrivingOnlyAndCountsNoZone() {
 		CarTrip carTrip = tripTo(activity("work", 61200.0), 27000, false);

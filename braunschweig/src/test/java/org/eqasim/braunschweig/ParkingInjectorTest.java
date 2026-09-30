@@ -151,7 +151,7 @@ public class ParkingInjectorTest {
 		CostModel carCostModel = carCostModel(injector);
 		assertTrue(carCostModel instanceof ZoneParkingCarCostModel);
 		// The tariff model is read through the config-relative path.
-		assertEquals(7, injector.getInstance(ParkingTariffs.class).zones().size());
+		assertEquals(8, injector.getInstance(ParkingTariffs.class).zones().size());
 		assertTrue(hasListener(injector, ParkingOutcomeReportListener.class));
 		// The startup check of the plans, which takes the tariff model when the controller builds its listeners.
 		assertTrue(hasListener(injector, ParkingPopulationCheck.class));
