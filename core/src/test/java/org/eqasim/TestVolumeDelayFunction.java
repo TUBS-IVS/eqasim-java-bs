@@ -2,6 +2,7 @@ package org.eqasim;
 
 import static org.junit.Assert.assertEquals;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -17,7 +18,9 @@ import org.eqasim.core.simulation.vdf.VDFQSimModule;
 import org.eqasim.core.simulation.vdf.engine.VDFEngineConfigGroup;
 import org.eqasim.core.simulation.vdf.engine.VDFEngineModule;
 import org.eqasim.core.simulation.vdf.travel_time.VDFLinkSpeedCalculator;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestName;
 import org.matsim.api.core.v01.Coord;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.IdMap;
@@ -124,12 +127,44 @@ public class TestVolumeDelayFunction {
 	private final static double CAPACITY = 50.0;
 	private final static int ITERATIONS = 2;
 	private final static double VDF_CAPACITY_FACTOR = 0.3;
-	private final static String OUTPUT_PATH = "__test_output";
+	private final static String OUTPUT_ROOT_PATH = "__test_output";
+
+	@Rule
+	public TestName testName = new TestName();
+
+	// JUnit creates a new instance of this class for every test method, so the
+	// count starts at zero in every test.
+	private int preparedControllerCount = 0;
+
+	/**
+	 * Returns a separate output directory for every controller that a test
+	 * prepares: {@code __test_output/<test method>/run_<index>}.
+	 *
+	 * A directory shared between controllers does not work on Windows. A
+	 * controller deletes an existing output directory when it starts
+	 * ({@link OverwriteFileSetting#deleteDirectoryIfExists}), but the MATSim DRT
+	 * contrib writes some per-iteration charts through file streams that it never
+	 * closes ({@code SharingMetricsControllerListener#writeAndPlotSharingMetrics}
+	 * and
+	 * {@code DrtAnalysisControlerListener#writeAndPlotWaitTimeEstimateComparison}).
+	 * These files stay open until the garbage collector reclaims the streams, and
+	 * Windows cannot delete a file that a Java stream still holds open. Unless a
+	 * garbage collection happens in between, the next controller in a shared
+	 * directory then fails to start after a DRT run, and so do the following
+	 * tests. With one directory per controller, no run deletes the files of an
+	 * earlier run in the same JVM; the next test run deletes them after this JVM
+	 * has exited.
+	 */
+	private String nextOutputDirectoryPath() {
+		String runDirectoryName = "run_" + preparedControllerCount;
+		preparedControllerCount++;
+		return Path.of(OUTPUT_ROOT_PATH, testName.getMethodName(), runDirectoryName).toString();
+	}
 
 	private Controller prepareScenario() {
 		Config config = ConfigUtils.createConfig();
 
-		config.controller().setOutputDirectory(OUTPUT_PATH);
+		config.controller().setOutputDirectory(nextOutputDirectoryPath());
 		config.controller().setOverwriteFileSetting(OverwriteFileSetting.deleteDirectoryIfExists);
 		config.controller().setLastIteration(ITERATIONS);
 
