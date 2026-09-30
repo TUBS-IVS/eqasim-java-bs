@@ -5,7 +5,7 @@ import java.util.Set;
 
 /**
  * Parking cost of one car stay in one zone: a pure port of design "parking cost zones", section 3.2 (eqasim-bs issue
- * #436). The Python reference braunschweig.parking.cost implements the same rules; the 26 golden cases of
+ * #436). The Python reference braunschweig.parking.cost implements the same rules; the 38 golden cases of
  * {@code parking_golden_cases.json} pin both implementations to identical cents and outcomes.
  *
  * <p>Units: money in integer euro cents, times in whole simulation seconds (seconds after midnight of the first
