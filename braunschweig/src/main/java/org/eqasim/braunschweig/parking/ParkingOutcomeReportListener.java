@@ -14,7 +14,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.matsim.core.controler.OutputDirectoryHierarchy;
 import org.matsim.core.controler.events.IterationEndsEvent;
+import org.matsim.core.controler.events.StartupEvent;
 import org.matsim.core.controler.listener.IterationEndsListener;
+import org.matsim.core.controler.listener.StartupListener;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -23,12 +25,21 @@ import com.google.inject.Singleton;
  * Reports the parking outcome counts of every iteration (design "parking cost zones", section 5.2; eqasim-bs issue
  * #436): writes {@code ITERS/it.N/N.parking_outcomes.csv} and logs one line
  * {@code [parking] it N: NO_ZONE a (x.x %), PAID_METERED b (y.y %), ...} with every outcome that occurred, in
- * declaration order, or {@code [parking] it N: no car stay priced} when none did.
+ * declaration order, or {@code [parking] it N: no car stay priced} when none did, followed by the line
+ * {@code [parking] it N: minimum stay L min extended e of p priced stays (z.z %)} of assumption L1. At the controller
+ * start it logs the active minimum parked duration once.
  *
  * <p>CSV columns: {@code outcome} (a {@link ParkingOutcome} name), {@code count} (car stays the rule priced in the
  * iteration) and {@code share} (count divided by all counted stays of the iteration, a fraction in [0, 1] with six
  * decimals; 0 when no stay was priced). One row per outcome in declaration order, zero counts included, so every
  * iteration file has the same rows.
+ *
+ * <p>Minimum parked duration (assumption L1, {@code braunschweigParking.minimumStayMinutes} = L): e counts the priced
+ * stays whose priced interval the minimum extended, because the simulated stay (for the last activity of a plan the
+ * stay of the terminal-stay rule T1) was shorter than L minutes; p counts the priced stays, the counted stays in a
+ * parking zone: every outcome but NO_ZONE, which the car cost model decides before any stay exists. The share is e / p
+ * in percent, 0 when p is 0. An extended stay need not cost more: the extension can lie outside the fee window, and the
+ * home, employer-free and resident rules price 0 whatever the duration. The CSV does not carry these counts.
  *
  * <p>The counts are the calls of the zone parking car cost model in the iteration, one per car alternative that mode
  * choice priced, chosen or not: numbers of pricing calls, not of distinct trips or persons. The eqasim car predictor
@@ -40,7 +51,7 @@ import com.google.inject.Singleton;
  * file, written before any replanning, has zero counts. Version 1 reports only: no threshold, no failure.
  */
 @Singleton
-public final class ParkingOutcomeReportListener implements IterationEndsListener {
+public final class ParkingOutcomeReportListener implements StartupListener, IterationEndsListener {
 	private static final Logger LOG = LogManager.getLogger(ParkingOutcomeReportListener.class);
 
 	/** File name inside the iteration directory; MATSim prefixes it with the iteration number. */
@@ -50,17 +61,29 @@ public final class ParkingOutcomeReportListener implements IterationEndsListener
 
 	private final ParkingOutcomeCounter counter;
 	private final OutputDirectoryHierarchy output;
+	private final int minimumStayMinutes;
+	private final int minimumStay_s;
 
 	@Inject
-	public ParkingOutcomeReportListener(ParkingOutcomeCounter counter, OutputDirectoryHierarchy output) {
+	public ParkingOutcomeReportListener(ParkingOutcomeCounter counter, OutputDirectoryHierarchy output,
+			ParkingConfigGroup parking) {
 		this.counter = counter;
 		this.output = output;
+		this.minimumStayMinutes = parking.minimumStayMinutes();
+		this.minimumStay_s = parking.minimumStay_s();
+	}
+
+	/** Logs the active minimum parked duration of the run once (assumption L1). */
+	@Override
+	public void notifyStartup(StartupEvent event) {
+		LOG.info(minimumStaySetting(minimumStayMinutes, minimumStay_s));
 	}
 
 	@Override
 	public void notifyIterationEnds(IterationEndsEvent event) {
 		int iteration = event.getIteration();
 		Map<ParkingOutcome, Long> counts = counter.snapshotAndReset();
+		long extendedStays = counter.snapshotAndResetMinimumStayExtensions();
 		Path path = Path.of(output.getIterationFilename(iteration, FILE_NAME));
 		try {
 			writeCsv(path, counts);
@@ -68,6 +91,28 @@ public final class ParkingOutcomeReportListener implements IterationEndsListener
 			throw new UncheckedIOException("cannot write the parking outcome report " + path, error);
 		}
 		LOG.info(summary(iteration, counts));
+		LOG.info(minimumStaySummary(iteration, minimumStayMinutes, extendedStays, pricedStays(counts)));
+	}
+
+	/** The startup line of the minimum parked duration; a minimum of 0 is the version 1 pricing. */
+	private static String minimumStaySetting(int minimumStayMinutes, int minimumStay_s) {
+		String setting = "[parking] minimum stay " + minimumStayMinutes + " min (" + ParkingConfigGroup.GROUP_NAME
+				+ ".minimumStayMinutes, assumption L1): ";
+		if (minimumStayMinutes == 0) {
+			return setting + "car stays are priced as simulated (version 1)";
+		}
+		return setting + "every priced car stay lasts at least " + minimumStay_s + " s; the simulated timing is unchanged";
+	}
+
+	/** The minimum parked duration line of one iteration: the priced stays it extended, as a count and in percent. */
+	private static String minimumStaySummary(int iteration, int minimumStayMinutes, long extendedStays, long pricedStays) {
+		return String.format(Locale.ROOT, "[parking] it %d: minimum stay %d min extended %d of %d priced stays (%.1f %%)",
+				iteration, minimumStayMinutes, extendedStays, pricedStays, 100.0 * share(extendedStays, pricedStays));
+	}
+
+	/** Counted stays in a parking zone: every outcome but NO_ZONE, which the cost model decides before any stay exists. */
+	private static long pricedStays(Map<ParkingOutcome, Long> counts) {
+		return total(counts) - counts.getOrDefault(ParkingOutcome.NO_ZONE, 0L);
 	}
 
 	private static void writeCsv(Path path, Map<ParkingOutcome, Long> counts) throws IOException {

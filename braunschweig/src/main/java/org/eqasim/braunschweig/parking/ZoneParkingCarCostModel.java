@@ -47,12 +47,19 @@ import com.google.inject.Inject;
  * (plans.tripDurationHandling = shiftActivityEndTimes, set by GenerateConfig) never ends an activity before the car
  * arrives. A time interpretation that does (ignoreDelays, endTimeOnly) fails loudly instead of pricing a negative stay.
  *
+ * <p>Minimum parked duration (assumption L1, {@code braunschweigParking.minimumStayMinutes}, 0 when absent): the stay is
+ * priced from its arrival to {@link ParkingCostCalculator#minimumStayDeparture_s}, so every priced stay lasts at least
+ * the minimum, terminal stays included (after rule T1). Under shiftActivityEndTimes a car that arrives after the planned
+ * end of its activity has a stay of length 0, which the tariff rules alone price as free. The minimum is applied before
+ * every tariff rule and changes the price only: the plan and the simulated timing stay as they are.
+ *
  * <p>Every call records exactly one outcome in the {@link ParkingOutcomeCounter}, NO_ZONE included, so the
- * per-iteration report shows which rule priced the car trips; a failing call records nothing. An unknown zone id (in
- * either zone attribute), a mistyped attribute, a non-terminal activity without an end and an activity ending before
- * the arrival raise IllegalStateException naming the person, the activity and the attribute; a routed trip element
- * without a defined end raises it naming the person, the index and type of the element and the car trip.
- * {@link ParkingPopulationCheck} checks the attributes of every plan once at the controller start already.
+ * per-iteration report shows which rule priced the car trips, and counts the priced stays the minimum extended; a
+ * failing call records nothing. An unknown zone id (in either zone attribute), a mistyped attribute, a non-terminal
+ * activity without an end and an activity ending before the arrival raise IllegalStateException naming the person, the
+ * activity and the attribute; a routed trip element without a defined end raises it naming the person, the index and
+ * type of the element and the car trip. {@link ParkingPopulationCheck} checks the attributes of every plan once at the
+ * controller start already.
  *
  * <p>Free of side effects apart from the counter: the plan, its activities and the trip are only read. Thread-safe:
  * the state is immutable and every call uses its own TimeTracker; the counter is thread-safe.
@@ -67,7 +74,8 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 	/** Person attribute (String): id of the resident parking zone containing the person's home; absent: no zone. */
 	public static final String RESIDENT_ATTRIBUTE = "residentParkingZone";
 
-	private static final ParkingCostCalculator.Result NO_ZONE = new ParkingCostCalculator.Result(0, ParkingOutcome.NO_ZONE);
+	private static final ParkingPrice NO_ZONE = new ParkingPrice(new ParkingCostCalculator.Result(0, ParkingOutcome.NO_ZONE),
+			false);
 	private static final double CENTS_PER_EURO = 100.0;
 
 	private final BraunschweigCostParameters costParameters;
@@ -75,9 +83,17 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 	private final ParkingTariffs tariffs;
 	private final ParkingOutcomeCounter counter;
 	private final String tariffsPath;
+	private final int minimumStay_s;
 
-	/** The car stay at the destination in simulation seconds: [arrival_s, departure_s). */
+	/** The simulated car stay at the destination in simulation seconds: [arrival_s, departure_s). */
 	private record Stay(double arrival_s, double departure_s) {
+	}
+
+	/**
+	 * The parking price of one car trip and whether the minimum parked duration (assumption L1) extended the priced
+	 * interval beyond the simulated stay.
+	 */
+	private record ParkingPrice(ParkingCostCalculator.Result result, boolean extendedByMinimumStay) {
 	}
 
 	@Inject
@@ -89,19 +105,25 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		this.tariffs = tariffs;
 		this.counter = counter;
 		this.tariffsPath = parking.getTariffsPath();
+		this.minimumStay_s = parking.minimumStay_s();
 	}
 
-	/** Driving cost plus the parking cost at the destination, in euros; records the parking outcome. */
+	/**
+	 * Driving cost plus the parking cost at the destination, in euros; records the parking outcome and, when the minimum
+	 * parked duration extended the priced stay, the extension.
+	 */
 	@Override
 	public double calculateCost_MU(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
 		double drivingCost_EUR = costParameters.carCost_EUR_km * getInVehicleDistance_km(elements);
-		ParkingCostCalculator.Result parking = parkingCost(person, trip, elements);
-		counter.record(parking.outcome());
-		return drivingCost_EUR + parking.cents() / CENTS_PER_EURO;
+		ParkingPrice parking = parkingCost(person, trip, elements);
+		counter.record(parking.result().outcome());
+		if (parking.extendedByMinimumStay()) {
+			counter.recordMinimumStayExtension();
+		}
+		return drivingCost_EUR + parking.result().cents() / CENTS_PER_EURO;
 	}
 
-	private ParkingCostCalculator.Result parkingCost(Person person, DiscreteModeChoiceTrip trip,
-			List<? extends PlanElement> elements) {
+	private ParkingPrice parkingCost(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
 		Activity destination = trip.getDestinationActivity();
 		String zoneId = zoneId(person, destination);
 		if (zoneId == null) {
@@ -111,8 +133,12 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		boolean parkingFree = parkingFree(person, destination);
 		boolean residentOfZone = zoneId.equals(residentZoneId(person));
 		Stay stay = stay(person, trip, elements, tariff);
-		return ParkingCostCalculator.cents(tariff, stay.arrival_s(), stay.departure_s(), destination.getType(), parkingFree,
-				residentOfZone);
+		// Assumption L1: priced for at least the minimum parked duration, before every tariff rule.
+		double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(stay.arrival_s(), stay.departure_s(),
+				minimumStay_s);
+		ParkingCostCalculator.Result result = ParkingCostCalculator.cents(tariff, stay.arrival_s(), pricedDeparture_s,
+				destination.getType(), parkingFree, residentOfZone);
+		return new ParkingPrice(result, pricedDeparture_s > stay.departure_s());
 	}
 
 	/** Arrival and departure exactly as BraunschweigCarCostModel.calculateParkingCost_EUR determines them. */

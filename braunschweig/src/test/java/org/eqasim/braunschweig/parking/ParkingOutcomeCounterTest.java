@@ -50,6 +50,25 @@ public class ParkingOutcomeCounterTest {
 		assertThrows(NullPointerException.class, () -> new ParkingOutcomeCounter().record(null));
 	}
 
+	/**
+	 * The priced stays the minimum parked duration extended (assumption L1) have their own count and snapshot: the
+	 * outcome snapshot neither reads nor resets it.
+	 */
+	@Test
+	public void minimumStayExtensionsAreCountedAndResetApartFromTheOutcomes() {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
+		counter.record(ParkingOutcome.PAID_METERED);
+		counter.recordMinimumStayExtension();
+		counter.record(ParkingOutcome.PAID_METERED);
+		counter.recordMinimumStayExtension();
+		counter.record(ParkingOutcome.PAID_METERED);
+		assertEquals(Long.valueOf(3), counter.snapshotAndReset().get(ParkingOutcome.PAID_METERED));
+		assertEquals(2L, counter.snapshotAndResetMinimumStayExtensions());
+		// The next snapshot starts from zero.
+		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
+	}
+
 	@Test
 	public void concurrentRecordsAreAllCounted() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();

@@ -312,4 +312,110 @@ public class ParkingCostCalculatorTest {
 		assertThrows(IllegalArgumentException.class, () -> new Result(-1, ParkingOutcome.PAID_METERED));
 		assertThrows(NullPointerException.class, () -> new Result(0, null));
 	}
+
+	/** Minimum parked duration of the shared cases L01 to L08 of assumption L1: 15 min. */
+	private static final int MINIMUM_STAY_15_MIN_S = 15 * 60;
+
+	/**
+	 * One shared case of the minimum parked duration (assumption L1): a stay [arrival_s, departure_s) in {@code zoneId} of
+	 * the golden fixture tariffs, the departure it is priced from with a minimum of 15 min, and its price with that
+	 * minimum and without one (L = 0, version 1).
+	 */
+	private record MinimumStayCase(String id, String zoneId, String purpose, double arrival_s, double departure_s,
+			double pricedDeparture_s, Result withMinimum, Result withoutMinimum) {
+	}
+
+	/**
+	 * The eight shared cases of assumption L1, computed with the Python reference braunschweig.parking.cost, which runs
+	 * the same table: zero-length stays of a late arrival (L01 to L04, L07), a stay shorter than the minimum (L05), a
+	 * longer one (L06) and a zero-length stay after the fee window (L08).
+	 */
+	private static final List<MinimumStayCase> MINIMUM_STAY_CASES = List.of( //
+			new MinimumStayCase("L01", "fx_bs_ia", "shop", 36000, 36000, 36900, //
+					new Result(45, ParkingOutcome.PAID_METERED), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
+			new MinimumStayCase("L02", "fx_sz", "shop", 40000, 40000, 40900, //
+					new Result(0, ParkingOutcome.FREE_WITHIN_LIMIT), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
+			new MinimumStayCase("L03", "fx_bs_ib", "shop", 71400, 71400, 72300, //
+					new Result(30, ParkingOutcome.PAID_METERED), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
+			new MinimumStayCase("L04", "fx_wob", "shop", 36000, 36000, 36900, //
+					new Result(110, ParkingOutcome.PAID_METERED), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
+			new MinimumStayCase("L05", "fx_bs_ia", "shop", 36000, 36300, 36900, //
+					new Result(45, ParkingOutcome.PAID_METERED), new Result(15, ParkingOutcome.PAID_METERED)),
+			new MinimumStayCase("L06", "fx_bs_ia", "shop", 36000, 39600, 39600, //
+					new Result(180, ParkingOutcome.PAID_METERED), new Result(180, ParkingOutcome.PAID_METERED)),
+			new MinimumStayCase("L07", "fx_campus", "work", 36000, 36000, 36900, //
+					new Result(350, ParkingOutcome.PAID_CAMPUS_MEMBER), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
+			new MinimumStayCase("L08", "fx_bs_ib", "shop", 73000, 73000, 73900, //
+					new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)));
+
+	/**
+	 * Assumption L1: the priced stay is [arrival, max(departure, arrival + minimum)), so a shorter stay is priced for the
+	 * minimum and a longer one keeps its departure; a minimum of 0 keeps every departure (version 1).
+	 */
+	@Test
+	public void minimumStayDepartureIsTheLaterOfTheDepartureAndTheArrivalPlusTheMinimum() {
+		assertEquals(36900.0, ParkingCostCalculator.minimumStayDeparture_s(36000, 36000, 900), 0.0);
+		assertEquals(36900.0, ParkingCostCalculator.minimumStayDeparture_s(36000, 36300, 900), 0.0);
+		assertEquals(36900.0, ParkingCostCalculator.minimumStayDeparture_s(36000, 36900, 900), 0.0);
+		assertEquals(39600.0, ParkingCostCalculator.minimumStayDeparture_s(36000, 39600, 900), 0.0);
+		assertEquals(36000.0, ParkingCostCalculator.minimumStayDeparture_s(36000, 36000, 0), 0.0);
+		assertEquals(36300.0, ParkingCostCalculator.minimumStayDeparture_s(36000, 36300, 0), 0.0);
+		// MATSim times are not floored here; cents(...) floors them.
+		assertEquals(36900.5, ParkingCostCalculator.minimumStayDeparture_s(36000.5, 36000.5, 900), 0.0);
+		// Simulation seconds keep counting beyond midnight.
+		assertEquals(SECONDS_PER_DAY + 500.0,
+				ParkingCostCalculator.minimumStayDeparture_s(SECONDS_PER_DAY - 400, SECONDS_PER_DAY - 100, 900), 0.0);
+	}
+
+	/** A negative minimum fails, and so does an invalid stay, which the minimum would otherwise turn into a valid one. */
+	@Test
+	public void minimumStayDepartureRejectsANegativeMinimumAndAnInvalidStay() {
+		assertThrows(IllegalArgumentException.class, () -> ParkingCostCalculator.minimumStayDeparture_s(36000, 36000, -1));
+		// max(35000, 36000 + 900) would be a valid departure: the departure before the arrival must fail instead.
+		assertThrows(IllegalArgumentException.class, () -> ParkingCostCalculator.minimumStayDeparture_s(36000, 35000, 900));
+		for (double invalid : new double[] { Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, -1.0 }) {
+			assertThrows(IllegalArgumentException.class,
+					() -> ParkingCostCalculator.minimumStayDeparture_s(invalid, 40000, 900));
+			assertThrows(IllegalArgumentException.class,
+					() -> ParkingCostCalculator.minimumStayDeparture_s(30000, invalid, 900));
+		}
+	}
+
+	/**
+	 * The shared cases with a minimum of 15 min: the helper yields the priced departure, and every tariff rule prices the
+	 * extended stay unchanged (fee window, free within the limit, first period, campus product).
+	 */
+	@Test
+	public void theSharedMinimumStayCasesPriceTheExtendedStay() throws Exception {
+		Map<String, ZoneTariff> tariffs = goldenTariffs();
+		Set<String> ids = new HashSet<>();
+		for (MinimumStayCase minimumStayCase : MINIMUM_STAY_CASES) {
+			String id = minimumStayCase.id();
+			assertTrue("duplicate minimum-stay case id " + id, ids.add(id));
+			ZoneTariff tariff = tariffs.get(minimumStayCase.zoneId());
+			assertNotNull(id + ": unknown zone " + minimumStayCase.zoneId(), tariff);
+			double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(minimumStayCase.arrival_s(),
+					minimumStayCase.departure_s(), MINIMUM_STAY_15_MIN_S);
+			assertEquals(id + ": priced departure", minimumStayCase.pricedDeparture_s(), pricedDeparture_s, 0.0);
+			assertEquals(id, minimumStayCase.withMinimum(), ParkingCostCalculator.cents(tariff, minimumStayCase.arrival_s(),
+					pricedDeparture_s, minimumStayCase.purpose(), false, false));
+		}
+		assertEquals(8, ids.size());
+	}
+
+	/** L = 0 reproduces version 1: every shared case keeps its departure and costs what its original stay costs. */
+	@Test
+	public void withoutAMinimumStayTheSharedCasesPriceTheOriginalStay() throws Exception {
+		Map<String, ZoneTariff> tariffs = goldenTariffs();
+		for (MinimumStayCase minimumStayCase : MINIMUM_STAY_CASES) {
+			String id = minimumStayCase.id();
+			ZoneTariff tariff = tariffs.get(minimumStayCase.zoneId());
+			assertNotNull(id + ": unknown zone " + minimumStayCase.zoneId(), tariff);
+			double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(minimumStayCase.arrival_s(),
+					minimumStayCase.departure_s(), 0);
+			assertEquals(id + ": priced departure", minimumStayCase.departure_s(), pricedDeparture_s, 0.0);
+			assertEquals(id, minimumStayCase.withoutMinimum(), ParkingCostCalculator.cents(tariff,
+					minimumStayCase.arrival_s(), pricedDeparture_s, minimumStayCase.purpose(), false, false));
+		}
+	}
 }

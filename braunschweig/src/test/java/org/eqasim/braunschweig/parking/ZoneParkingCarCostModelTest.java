@@ -68,13 +68,26 @@ public class ZoneParkingCarCostModelTest {
 				TripDurationHandling.shiftActivityEndTimes);
 	}
 
+	/** The model of a config without minimumStayMinutes: no minimum parked duration, version 1 pricing. */
 	private static ZoneParkingCarCostModel model(TimeInterpretation timeInterpretation, ParkingOutcomeCounter counter)
 			throws Exception {
+		return model(timeInterpretation, counter, null);
+	}
+
+	/**
+	 * The model of an enabled module with the fixture tariff model and the parameter minimumStayMinutes as the preparation
+	 * stage writes it, or without that parameter when {@code minimumStayMinutes} is null.
+	 */
+	private static ZoneParkingCarCostModel model(TimeInterpretation timeInterpretation, ParkingOutcomeCounter counter,
+			String minimumStayMinutes) throws Exception {
 		BraunschweigCostParameters costParameters = new BraunschweigCostParameters();
 		costParameters.carCost_EUR_km = CAR_COST_EUR_KM;
 		ParkingConfigGroup parking = new ParkingConfigGroup();
 		parking.setEnabled("true");
 		parking.setTariffsPath(TARIFFS_PATH);
+		if (minimumStayMinutes != null) {
+			parking.addParam("minimumStayMinutes", minimumStayMinutes);
+		}
 		return new ZoneParkingCarCostModel(costParameters, timeInterpretation, ParkingTariffs.read(fixturePath()), counter,
 				parking);
 	}
@@ -308,13 +321,64 @@ public class ZoneParkingCarCostModelTest {
 	/**
 	 * departure >= arrival by construction: under the eqasim time interpretation (shiftActivityEndTimes) an activity
 	 * whose planned end has passed when the car arrives ends at the arrival, so the stay has length 0. The car arrives
-	 * 10:15 at a shop planned to end at 10:00 in zone Ia: nothing is chargeable.
+	 * 10:15 at a shop planned to end at 10:00 in zone Ia: without a minimum parked duration (version 1) nothing is
+	 * chargeable.
 	 */
 	@Test
 	public void aLateArrivalIsAStayOfLengthZero() {
 		CarTrip carTrip = tripTo(inZone(activity("shop", 36000.0), "fx_bs_ia"), 35100, false);
 		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
 		assertEquals(onlyOnce(ParkingOutcome.OUTSIDE_FEE_HOURS), counter.snapshotAndReset());
+		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
+	}
+
+	/**
+	 * Assumption L1 with a minimum parked duration of 15 min: the zero-length stay of the late arrival above is priced
+	 * 10:15 to 10:30, 15 min at 3 ct/min = 45 ct. Only the price changes: the plan keeps its times.
+	 */
+	@Test
+	public void aLateArrivalIsPricedForTheMinimumStay() throws Exception {
+		ZoneParkingCarCostModel withMinimumStay = model(eqasimTimeInterpretation(), counter, "15");
+		Activity shop = inZone(activity("shop", 36000.0), "fx_bs_ia");
+		CarTrip carTrip = tripTo(shop, 35100, false);
+		assertEquals(DRIVING_COST_EUR + 0.45,
+				withMinimumStay.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(36000.0, shop.getEndTime().seconds(), 0.0);
+		assertEquals(35100.0, carTrip.trip().getDepartureTime(), 0.0);
+	}
+
+	/**
+	 * The counter counts the priced stays the minimum parked duration extended, terminal stays included (after the
+	 * terminal-stay rule T1): the late arrival and a terminal arrival at 19:55, which T1 ends at 20:00 and the minimum at
+	 * 20:10 (still 5 chargeable minutes, 15 ct). A longer stay is not extended, and a stay outside every zone is never
+	 * priced, however short. Without the parameter (version 1) the same trips extend nothing.
+	 */
+	@Test
+	public void theCounterCountsThePricedStaysTheMinimumStayExtended() throws Exception {
+		ZoneParkingCarCostModel withMinimumStay = model(eqasimTimeInterpretation(), counter, "15");
+		CarTrip lateArrival = tripTo(inZone(activity("shop", 36000.0), "fx_bs_ia"), 35100, false);
+		CarTrip terminalBeforeTheFeeEnd = tripTo(inZone(activity("shop", null), "fx_bs_ia"), 69900, true);
+		CarTrip longerStay = tripTo(inZone(activity("work", 61200.0), "fx_bs_ib"), 27000, false);
+		CarTrip lateArrivalOutsideEveryZone = tripTo(activity("shop", 36000.0), 35100, false);
+		List<CarTrip> carTrips = List.of(lateArrival, terminalBeforeTheFeeEnd, longerStay, lateArrivalOutsideEveryZone);
+
+		List<Double> costs_EUR = new ArrayList<>();
+		for (CarTrip carTrip : carTrips) {
+			costs_EUR.add(withMinimumStay.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()));
+		}
+		assertEquals(DRIVING_COST_EUR + 0.15, costs_EUR.get(1), EUR_TOLERANCE);
+		assertEquals(2L, counter.snapshotAndResetMinimumStayExtensions());
+		Map<ParkingOutcome, Long> counts = counter.snapshotAndReset();
+		assertEquals(Long.valueOf(3), counts.get(ParkingOutcome.PAID_METERED));
+		assertEquals(Long.valueOf(1), counts.get(ParkingOutcome.NO_ZONE));
+		assertEquals(4L, total(counts));
+
+		for (CarTrip carTrip : carTrips) {
+			cost_EUR(carTrip);
+		}
+		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
+		assertEquals(4L, total(counter.snapshotAndReset()));
 	}
 
 	/**

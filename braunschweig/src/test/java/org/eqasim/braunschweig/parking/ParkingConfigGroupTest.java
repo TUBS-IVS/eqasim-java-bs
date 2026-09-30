@@ -21,6 +21,7 @@ public class ParkingConfigGroupTest {
 		parking.addParam("enabled", "true");
 		parking.addParam("tariffsPath", "parking_tariffs_2026-09-28.json");
 		parking.addParam("terminalStayRule", "until_fee_end");
+		parking.addParam("minimumStayMinutes", "15");
 		Config config = ConfigUtils.createConfig();
 		config.addModule(parking);
 		assertSame(parking, ParkingConfigGroup.active(config));
@@ -29,6 +30,48 @@ public class ParkingConfigGroupTest {
 		assertTrue(parking.isEnabled());
 		assertEquals("parking_tariffs_2026-09-28.json", parking.getTariffsPath());
 		assertEquals("until_fee_end", parking.getTerminalStayRule());
+		assertEquals(15, parking.minimumStayMinutes());
+		assertEquals(900, parking.minimumStay_s());
+		assertEquals("15", parking.getMinimumStayMinutes());
+	}
+
+	/** A config prepared before assumption L1 has no minimumStayMinutes: 0 minutes, which prices as version 1. */
+	@Test
+	public void minimumStayIsZeroMinutesWhenAbsent() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		assertEquals(0, parking.minimumStayMinutes());
+		assertEquals(0, parking.minimumStay_s());
+		assertEquals("0", parking.getMinimumStayMinutes());
+	}
+
+	@Test
+	public void minimumStayAcceptsWholeMinutesFromZero() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.addParam("minimumStayMinutes", "30");
+		assertEquals(30, parking.minimumStayMinutes());
+		assertEquals(1800, parking.minimumStay_s());
+		parking.addParam("minimumStayMinutes", "0");
+		assertEquals(0, parking.minimumStayMinutes());
+		assertEquals(0, parking.minimumStay_s());
+		// The largest minimum whose seconds fit the int that ParkingCostCalculator.minimumStayDeparture_s takes.
+		parking.addParam("minimumStayMinutes", "35791394");
+		assertEquals(35791394 * 60, parking.minimumStay_s());
+	}
+
+	/** Anything but a whole number of minutes from 0 fails when the config is read, naming the parameter. */
+	@Test
+	public void minimumStayRejectsEverythingButWholeMinutesFromZero() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.addParam("minimumStayMinutes", "15");
+		for (String value : new String[] { "-1", "-15", "1.5", "15.0", "1e3", "+15", " 15", "15 ", "", "15min", "fifteen",
+				"35791395", "2147483648", "99999999999999999999" }) {
+			IllegalArgumentException error = assertThrows(value, IllegalArgumentException.class,
+					() -> parking.addParam("minimumStayMinutes", value));
+			assertTrue(error.getMessage(), error.getMessage().contains("braunschweigParking.minimumStayMinutes"));
+		}
+		assertThrows(IllegalArgumentException.class, () -> parking.setMinimumStayMinutes(null));
+		// A rejected value leaves the previous one in place.
+		assertEquals(15, parking.minimumStayMinutes());
 	}
 
 	@Test
@@ -87,7 +130,7 @@ public class ParkingConfigGroupTest {
 	@Test
 	public void everyParameterIsDocumentedAndPricesAreNotParameters() {
 		Map<String, String> comments = new ParkingConfigGroup().getComments();
-		for (String parameter : new String[] { "enabled", "tariffsPath", "terminalStayRule" }) {
+		for (String parameter : new String[] { "enabled", "tariffsPath", "terminalStayRule", "minimumStayMinutes" }) {
 			assertTrue(parameter, comments.containsKey(parameter) && !comments.get(parameter).isBlank());
 		}
 		// Prices, fee windows and limits live only in the tariff model JSON; a config override must fail, not be ignored.

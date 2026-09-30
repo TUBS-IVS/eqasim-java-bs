@@ -20,11 +20,13 @@ import org.matsim.core.config.groups.ControllerConfigGroup.CompressionType;
 import org.matsim.core.controler.OutputDirectoryHierarchy;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 import org.matsim.core.controler.events.IterationEndsEvent;
+import org.matsim.core.controler.events.StartupEvent;
 
 /**
- * Per-iteration parking outcome report: {@code ITERS/it.N/N.parking_outcomes.csv} with one row per outcome and one
- * {@code [parking]} log line with the shares of the outcomes that occurred. Version 1 only reports: no threshold, no
- * failure.
+ * Per-iteration parking outcome report: {@code ITERS/it.N/N.parking_outcomes.csv} with one row per outcome, one
+ * {@code [parking]} log line with the shares of the outcomes that occurred and one with the share of the priced stays
+ * the minimum parked duration extended (assumption L1), whose active value is logged once at startup. Version 1 only
+ * reports: no threshold, no failure.
  */
 public class ParkingOutcomeReportListenerTest {
 	@Rule
@@ -35,17 +37,33 @@ public class ParkingOutcomeReportListenerTest {
 				CompressionType.none);
 	}
 
+	/** An enabled module with minimumStayMinutes as the preparation stage writes it, or without it when null. */
+	private static ParkingConfigGroup parking(String minimumStayMinutes) {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.setEnabled("true");
+		parking.setTariffsPath("parking_tariffs_2026-09-28.json");
+		if (minimumStayMinutes != null) {
+			parking.addParam("minimumStayMinutes", minimumStayMinutes);
+		}
+		return parking;
+	}
+
+	/**
+	 * The CSV holds the outcomes only, as before assumption L1. The second log line relates the extended stays to the
+	 * priced stays, the stays in a parking zone: every outcome but NO_ZONE (here 3 of 8).
+	 */
 	@Test
-	public void writesEveryOutcomeToTheIterationFileAndLogsTheSharesOfTheOutcomesThatOccurred() throws Exception {
+	public void writesEveryOutcomeToTheIterationFileAndLogsTheOutcomeAndMinimumStayShares() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
 		for (int index = 0; index < 5; index++) {
 			counter.record(ParkingOutcome.NO_ZONE);
 		}
 		counter.record(ParkingOutcome.PAID_METERED);
+		counter.recordMinimumStayExtension();
 		counter.record(ParkingOutcome.PAID_METERED);
 		counter.record(ParkingOutcome.EMPLOYER_FREE);
 		OutputDirectoryHierarchy output = output();
-		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output);
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output, parking("15"));
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 3, false)));
 
@@ -62,16 +80,18 @@ public class ParkingOutcomeReportListenerTest {
 				"PAID_LONG_STAY,0,0.000000", //
 				"PAID_CAMPUS_MEMBER,0,0.000000", //
 				"PAID_CAMPUS_GUEST,0,0.000000"), Files.readAllLines(report, StandardCharsets.UTF_8));
-		assertEquals(List.of("[parking] it 3: NO_ZONE 5 (62.5 %), EMPLOYER_FREE 1 (12.5 %), PAID_METERED 2 (25.0 %)"),
-				messages);
+		assertEquals(List.of("[parking] it 3: NO_ZONE 5 (62.5 %), EMPLOYER_FREE 1 (12.5 %), PAID_METERED 2 (25.0 %)",
+				"[parking] it 3: minimum stay 15 min extended 1 of 3 priced stays (33.3 %)"), messages);
 		// The next iteration counts from zero.
 		assertEquals(0L, counter.snapshotAndReset().values().stream().mapToLong(Long::longValue).sum());
+		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
 	}
 
-	/** Without replanning (iteration 0) no car trip is priced: every count and share is 0 and the log line says so. */
+	/** Without replanning (iteration 0) no car trip is priced: every count and share is 0 and the log lines say so. */
 	@Test
 	public void anIterationWithoutPricedStaysReportsZeros() throws Exception {
-		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output());
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+				parking("15"));
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 0, false)));
 
@@ -82,7 +102,27 @@ public class ParkingOutcomeReportListenerTest {
 		for (int index = 1; index < lines.size(); index++) {
 			assertEquals(ParkingOutcome.values()[index - 1] + ",0,0.000000", lines.get(index));
 		}
-		assertEquals(List.of("[parking] it 0: no car stay priced"), messages);
+		assertEquals(List.of("[parking] it 0: no car stay priced",
+				"[parking] it 0: minimum stay 15 min extended 0 of 0 priced stays (0.0 %)"), messages);
+	}
+
+	/**
+	 * The active minimum parked duration is logged once, when the controller starts; a config prepared before assumption
+	 * L1 has none and prices as version 1.
+	 */
+	@Test
+	public void logsTheActiveMinimumStayOnceAtStartup() {
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+				parking("15"));
+		assertEquals(List.of("[parking] minimum stay 15 min (braunschweigParking.minimumStayMinutes, assumption L1): every"
+				+ " priced car stay lasts at least 900 s; the simulated timing is unchanged"),
+				logDuring(() -> listener.notifyStartup(new StartupEvent(null))));
+
+		ParkingOutcomeReportListener versionOne = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+				parking(null));
+		assertEquals(List.of("[parking] minimum stay 0 min (braunschweigParking.minimumStayMinutes, assumption L1): car"
+				+ " stays are priced as simulated (version 1)"),
+				logDuring(() -> versionOne.notifyStartup(new StartupEvent(null))));
 	}
 
 	/** Messages the listener logs while {@code action} runs. */

@@ -116,6 +116,39 @@ public class BraunschweigConfiguratorParkingTest {
 		assertTrue(error.getMessage(), error.getMessage().contains("braunschweigParking.tariffsPath"));
 	}
 
+	private static ParkingConfigGroup typedParking(Config config) {
+		return (ParkingConfigGroup) config.getModules().get(ParkingConfigGroup.GROUP_NAME);
+	}
+
+	/**
+	 * The preparation stage writes minimumStayMinutes into the module (assumption L1), and the typed group reads it when
+	 * the loaded config is updated; a config prepared before L1 has no such parameter and gets 0 minutes (version 1).
+	 */
+	@Test
+	public void minimumStayOfThePreparedConfigReachesTheTypedGroup() throws Exception {
+		Config withMinimumStay = preparedConfig();
+		addParking(withMinimumStay, "true", "parking_tariffs_2026-09-28.json");
+		withMinimumStay.getModules().get(ParkingConfigGroup.GROUP_NAME).addParam("minimumStayMinutes", "15");
+		configurator().updateConfig(withMinimumStay);
+		assertEquals(15, typedParking(withMinimumStay).minimumStayMinutes());
+		assertEquals(900, typedParking(withMinimumStay).minimumStay_s());
+
+		Config preparedBeforeTheMinimumStay = preparedConfig();
+		addParking(preparedBeforeTheMinimumStay, "true", "parking_tariffs_2026-09-28.json");
+		configurator().updateConfig(preparedBeforeTheMinimumStay);
+		assertEquals(0, typedParking(preparedBeforeTheMinimumStay).minimumStayMinutes());
+	}
+
+	@Test
+	public void anInvalidMinimumStayFailsWhenTheConfigIsLoaded() throws Exception {
+		Config config = preparedConfig();
+		addParking(config, "true", "parking_tariffs_2026-09-28.json");
+		config.getModules().get(ParkingConfigGroup.GROUP_NAME).addParam("minimumStayMinutes", "-15");
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> configurator().updateConfig(config));
+		assertTrue(error.getMessage(), error.getMessage().contains("braunschweigParking.minimumStayMinutes"));
+	}
+
 	/** Parking zones and VRB zone fares switch different modes and are independent of each other. */
 	@Test
 	public void parkingAndVrbFareSwitchTheirOwnModesTogether() throws Exception {

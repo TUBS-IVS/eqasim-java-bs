@@ -16,7 +16,9 @@ import java.util.Set;
  * <p>Assumptions (labels of the design's assumptions register): D1 the simulated day is an average weekday and the fee
  * window repeats every 86,400 s; T1 a car at the last activity of the plan pays until the fee window of its arrival day
  * ends ({@link #terminalDeparture_s}); M1 the maximum stay is compared with the chargeable duration, because the
- * Braunschweig ordinance restricts the stay during fee hours only, and other municipalities are treated the same.
+ * Braunschweig ordinance restricts the stay during fee hours only, and other municipalities are treated the same; L1
+ * every priced stay lasts at least the minimum parked duration of the run, applied before the tariff rules
+ * ({@link #minimumStayDeparture_s}).
  *
  * <p>Stateless and free of side effects; all methods are static.
  */
@@ -33,7 +35,8 @@ public final class ParkingCostCalculator {
 	/** Purposes that buy the campus member day product; every other purpose buys the guest day product. */
 	public static final Set<String> CAMPUS_MEMBER_PURPOSES = Set.of("work", "education");
 
-	private static final int SECONDS_PER_MINUTE = 60;
+	/** Also converts the minimum parked duration of ParkingConfigGroup from minutes to seconds. */
+	static final int SECONDS_PER_MINUTE = 60;
 	private static final int MINUTES_PER_HOUR = 60;
 
 	/** 2^63: doubles at or above it cannot be floored to an exact long number of seconds. */
@@ -73,10 +76,7 @@ public final class ParkingCostCalculator {
 		requireFeeWindow(feeStart_s, feeEnd_s, "chargeableSeconds");
 		long arrival = wholeSeconds(arrival_s, "arrival_s");
 		long departure = wholeSeconds(departure_s, "departure_s");
-		if (departure_s < arrival_s) {
-			throw new IllegalArgumentException("departure_s " + departure_s + " is before arrival_s " + arrival_s
-					+ "; a parking stay needs departure >= arrival");
-		}
+		requireDepartureNotBeforeArrival(arrival_s, departure_s);
 		long firstDay = Math.floorDiv(arrival, SECONDS_PER_DAY);
 		long lastDay = Math.floorDiv(departure - 1, SECONDS_PER_DAY);
 		if (lastDay < firstDay) {
@@ -111,6 +111,32 @@ public final class ParkingCostCalculator {
 	}
 
 	/**
+	 * Departure a stay is priced to under the minimum parked duration (assumption L1):
+	 * {@code max(departure_s, arrival_s + minimumStay_s)}, so the priced stay [arrival_s, that departure) lasts at least
+	 * {@code minimumStay_s}. Applied before every rule of {@link #cents}, which then prices the extended stay unchanged
+	 * (fee window, free-stay threshold, first period, maximum stay, daily cap, campus products; the home, employer-free
+	 * and resident rules price 0 whatever the duration). For the last activity of a plan {@code departure_s} is the
+	 * departure of the terminal-stay rule ({@link #terminalDeparture_s}), so the minimum applies after that rule. A
+	 * minimum of 0 returns {@code departure_s}, the version 1 pricing. The result prices the stay only; it never changes
+	 * the simulated timing. It is not floored; {@link #cents} floors it.
+	 *
+	 * @param arrival_s car arrival in simulation seconds
+	 * @param departure_s departure of the simulated stay in simulation seconds
+	 * @param minimumStay_s minimum parked duration in whole seconds, at least 0
+	 * @throws IllegalArgumentException for a negative minimum, a non-finite or negative time, or a departure before the
+	 *         arrival, which the minimum would otherwise silently turn into a valid stay
+	 */
+	public static double minimumStayDeparture_s(double arrival_s, double departure_s, int minimumStay_s) {
+		if (minimumStay_s < 0) {
+			throw new IllegalArgumentException("minimumStay_s must be non-negative whole seconds, got " + minimumStay_s);
+		}
+		requireSimulationTime(arrival_s, "arrival_s");
+		requireSimulationTime(departure_s, "departure_s");
+		requireDepartureNotBeforeArrival(arrival_s, departure_s);
+		return Math.max(departure_s, arrival_s + minimumStay_s);
+	}
+
+	/**
 	 * Price and deciding rule of one stay in the zone of {@code tariff}; the rules of section 3.2 in this order:
 	 * <ol>
 	 * <li>purpose {@code home}: 0, HOME;</li>
@@ -130,7 +156,8 @@ public final class ParkingCostCalculator {
 	 *
 	 * @param tariff tariff of the zone the activity lies in
 	 * @param arrival_s car arrival in simulation seconds
-	 * @param departure_s activity departure in simulation seconds; {@link #terminalDeparture_s} for the last activity
+	 * @param departure_s departure the stay is priced to, in simulation seconds: the activity departure, or
+	 *        {@link #terminalDeparture_s} for the last activity, extended by {@link #minimumStayDeparture_s} (assumption L1)
 	 * @param purpose activity purpose (the MATSim activity type, e.g. home, work, education, shop)
 	 * @param parkingFree value of the activity attribute parkingFree (free parking provided by the employer)
 	 * @param residentOfZone the person is a resident of this zone
@@ -214,10 +241,23 @@ public final class ParkingCostCalculator {
 
 	/** A MATSim time floored to whole seconds; NaN, infinities, negative times and values beyond the long range fail. */
 	private static long wholeSeconds(double time_s, String name) {
+		requireSimulationTime(time_s, name);
+		return (long) Math.floor(time_s);
+	}
+
+	/** Fails for NaN, infinities, negative times and values beyond the long range of whole seconds. */
+	private static void requireSimulationTime(double time_s, String name) {
 		if (!(time_s >= 0.0 && time_s < LONG_SECONDS_LIMIT)) {
 			throw new IllegalArgumentException(name + " must be a finite, non-negative simulation time in seconds, got "
 					+ time_s);
 		}
-		return (long) Math.floor(time_s);
+	}
+
+	/** Fails for a departure before the arrival: a parking stay needs departure >= arrival. */
+	private static void requireDepartureNotBeforeArrival(double arrival_s, double departure_s) {
+		if (departure_s < arrival_s) {
+			throw new IllegalArgumentException("departure_s " + departure_s + " is before arrival_s " + arrival_s
+					+ "; a parking stay needs departure >= arrival");
+		}
 	}
 }
