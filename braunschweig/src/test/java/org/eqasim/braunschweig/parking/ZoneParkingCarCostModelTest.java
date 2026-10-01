@@ -513,6 +513,27 @@ public class ZoneParkingCarCostModelTest {
 		assertEquals(expected, counter.snapshotAndReset());
 	}
 
+	/**
+	 * Spec amendment A3 end to end (golden case V21): a terminal stay arriving 19:50 in fx_capped_street_v2 departs by the
+	 * terminal-stay rule T1 at the end of the STREET fee window (20:00), the minimum parked duration of 15 min extends it
+	 * to 20:10, and every product prices that one interval: the street 10 chargeable minutes (30 ct), the uncapped all-day
+	 * garage 15 min at 1 ct/min (15 ct). Without the minimum the garage would charge 10 min (10 ct): the minimum applies
+	 * after T1, and T1 never takes the garage window (which would end the stay at 24:00 and charge 250 ct).
+	 */
+	@Test
+	public void aTerminalStayIsExtendedByTheMinimumStayAfterTheTerminalRuleAndPricedByEveryProduct() throws Exception {
+		ZoneParkingCarCostModel withMinimumStay = model(eqasimTimeInterpretation(), counter, "15");
+		CarTrip terminal = tripTo(inZone(activity("shop", null), "fx_capped_street_v2"), 69600, true);
+		assertEquals(DRIVING_COST_EUR + 0.15,
+				withMinimumStay.calculateCost_MU(terminal.person(), terminal.trip(), terminal.elements()), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_GARAGE), countsByOutcome());
+		assertEquals(1L, counter.snapshotAndResetMinimumStayExtensions());
+
+		assertEquals(DRIVING_COST_EUR + 0.10, cost_EUR(terminal), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_GARAGE), countsByOutcome());
+		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
+	}
+
 	/** Activity attribute of the plans writer (spec Amendment C3): the resident parking district the activity lies in. */
 	private static Activity inDistrict(Activity activity, String districtId) {
 		activity.getAttributes().putAttribute(ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE, districtId);
