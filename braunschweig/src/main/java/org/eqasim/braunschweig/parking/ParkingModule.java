@@ -19,7 +19,9 @@ import com.google.inject.Singleton;
  * tariff model read from {@code braunschweigParking.tariffsPath}, resolved relative to the config file like every
  * MATSim input path (the preparation stage writes the JSON next to the prepared config), and binds the outcome counter,
  * the per-iteration outcome report and the startup check of the plans ({@link ParkingPopulationCheck}), which takes the
- * tariff model and so makes it load when the controller starts.
+ * tariff model and so makes it load when the controller starts, and the parking search time of lever 4
+ * ({@link ParkingSearchTime}) with the tariff model and the factor of the module, which the car utility estimator takes.
+ * Without the module BraunschweigModeChoiceModule binds the neutral {@link ParkingSearchTime#none()}.
  *
  * <p>{@link ParkingConfigGroup} is not bound here: MATSim's bootstrap injector already binds every typed config group
  * of the config, and a second binding in this module fails the controller start (as for VrbFareModule).
@@ -29,6 +31,7 @@ public final class ParkingModule extends AbstractModule {
 	@Override
 	public void install() {
 		bind(ParkingOutcomeCounter.class).asEagerSingleton();
+		bind(ParkingSearchTime.class).in(Singleton.class);
 		addControlerListenerBinding().to(ParkingOutcomeReportListener.class);
 		addControlerListenerBinding().to(ParkingPopulationCheck.class);
 	}

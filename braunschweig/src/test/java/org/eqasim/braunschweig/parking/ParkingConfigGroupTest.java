@@ -22,6 +22,7 @@ public class ParkingConfigGroupTest {
 		parking.addParam("tariffsPath", "parking_tariffs_2026-09-28.json");
 		parking.addParam("terminalStayRule", "until_fee_end");
 		parking.addParam("minimumStayMinutes", "15");
+		parking.addParam("searchTimeFactor", "1.5");
 		Config config = ConfigUtils.createConfig();
 		config.addModule(parking);
 		assertSame(parking, ParkingConfigGroup.active(config));
@@ -33,6 +34,8 @@ public class ParkingConfigGroupTest {
 		assertEquals(15, parking.minimumStayMinutes());
 		assertEquals(900, parking.minimumStay_s());
 		assertEquals("15", parking.getMinimumStayMinutes());
+		assertEquals(1.5, parking.searchTimeFactor(), 0.0);
+		assertEquals("1.5", parking.getSearchTimeFactor());
 	}
 
 	/** A config prepared before assumption L1 has no minimumStayMinutes: 0 minutes, which prices as version 1. */
@@ -72,6 +75,63 @@ public class ParkingConfigGroupTest {
 		assertThrows(IllegalArgumentException.class, () -> parking.setMinimumStayMinutes(null));
 		// A rejected value leaves the previous one in place.
 		assertEquals(15, parking.minimumStayMinutes());
+	}
+
+	/** A config prepared before lever 4 has no searchTimeFactor: 0.0, which leaves the car utility as in version 1. */
+	@Test
+	public void searchTimeFactorIsZeroWhenAbsent() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		assertEquals(0.0, parking.searchTimeFactor(), 0.0);
+		assertEquals("0.0", parking.getSearchTimeFactor());
+	}
+
+	@Test
+	public void searchTimeFactorAcceptsPlainDecimalsFromZeroToTen() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		String[] values = { "0", "0.0", "1", "1.0", "0.5", "2.50", "9.999999", "10", "10.0", "10.00", "007.5" };
+		double[] expected = { 0.0, 0.0, 1.0, 1.0, 0.5, 2.5, 9.999999, 10.0, 10.0, 10.0, 7.5 };
+		for (int index = 0; index < values.length; index++) {
+			parking.addParam("searchTimeFactor", values[index]);
+			assertEquals(values[index], expected[index], parking.searchTimeFactor(), 0.0);
+		}
+		parking.setSearchTimeFactor("0.25");
+		assertEquals(0.25, parking.searchTimeFactor(), 0.0);
+	}
+
+	/**
+	 * Anything but plain decimal digits with an optional fraction in [0, 10] fails when the config is read, naming the
+	 * parameter: no sign, no exponent, no blanks, no unit, no non-finite value, no value beyond the range.
+	 */
+	@Test
+	public void searchTimeFactorRejectsEverythingButAPlainDecimalFromZeroToTen() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.addParam("searchTimeFactor", "1.5");
+		for (String value : new String[] { "-0.1", "-1", "-0", "10.1", "10.000001", "11", "100", "1e1", "1E1", "1.0e0", "+1",
+				" 1", "1 ", "", ".5", "5.", "1,5", "NaN", "Infinity", "-Infinity", "0x1p3", "1.0f", "1d", "one", "1.5.2",
+				"1 0", "99999999999999999999999999999999999999999" }) {
+			IllegalArgumentException error = assertThrows(value, IllegalArgumentException.class,
+					() -> parking.addParam("searchTimeFactor", value));
+			assertTrue(error.getMessage(), error.getMessage().contains("braunschweigParking.searchTimeFactor"));
+		}
+		assertThrows(IllegalArgumentException.class, () -> parking.setSearchTimeFactor(null));
+		// A rejected value leaves the previous one in place.
+		assertEquals(1.5, parking.searchTimeFactor(), 0.0);
+	}
+
+	/**
+	 * MATSim writes the config with the getters and reads it back: the text written for an accepted factor is accepted
+	 * again and gives the same value, also for a small factor that Double.toString would write with an exponent.
+	 */
+	@Test
+	public void searchTimeFactorRoundTripsThroughItsGetter() {
+		for (String value : new String[] { "0", "0.5", "1", "3.14159", "10", "0.00001", "0.000001234" }) {
+			ParkingConfigGroup written = new ParkingConfigGroup();
+			written.addParam("searchTimeFactor", value);
+			assertFalse(written.getSearchTimeFactor(), written.getSearchTimeFactor().contains("E"));
+			ParkingConfigGroup read = new ParkingConfigGroup();
+			read.addParam("searchTimeFactor", written.getSearchTimeFactor());
+			assertEquals(value, written.searchTimeFactor(), read.searchTimeFactor(), 0.0);
+		}
 	}
 
 	@Test
@@ -130,7 +190,8 @@ public class ParkingConfigGroupTest {
 	@Test
 	public void everyParameterIsDocumentedAndPricesAreNotParameters() {
 		Map<String, String> comments = new ParkingConfigGroup().getComments();
-		for (String parameter : new String[] { "enabled", "tariffsPath", "terminalStayRule", "minimumStayMinutes" }) {
+		for (String parameter : new String[] { "enabled", "tariffsPath", "terminalStayRule", "minimumStayMinutes",
+				"searchTimeFactor" }) {
 			assertTrue(parameter, comments.containsKey(parameter) && !comments.get(parameter).isBlank());
 		}
 		// Prices, fee windows and limits live only in the tariff model JSON; a config override must fail, not be ignored.

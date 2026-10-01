@@ -149,6 +149,34 @@ public class BraunschweigConfiguratorParkingTest {
 		assertTrue(error.getMessage(), error.getMessage().contains("braunschweigParking.minimumStayMinutes"));
 	}
 
+	/**
+	 * The preparation stage writes searchTimeFactor into the module (lever 4), and the typed group reads it when the loaded
+	 * config is updated; a config prepared before lever 4 has no such parameter and gets 0.0 (the car utility of version 1).
+	 */
+	@Test
+	public void searchTimeFactorOfThePreparedConfigReachesTheTypedGroup() throws Exception {
+		Config withFactor = preparedConfig();
+		addParking(withFactor, "true", "parking_tariffs_2026-09-28.json");
+		withFactor.getModules().get(ParkingConfigGroup.GROUP_NAME).addParam("searchTimeFactor", "1.0");
+		configurator().updateConfig(withFactor);
+		assertEquals(1.0, typedParking(withFactor).searchTimeFactor(), 0.0);
+
+		Config preparedBeforeLeverFour = preparedConfig();
+		addParking(preparedBeforeLeverFour, "true", "parking_tariffs_2026-09-28.json");
+		configurator().updateConfig(preparedBeforeLeverFour);
+		assertEquals(0.0, typedParking(preparedBeforeLeverFour).searchTimeFactor(), 0.0);
+	}
+
+	@Test
+	public void anInvalidSearchTimeFactorFailsWhenTheConfigIsLoaded() throws Exception {
+		Config config = preparedConfig();
+		addParking(config, "true", "parking_tariffs_2026-09-28.json");
+		config.getModules().get(ParkingConfigGroup.GROUP_NAME).addParam("searchTimeFactor", "11");
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> configurator().updateConfig(config));
+		assertTrue(error.getMessage(), error.getMessage().contains("braunschweigParking.searchTimeFactor"));
+	}
+
 	/** Parking zones and VRB zone fares switch different modes and are independent of each other. */
 	@Test
 	public void parkingAndVrbFareSwitchTheirOwnModesTogether() throws Exception {

@@ -94,10 +94,12 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 * @param ownDistrictActivitiesInPermitZones activities in the district of the person's home (both attributes set and
 	 *        equal) that lie in a zone which honours resident permits: the stays rule R2 frees unless the activity is home
 	 *        or parkingFree
+	 * @param activitiesWithSearchTime activities in a zone whose search_time_min is above 0: the destinations the search
+	 *        time factor of lever 4 acts on
 	 */
 	record Coverage(long persons, long activities, Map<ZoneType, Long> activitiesInZones, long parkingFreeActivities,
 			long residentPersons, long activitiesInDistricts, long districtResidents,
-			long ownDistrictActivitiesInPermitZones) {
+			long ownDistrictActivitiesInPermitZones, long activitiesWithSearchTime) {
 		Coverage {
 			Map<ZoneType, Long> copy = new EnumMap<>(ZoneType.class);
 			copy.putAll(activitiesInZones);
@@ -145,6 +147,7 @@ public final class ParkingPopulationCheck implements StartupListener {
 		long activitiesInDistricts = 0;
 		long districtResidents = 0;
 		long ownDistrictActivitiesInPermitZones = 0;
+		long activitiesWithSearchTime = 0;
 		for (Person person : population.getPersons().values()) {
 			Object personRing = person.getAttributes().getAttribute(LEGACY_RING_ATTRIBUTE);
 			if (personRing != null) {
@@ -166,6 +169,9 @@ public final class ParkingPopulationCheck implements StartupListener {
 					ZoneTariff zone = zone(person, planIndex, activityIndex, activity);
 					if (zone != null) {
 						activitiesInZones.merge(zone.zoneType(), 1L, Long::sum);
+						if (zone.searchTimeMinutes().orElse(0) > 0) {
+							activitiesWithSearchTime++;
+						}
 					}
 					if (parkingFree(person, planIndex, activityIndex, activity, zone != null)) {
 						parkingFreeActivities++;
@@ -182,7 +188,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 			}
 		}
 		return new Coverage(population.getPersons().size(), activities, activitiesInZones, parkingFreeActivities,
-				residentPersons, activitiesInDistricts, districtResidents, ownDistrictActivitiesInPermitZones);
+				residentPersons, activitiesInDistricts, districtResidents, ownDistrictActivitiesInPermitZones,
+				activitiesWithSearchTime);
 	}
 
 	/**
@@ -190,7 +197,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 * activities and their count per zone type, in declaration order; parkingFree activities; persons with a resident
 	 * zone and their rate among all persons; activities in a resident district and their rate, persons with a resident
 	 * district and their rate, and the activities in the own district that lie in a zone honouring resident permits (the
-	 * stays rule R2 can free) with their rate among all activities. A rate of an empty total is 0.
+	 * stays rule R2 can free) with their rate among all activities; the activities in a zone with a search time above 0
+	 * minutes, the ones lever 4 acts on, with their rate. A rate of an empty total is 0.
 	 */
 	static String summary(Coverage coverage) {
 		List<String> byZoneType = new ArrayList<>();
@@ -201,14 +209,15 @@ public final class ParkingPopulationCheck implements StartupListener {
 				"[parking] population: %d persons, %d activities; %d in a zone (%.1f %%: %s), %d parkingFree, %d persons"
 						+ " with residentParkingZone (%.1f %%); %d in a resident district (%.1f %%), %d persons with"
 						+ " residentParkingDistrict (%.1f %%), %d in the own district and a zone that honours resident"
-						+ " permits (%.1f %%)",
+						+ " permits (%.1f %%); %d in a zone with a search time (%.1f %%)",
 				coverage.persons(), coverage.activities(), coverage.activitiesInAZone(),
 				percent(coverage.activitiesInAZone(), coverage.activities()), String.join(", ", byZoneType),
 				coverage.parkingFreeActivities(), coverage.residentPersons(),
 				percent(coverage.residentPersons(), coverage.persons()), coverage.activitiesInDistricts(),
 				percent(coverage.activitiesInDistricts(), coverage.activities()), coverage.districtResidents(),
 				percent(coverage.districtResidents(), coverage.persons()), coverage.ownDistrictActivitiesInPermitZones(),
-				percent(coverage.ownDistrictActivitiesInPermitZones(), coverage.activities()));
+				percent(coverage.ownDistrictActivitiesInPermitZones(), coverage.activities()),
+				coverage.activitiesWithSearchTime(), percent(coverage.activitiesWithSearchTime(), coverage.activities()));
 		if (coverage.noActivityInAZone()) {
 			summary += "; no activity lies in a parking zone although " + ParkingConfigGroup.GROUP_NAME
 					+ " is enabled, so every car stay is priced NO_ZONE: were the plans written with parking_zones_enabled?";

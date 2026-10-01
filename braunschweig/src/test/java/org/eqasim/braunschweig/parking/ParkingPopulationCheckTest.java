@@ -239,15 +239,32 @@ public class ParkingPopulationCheckTest {
 		byZoneType.put(ZoneType.STREET_PAID, 2L);
 		byZoneType.put(ZoneType.RESIDENT_ZONE, 1L);
 		byZoneType.put(ZoneType.CAMPUS, 1L);
-		assertEquals(new Coverage(3, 13, byZoneType, 1, 1, 3, 2, 1), coverage);
+		assertEquals(new Coverage(3, 13, byZoneType, 1, 1, 3, 2, 1, 0), coverage);
 		assertEquals(4, coverage.activitiesInAZone());
 		assertFalse(coverage.noActivityInAZone());
 		assertEquals("[parking] population: 3 persons, 13 activities; 4 in a zone (30.8 %: street_paid 2, resident_zone"
 				+ " 1, campus 1), 1 parkingFree, 1 persons with residentParkingZone (33.3 %); 3 in a resident district"
 				+ " (23.1 %), 2 persons with residentParkingDistrict (66.7 %), 1 in the own district and a zone that"
-				+ " honours resident permits (7.7 %)", ParkingPopulationCheck.summary(coverage));
+				+ " honours resident permits (7.7 %); 0 in a zone with a search time (0.0 %)",
+				ParkingPopulationCheck.summary(coverage));
 		// The startup event scans the same population and passes.
 		check.notifyStartup(new StartupEvent(null));
+	}
+
+	/**
+	 * Lever 4: the activities whose zone has a search time above 0 minutes are the ones the search time factor acts on;
+	 * the rate shows that the zone column reaches the population (fx_bs_ia_v2 5 min and fx_wob_v2 2 min count,
+	 * fx_campus_v2 with an explicit 0 and fx_sz without a value do not).
+	 */
+	@Test
+	public void countsTheActivitiesInAZoneWithASearchTime() {
+		plan(person("p1"), activity("home"), inZone("work", "fx_bs_ia_v2"), inZone("shop", "fx_wob_v2"),
+				inZone("leisure", "fx_campus_v2"), inZone("shop", "fx_sz"), activity("home"));
+		Coverage coverage = check().scan();
+		assertEquals(6, coverage.activities());
+		assertEquals(2, coverage.activitiesWithSearchTime());
+		assertTrue(ParkingPopulationCheck.summary(coverage), ParkingPopulationCheck.summary(coverage)
+				.contains("2 in a zone with a search time (33.3 %)"));
 	}
 
 	/**
@@ -334,8 +351,9 @@ public class ParkingPopulationCheckTest {
 		assertEquals("[parking] population: 1 persons, 3 activities; 0 in a zone (0.0 %: street_paid 0, resident_zone 0,"
 				+ " campus 0), 0 parkingFree, 0 persons with residentParkingZone (0.0 %); 0 in a resident district (0.0 %),"
 				+ " 0 persons with residentParkingDistrict (0.0 %), 0 in the own district and a zone that honours resident"
-				+ " permits (0.0 %); no activity lies in a parking zone although braunschweigParking is enabled, so every"
-				+ " car stay is priced NO_ZONE: were the plans written with parking_zones_enabled?",
+				+ " permits (0.0 %); 0 in a zone with a search time (0.0 %); no activity lies in a parking zone although"
+				+ " braunschweigParking is enabled, so every car stay is priced NO_ZONE: were the plans written with"
+				+ " parking_zones_enabled?",
 				ParkingPopulationCheck.summary(coverage));
 
 		// An empty population prices nothing and is not flagged.

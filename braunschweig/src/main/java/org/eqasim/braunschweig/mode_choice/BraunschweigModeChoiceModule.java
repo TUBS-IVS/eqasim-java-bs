@@ -31,6 +31,7 @@ import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPers
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPtPredictor;
 import org.eqasim.braunschweig.parking.ParkingConfigGroup;
 import org.eqasim.braunschweig.parking.ParkingModule;
+import org.eqasim.braunschweig.parking.ParkingSearchTime;
 import org.eqasim.braunschweig.parking.ZoneParkingCarCostModel;
 import org.matsim.contribs.discrete_mode_choice.components.tour_finder.ActivityTourFinder;
 import org.matsim.contribs.discrete_mode_choice.modules.config.ActivityTourFinderConfigGroup;
@@ -119,6 +120,10 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		if (ParkingConfigGroup.active(getConfig()) != null) {
 			bindCostModel(ZONE_PARKING_CAR_COST_MODEL_NAME).to(ZoneParkingCarCostModel.class);
 			install(new ParkingModule());
+		} else {
+			// The car utility estimator takes the parking search time (lever 4); without the module it is the neutral one
+			// (factor 0, no minutes), so the utility is the one of version 1 and no tariff model is needed.
+			bind(ParkingSearchTime.class).toInstance(ParkingSearchTime.none());
 		}
 
 		bind(ModeParameters.class).to(BraunschweigModeParameters.class);

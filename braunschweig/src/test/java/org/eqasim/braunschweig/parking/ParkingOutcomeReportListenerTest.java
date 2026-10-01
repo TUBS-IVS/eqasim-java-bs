@@ -39,11 +39,19 @@ public class ParkingOutcomeReportListenerTest {
 
 	/** An enabled module with minimumStayMinutes as the preparation stage writes it, or without it when null. */
 	private static ParkingConfigGroup parking(String minimumStayMinutes) {
+		return parking(minimumStayMinutes, null);
+	}
+
+	/** An enabled module with minimumStayMinutes and searchTimeFactor as written into the config, or without when null. */
+	private static ParkingConfigGroup parking(String minimumStayMinutes, String searchTimeFactor) {
 		ParkingConfigGroup parking = new ParkingConfigGroup();
 		parking.setEnabled("true");
 		parking.setTariffsPath("parking_tariffs_2026-09-28.json");
 		if (minimumStayMinutes != null) {
 			parking.addParam("minimumStayMinutes", minimumStayMinutes);
+		}
+		if (searchTimeFactor != null) {
+			parking.addParam("searchTimeFactor", searchTimeFactor);
 		}
 		return parking;
 	}
@@ -144,22 +152,33 @@ public class ParkingOutcomeReportListenerTest {
 	}
 
 	/**
-	 * The active minimum parked duration is logged once, when the controller starts; a config prepared before assumption
-	 * L1 has none and prices as version 1.
+	 * The active minimum parked duration and the active search time factor are logged once, when the controller starts; a
+	 * config prepared before assumption L1 and lever 4 has neither and prices as version 1.
 	 */
 	@Test
-	public void logsTheActiveMinimumStayOnceAtStartup() {
+	public void logsTheActiveMinimumStayAndSearchTimeFactorOnceAtStartup() {
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
-				parking("15"));
+				parking("15", "1.5"));
 		assertEquals(List.of("[parking] minimum stay 15 min (braunschweigParking.minimumStayMinutes, assumption L1): every"
-				+ " priced car stay lasts at least 900 s; the simulated timing is unchanged"),
+				+ " priced car stay lasts at least 900 s; the simulated timing is unchanged",
+				"[parking] search time factor 1.5 (braunschweigParking.searchTimeFactor, lever 4): the car utility of a trip"
+						+ " to a destination in a zone adds betaTravelTime_u_min * 1.5 * search_time_min of that zone"),
 				logDuring(() -> listener.notifyStartup(new StartupEvent(null))));
 
 		ParkingOutcomeReportListener versionOne = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
 				parking(null));
 		assertEquals(List.of("[parking] minimum stay 0 min (braunschweigParking.minimumStayMinutes, assumption L1): car"
-				+ " stays are priced as simulated (version 1)"),
+				+ " stays are priced as simulated (version 1)",
+				"[parking] search time factor 0.0 (braunschweigParking.searchTimeFactor, lever 4): the car utility carries no"
+						+ " parking search time term (version 1)"),
 				logDuring(() -> versionOne.notifyStartup(new StartupEvent(null))));
+
+		// An explicit 0 is the same as the default.
+		ParkingOutcomeReportListener explicitZero = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+				parking("15", "0"));
+		assertEquals("[parking] search time factor 0.0 (braunschweigParking.searchTimeFactor, lever 4): the car utility"
+				+ " carries no parking search time term (version 1)",
+				logDuring(() -> explicitZero.notifyStartup(new StartupEvent(null))).get(1));
 	}
 
 	/** Messages the listener logs while {@code action} runs. */

@@ -3,7 +3,9 @@ package org.eqasim.braunschweig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -23,6 +25,7 @@ import org.eqasim.braunschweig.parking.ParkingOutcome;
 import org.eqasim.braunschweig.parking.ParkingOutcomeCounter;
 import org.eqasim.braunschweig.parking.ParkingOutcomeReportListener;
 import org.eqasim.braunschweig.parking.ParkingPopulationCheck;
+import org.eqasim.braunschweig.parking.ParkingSearchTime;
 import org.eqasim.braunschweig.parking.ParkingTariffs;
 import org.eqasim.braunschweig.parking.ZoneParkingCarCostModel;
 import org.eqasim.braunschweig.scenario.RunAdaptConfig;
@@ -80,11 +83,22 @@ public class ParkingInjectorTest {
 		}).getInjector();
 	}
 
+	/** The injector of an enabled module whose config carries the given additional parameters, such as searchTimeFactor. */
+	private Injector injector(Map<String, String> parkingParameters) throws Exception {
+		return controller(true, tariffModel -> {
+		}, parkingParameters).getInjector();
+	}
+
 	/**
 	 * The controller of a prepared scenario (empty population and network) whose tariff model is the fixture changed by
 	 * {@code tariffModelChange}; nothing is injected yet.
 	 */
 	private Controler controller(boolean parkingEnabled, Consumer<ObjectNode> tariffModelChange) throws Exception {
+		return controller(parkingEnabled, tariffModelChange, Map.of());
+	}
+
+	private Controler controller(boolean parkingEnabled, Consumer<ObjectNode> tariffModelChange,
+			Map<String, String> parkingParameters) throws Exception {
 		// The preparation stage writes the tariff model next to the prepared config; its path is config-relative.
 		Path prepared = folder.newFolder("prepared").toPath();
 		ObjectMapper mapper = new ObjectMapper();
@@ -107,6 +121,7 @@ public class ParkingInjectorTest {
 			ConfigGroup raw = new ConfigGroup(ParkingConfigGroup.GROUP_NAME);
 			raw.addParam("enabled", "true");
 			raw.addParam("tariffsPath", TARIFFS_FILE);
+			parkingParameters.forEach(raw::addParam);
 			config.addModule(raw);
 		}
 		config.controller().setOutputDirectory(folder.newFolder("output").toString());
@@ -168,6 +183,14 @@ public class ParkingInjectorTest {
 		assertTrue(estimators.get(BraunschweigModeChoiceModule.CAR_PASSENGER_ESTIMATOR_NAME)
 				.get() instanceof BraunschweigCarPassengerUtilityEstimator);
 
+		// The search time of lever 4 is bound with the tariff model and the factor of the module: 0 by default (off).
+		ParkingSearchTime searchTime = injector.getInstance(ParkingSearchTime.class);
+		assertNotSame(ParkingSearchTime.none(), searchTime);
+		assertEquals(0.0, searchTime.factor(), 0.0);
+		Activity zoned = PopulationUtils.createActivityFromCoord("shop", new Coord(0, 0));
+		zoned.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, "fx_bs_ia_v2");
+		assertEquals(5.0, searchTime.minutes(zoned), 0.0);
+
 		// The cost model records into the counter the report listener reads.
 		Activity origin = PopulationUtils.createActivityFromCoord("home", new Coord(0, 0));
 		Activity destination = PopulationUtils.createActivityFromCoord("work", new Coord(10000, 0));
@@ -195,6 +218,22 @@ public class ParkingInjectorTest {
 		// Nothing scans the population and nothing logs its parking coverage.
 		assertFalse(hasListener(injector, ParkingPopulationCheck.class));
 		assertNull(injector.getExistingBinding(Key.get(ParkingTariffs.class)));
+		// Lever 4 without the module: the car utility estimator is built with the neutral search time (factor 0, no
+		// minutes), although no tariff model exists to read search minutes from.
+		assertSame(ParkingSearchTime.none(), injector.getInstance(ParkingSearchTime.class));
+		assertTrue(estimators(injector).get(BraunschweigModeChoiceModule.CAR_ESTIMATOR_NAME)
+				.get() instanceof BraunschweigCarUtilityEstimator);
+	}
+
+	/** The searchTimeFactor of the module in the prepared config is the factor of the bound search time (lever 4). */
+	@Test
+	public void theSearchTimeFactorOfTheModuleReachesTheBoundSearchTime() throws Exception {
+		Injector injector = injector(Map.of("searchTimeFactor", "1.5"));
+		ParkingSearchTime searchTime = injector.getInstance(ParkingSearchTime.class);
+		assertEquals(1.5, searchTime.factor(), 0.0);
+		assertTrue(estimators(injector).get(BraunschweigModeChoiceModule.CAR_ESTIMATOR_NAME)
+				.get() instanceof BraunschweigCarUtilityEstimator);
+		assertEquals(1.5, injector.getInstance(ParkingConfigGroup.class).searchTimeFactor(), 0.0);
 	}
 
 	/**

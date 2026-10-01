@@ -1,5 +1,6 @@
 package org.eqasim.braunschweig.parking;
 
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -11,9 +12,10 @@ import org.matsim.core.config.ReflectiveConfigGroup;
  * MATSim config module "braunschweigParking": switches the car cost model to zone-based parking costs (design "parking
  * cost zones", eqasim-bs issue #436) and names the tariff model. Meant to be written into the prepared config by the
  * eqasim-bs preparation stage; absent or enabled=false keeps the existing car cost model. All prices, fee windows and
- * limits come from the tariff model JSON only; this module carries the switch, the path, the terminal-stay rule and the
+ * limits come from the tariff model JSON only; this module carries the switch, the path, the terminal-stay rule, the
  * minimum parked duration (assumption L1), which prices every car stay in a zone as lasting at least that long without
- * changing the simulated timing.
+ * changing the simulated timing, and the search time factor of lever 4, which scales the parking search minutes of the
+ * zone column into the car utility (0, the default, switches the term off).
  */
 public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 	public static final String GROUP_NAME = "braunschweigParking";
@@ -25,12 +27,22 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 	 */
 	public static final int LARGEST_MINIMUM_STAY_MINUTES = Integer.MAX_VALUE / ParkingCostCalculator.SECONDS_PER_MINUTE;
 
+	/**
+	 * The largest search time factor: ten times the search minutes of the zone column in the car utility. A sanity bound,
+	 * not a calibrated value; the sensitivity arm of the v2 design uses 1.0.
+	 */
+	public static final double MAXIMUM_SEARCH_TIME_FACTOR = 10.0;
+
 	private static final Pattern DECIMAL_DIGITS = Pattern.compile("[0-9]+");
+
+	/** Plain decimal digits with an optional fraction: no sign, no exponent, no blanks, no unit, no NaN or Infinity. */
+	private static final Pattern PLAIN_DECIMAL = Pattern.compile("[0-9]+(\\.[0-9]+)?");
 
 	private boolean enabled = false;
 	private String tariffsPath;
 	private String terminalStayRule = ParkingCostCalculator.TERMINAL_STAY_RULE_UNTIL_FEE_END;
 	private int minimumStayMinutes = 0;
+	private double searchTimeFactor = 0.0;
 
 	public ParkingConfigGroup() {
 		super(GROUP_NAME);
@@ -100,6 +112,31 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 		return minimumStayMinutes * ParkingCostCalculator.SECONDS_PER_MINUTE;
 	}
 
+	/** The factor as plain decimal text, never with an exponent, so that the written config reads back to the same value. */
+	@StringGetter("searchTimeFactor")
+	public String getSearchTimeFactor() {
+		return BigDecimal.valueOf(searchTimeFactor).toPlainString();
+	}
+
+	/**
+	 * Search time factor of lever 4, dimensionless, written by the eqasim-bs preparation stage as plain decimal text: digits
+	 * with an optional fraction in [0, {@value #MAXIMUM_SEARCH_TIME_FACTOR}]. A sign, an exponent, blanks, a unit, a
+	 * non-finite value or a larger value fail instead of being rounded or ignored.
+	 */
+	@StringSetter("searchTimeFactor")
+	public void setSearchTimeFactor(String value) {
+		searchTimeFactor = plainDecimal("searchTimeFactor", value, MAXIMUM_SEARCH_TIME_FACTOR);
+	}
+
+	/**
+	 * Factor that scales the parking search minutes of the destination zone into the car utility
+	 * ({@code betaTravelTime_u_min * factor * search_time_min}, lever 4); 0, the default when absent, leaves the utility as
+	 * in version 1.
+	 */
+	public double searchTimeFactor() {
+		return searchTimeFactor;
+	}
+
 	@Override
 	public Map<String, String> getComments() {
 		Map<String, String> comments = super.getComments();
@@ -107,7 +144,7 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 				"true switches the car cost model to zone-based parking costs (eqasim-bs issue #436); absent/false keeps the"
 						+ " existing car cost model");
 		comments.put("tariffsPath",
-				"parking tariff model JSON (schema 1) written by the preparation stage (relative to the config file)");
+				"parking tariff model JSON (schema 1 or 2) written by the preparation stage (relative to the config file)");
 		comments.put("terminalStayRule",
 				"parking duration at the last activity of a plan; only until_fee_end: the car pays until the fee window of"
 						+ " its arrival day ends (ASSUMPTION T1)");
@@ -115,6 +152,10 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 				"minimum parked duration in whole minutes (integer >= 0): every car stay in a parking zone is priced as"
 						+ " lasting at least this long, before the tariff rules; the simulated timing is unchanged (ASSUMPTION"
 						+ " L1). Absent: 0, the version 1 pricing");
+		comments.put("searchTimeFactor",
+				"factor (plain decimal in [0, 10]) on the parking search time of the destination zone in the car utility:"
+						+ " betaTravelTime_u_min * factor * search_time_min of the tariff model (lever 4). Absent or 0: no term,"
+						+ " the version 1 utility");
 		return comments;
 	}
 
@@ -139,6 +180,20 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 			throw new IllegalArgumentException(GROUP_NAME + "." + name + " must be literal true or false, got " + value);
 		}
 		return Boolean.parseBoolean(value);
+	}
+
+	/** A plain decimal number from 0 to {@code largest}; anything else, a non-finite value included, fails. */
+	private static double plainDecimal(String name, String value, double largest) {
+		String problem = GROUP_NAME + "." + name + " must be a plain decimal number from 0 to " + largest
+				+ " (digits with an optional fraction, no sign, exponent or unit), got '" + value + "'";
+		if (value == null || !PLAIN_DECIMAL.matcher(value).matches()) {
+			throw new IllegalArgumentException(problem);
+		}
+		double number = Double.parseDouble(value);
+		if (!(number >= 0.0 && number <= largest)) {
+			throw new IllegalArgumentException(problem);
+		}
+		return number;
 	}
 
 	/** Whole minutes from plain decimal digits, at most LARGEST_MINIMUM_STAY_MINUTES; anything else fails. */

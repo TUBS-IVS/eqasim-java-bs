@@ -70,6 +70,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	private final OutputDirectoryHierarchy output;
 	private final int minimumStayMinutes;
 	private final int minimumStay_s;
+	private final double searchTimeFactor;
+	private final String searchTimeFactorText;
 
 	@Inject
 	public ParkingOutcomeReportListener(ParkingOutcomeCounter counter, OutputDirectoryHierarchy output,
@@ -78,12 +80,15 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		this.output = output;
 		this.minimumStayMinutes = parking.minimumStayMinutes();
 		this.minimumStay_s = parking.minimumStay_s();
+		this.searchTimeFactor = parking.searchTimeFactor();
+		this.searchTimeFactorText = parking.getSearchTimeFactor();
 	}
 
-	/** Logs the active minimum parked duration of the run once (assumption L1). */
+	/** Logs the active minimum parked duration (assumption L1) and the active search time factor (lever 4) once. */
 	@Override
 	public void notifyStartup(StartupEvent event) {
 		LOG.info(minimumStaySetting(minimumStayMinutes, minimumStay_s));
+		LOG.info(searchTimeSetting(searchTimeFactor, searchTimeFactorText));
 	}
 
 	@Override
@@ -110,6 +115,17 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 			return setting + "car stays are priced as simulated (version 1)";
 		}
 		return setting + "every priced car stay lasts at least " + minimumStay_s + " s; the simulated timing is unchanged";
+	}
+
+	/** The startup line of the search time factor; a factor of 0 is the car utility of version 1. */
+	private static String searchTimeSetting(double searchTimeFactor, String searchTimeFactorText) {
+		String setting = "[parking] search time factor " + searchTimeFactorText + " (" + ParkingConfigGroup.GROUP_NAME
+				+ ".searchTimeFactor, lever 4): ";
+		if (searchTimeFactor == 0.0) {
+			return setting + "the car utility carries no parking search time term (version 1)";
+		}
+		return setting + "the car utility of a trip to a destination in a zone adds betaTravelTime_u_min * "
+				+ searchTimeFactorText + " * search_time_min of that zone";
 	}
 
 	/** The minimum parked duration line of one iteration: the priced stays it extended, as a count and in percent. */
