@@ -64,6 +64,21 @@ public class ParkingOutcomeCounterTest {
 		assertEquals(Map.of(new Cell(ParkingOutcome.HOME, "fx_bs_ia", "home"), 1L), counter.snapshotAndReset());
 	}
 
+	/**
+	 * The report lists outcomes in declaration order, so the order is part of the file format: the outcomes of version 1
+	 * keep their positions and the two schema-2 outcomes are appended at the end.
+	 */
+	@Test
+	public void theOutcomeDeclarationOrderKeepsVersionOneAndAppendsTheSchemaTwoOutcomes() {
+		List<String> names = new ArrayList<>();
+		for (ParkingOutcome outcome : ParkingOutcome.values()) {
+			names.add(outcome.name());
+		}
+		assertEquals(List.of("NO_ZONE", "HOME", "EMPLOYER_FREE", "RESIDENT_FREE", "OUTSIDE_FEE_HOURS", "FREE_WITHIN_LIMIT",
+				"PAID_METERED", "PAID_LONG_STAY", "PAID_CAMPUS_MEMBER", "PAID_CAMPUS_GUEST", "PAID_GARAGE", "PAID_COMMUTER"),
+				names);
+	}
+
 	@Test
 	public void cellsOrderByOutcomeDeclarationThenZoneIdThenPurpose() {
 		List<Cell> inReportOrder = List.of(new Cell(ParkingOutcome.NO_ZONE, "", "shop"),
