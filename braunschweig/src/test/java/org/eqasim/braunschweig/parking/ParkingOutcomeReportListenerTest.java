@@ -23,10 +23,10 @@ import org.matsim.core.controler.events.IterationEndsEvent;
 import org.matsim.core.controler.events.StartupEvent;
 
 /**
- * Per-iteration parking outcome report: {@code ITERS/it.N/N.parking_outcomes.csv} with one row per outcome, one
- * {@code [parking]} log line with the shares of the outcomes that occurred and one with the share of the priced stays
- * the minimum parked duration extended (assumption L1), whose active value is logged once at startup. Version 1 only
- * reports: no threshold, no failure.
+ * Per-iteration parking outcome report: {@code ITERS/it.N/N.parking_outcomes.csv} (CSV v2 of the v2 spec amendment A5:
+ * one row per non-zero cell of outcome, zone and purpose), one {@code [parking]} log line with the shares of the outcomes
+ * that occurred and one with the share of the priced stays the minimum parked duration extended (assumption L1), whose
+ * active value is logged once at startup. Version 1 only reports: no threshold, no failure.
  */
 public class ParkingOutcomeReportListenerTest {
 	@Rule
@@ -48,64 +48,99 @@ public class ParkingOutcomeReportListenerTest {
 		return parking;
 	}
 
+	private Path reportOfIteration(int iteration) {
+		return folder.getRoot().toPath().resolve("ITERS").resolve("it." + iteration)
+				.resolve(iteration + ".parking_outcomes.csv");
+	}
+
 	/**
-	 * The CSV holds the outcomes only, as before assumption L1. The second log line relates the extended stays to the
-	 * priced stays, the stays in a parking zone: every outcome but NO_ZONE (here 3 of 8).
+	 * CSV v2: one row per non-zero cell (outcome, zone, purpose) in outcome declaration order, then zone id, then purpose;
+	 * the zone id is empty for NO_ZONE; the share is the count over all counted stays of the iteration (8 here). The
+	 * second log line relates the extended stays to the priced stays, the stays in a parking zone: every outcome but
+	 * NO_ZONE (here 3 of 8).
 	 */
 	@Test
-	public void writesEveryOutcomeToTheIterationFileAndLogsTheOutcomeAndMinimumStayShares() throws Exception {
+	public void writesOneRowPerNonZeroCellAndLogsTheOutcomeAndMinimumStayShares() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		for (int index = 0; index < 5; index++) {
-			counter.record(ParkingOutcome.NO_ZONE);
-		}
-		counter.record(ParkingOutcome.PAID_METERED);
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
+		counter.record(ParkingOutcome.NO_ZONE, null, "work");
+		counter.record(ParkingOutcome.NO_ZONE, null, "shop");
+		counter.record(ParkingOutcome.NO_ZONE, null, "work");
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
 		counter.recordMinimumStayExtension();
-		counter.record(ParkingOutcome.PAID_METERED);
-		counter.record(ParkingOutcome.EMPLOYER_FREE);
+		counter.record(ParkingOutcome.NO_ZONE, null, "work");
+		counter.record(ParkingOutcome.EMPLOYER_FREE, "fx_bs_ib", "work");
+		counter.record(ParkingOutcome.NO_ZONE, null, "shop");
 		OutputDirectoryHierarchy output = output();
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output, parking("15"));
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 3, false)));
 
-		Path report = folder.getRoot().toPath().resolve("ITERS").resolve("it.3").resolve("3.parking_outcomes.csv");
+		Path report = reportOfIteration(3);
 		assertEquals(Path.of(output.getIterationFilename(3, ParkingOutcomeReportListener.FILE_NAME)), report);
-		assertEquals(List.of("outcome,count,share", //
-				"NO_ZONE,5,0.625000", //
-				"HOME,0,0.000000", //
-				"EMPLOYER_FREE,1,0.125000", //
-				"RESIDENT_FREE,0,0.000000", //
-				"OUTSIDE_FEE_HOURS,0,0.000000", //
-				"FREE_WITHIN_LIMIT,0,0.000000", //
-				"PAID_METERED,2,0.250000", //
-				"PAID_LONG_STAY,0,0.000000", //
-				"PAID_CAMPUS_MEMBER,0,0.000000", //
-				"PAID_CAMPUS_GUEST,0,0.000000", //
-				"PAID_GARAGE,0,0.000000", //
-				"PAID_COMMUTER,0,0.000000"), Files.readAllLines(report, StandardCharsets.UTF_8));
+		assertEquals(List.of("outcome,zone_id,purpose,count,share", //
+				"NO_ZONE,,shop,2,0.250000", //
+				"NO_ZONE,,work,3,0.375000", //
+				"EMPLOYER_FREE,fx_bs_ib,work,1,0.125000", //
+				"PAID_METERED,fx_bs_ia,shop,1,0.125000", //
+				"PAID_METERED,fx_bs_ib,work,1,0.125000"), Files.readAllLines(report, StandardCharsets.UTF_8));
 		assertEquals(List.of("[parking] it 3: NO_ZONE 5 (62.5 %), EMPLOYER_FREE 1 (12.5 %), PAID_METERED 2 (25.0 %)",
 				"[parking] it 3: minimum stay 15 min extended 1 of 3 priced stays (33.3 %)"), messages);
 		// The next iteration counts from zero.
-		assertEquals(0L, counter.snapshotAndReset().values().stream().mapToLong(Long::longValue).sum());
+		assertEquals(0L, counter.snapshotAndReset().size());
 		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
 	}
 
-	/** Without replanning (iteration 0) no car trip is priced: every count and share is 0 and the log lines say so. */
+	/** The schema-2 products have their rows too, in declaration order after the version 1 outcomes. */
 	@Test
-	public void anIterationWithoutPricedStaysReportsZeros() throws Exception {
+	public void listsTheGarageAndCommuterOutcomesAfterTheVersionOneOutcomes() throws Exception {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(ParkingOutcome.PAID_COMMUTER, "fx_bs_ib_v2", "work");
+		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
+		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
+		counter.record(ParkingOutcome.PAID_CAMPUS_GUEST, "fx_campus_v2", "shop");
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(), parking("15"));
+
+		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 1, false)));
+
+		assertEquals(List.of("outcome,zone_id,purpose,count,share", //
+				"PAID_CAMPUS_GUEST,fx_campus_v2,shop,1,0.250000", //
+				"PAID_GARAGE,fx_wob_v2,shop,2,0.500000", //
+				"PAID_COMMUTER,fx_bs_ib_v2,work,1,0.250000"), Files.readAllLines(reportOfIteration(1), StandardCharsets.UTF_8));
+	}
+
+	/** Without replanning (iteration 0) no car trip is priced: the file holds the header only and the log lines say so. */
+	@Test
+	public void anIterationWithoutPricedStaysWritesTheHeaderOnly() throws Exception {
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
 				parking("15"));
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 0, false)));
 
-		List<String> lines = Files.readAllLines(
-				folder.getRoot().toPath().resolve("ITERS").resolve("it.0").resolve("0.parking_outcomes.csv"),
-				StandardCharsets.UTF_8);
-		assertEquals(1 + ParkingOutcome.values().length, lines.size());
-		for (int index = 1; index < lines.size(); index++) {
-			assertEquals(ParkingOutcome.values()[index - 1] + ",0,0.000000", lines.get(index));
-		}
+		assertEquals(List.of("outcome,zone_id,purpose,count,share"),
+				Files.readAllLines(reportOfIteration(0), StandardCharsets.UTF_8));
 		assertEquals(List.of("[parking] it 0: no car stay priced",
 				"[parking] it 0: minimum stay 15 min extended 0 of 0 priced stays (0.0 %)"), messages);
+	}
+
+	/**
+	 * A zone id or an activity type with a comma, a quote or a line break is written in quotes (RFC 4180), so that a CSV
+	 * reader finds the five columns again.
+	 */
+	@Test
+	public void quotesAFieldThatContainsACommaAQuoteOrALineBreak() throws Exception {
+		assertEquals("work", ParkingOutcomeReportListener.csvField("work"));
+		assertEquals("", ParkingOutcomeReportListener.csvField(""));
+		assertEquals("\"a,b\"", ParkingOutcomeReportListener.csvField("a,b"));
+		assertEquals("\"say \"\"hi\"\"\"", ParkingOutcomeReportListener.csvField("say \"hi\""));
+		assertEquals("\"two\nlines\"", ParkingOutcomeReportListener.csvField("two\nlines"));
+
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(ParkingOutcome.PAID_METERED, "fx,zone", "work");
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(), parking("15"));
+		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 2, false)));
+		assertEquals(List.of("outcome,zone_id,purpose,count,share", "PAID_METERED,\"fx,zone\",work,1,1.000000"),
+				Files.readAllLines(reportOfIteration(2), StandardCharsets.UTF_8));
 	}
 
 	/**

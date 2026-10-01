@@ -37,13 +37,19 @@ import com.google.inject.Singleton;
  * <li>an activity attribute {@value ZoneParkingCarCostModel#ZONE_ATTRIBUTE} names no zone of the tariff model;</li>
  * <li>the person attribute {@value ZoneParkingCarCostModel#RESIDENT_ATTRIBUTE} names no zone of the tariff model, or a
  * zone of another type than resident_zone (only a resident zone exempts its residents);</li>
+ * <li>an activity attribute {@value ZoneParkingCarCostModel#DISTRICT_ATTRIBUTE} or the person attribute
+ * {@value ZoneParkingCarCostModel#RESIDENT_DISTRICT_ATTRIBUTE} (rule R2, spec Amendment C3) names no resident district of
+ * the tariff model's {@code resident_districts}: a model of schema 1 lists none, so any district value fails against
+ * it, and the plans and the model must come from the same release. A district outside every fee zone is legitimate (the
+ * districts are independent of the fee zones; Z1 decides such a stay);</li>
  * <li>an activity carries {@value ZoneParkingCarCostModel#FREE_ATTRIBUTE} = true but no zone: the eqasim-bs plans
  * writer never writes that, so it shows a writer defect;</li>
  * <li>a person or an activity carries {@code isParis}, of any value: the plans were written for the legacy 8 km ring
  * parking (Python flag enable_urban_parking), which is mutually exclusive with the zones (Python flag
  * parking_zones_enabled);</li>
- * <li>one of the three parking attributes has another type than the plans writer writes (String zone ids, Boolean
- * parkingFree), which ZoneParkingCarCostModel would otherwise reject only when it first prices a car trip there.</li>
+ * <li>one of the five parking attributes has another type than the plans writer writes (String zone and district ids,
+ * Boolean parkingFree), which ZoneParkingCarCostModel would otherwise reject only when it first prices a car trip
+ * there.</li>
  * </ul>
  * The message names the person, the plan and activity index and the activity type where applicable, the attribute and
  * the offending value, and, except for a mistyped value, the tariffs path. Stage activities (such as
@@ -68,6 +74,9 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 */
 	static final String LEGACY_RING_ATTRIBUTE = "isParis";
 
+	private static final String RESIDENT_ZONE_KIND = "a zone";
+	private static final String RESIDENT_DISTRICT_KIND = "a resident district";
+
 	private final ParkingTariffs tariffs;
 	private final Population population;
 	private final String tariffsPath;
@@ -80,9 +89,15 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 * @param activitiesInZones activities with a parkingZone by the type of that zone
 	 * @param parkingFreeActivities activities with parkingFree = true
 	 * @param residentPersons persons with a residentParkingZone
+	 * @param activitiesInDistricts activities with a parkingDistrict
+	 * @param districtResidents persons with a residentParkingDistrict
+	 * @param ownDistrictActivitiesInPermitZones activities in the district of the person's home (both attributes set and
+	 *        equal) that lie in a zone which honours resident permits: the stays rule R2 frees unless the activity is home
+	 *        or parkingFree
 	 */
 	record Coverage(long persons, long activities, Map<ZoneType, Long> activitiesInZones, long parkingFreeActivities,
-			long residentPersons) {
+			long residentPersons, long activitiesInDistricts, long districtResidents,
+			long ownDistrictActivitiesInPermitZones) {
 		Coverage {
 			Map<ZoneType, Long> copy = new EnumMap<>(ZoneType.class);
 			copy.putAll(activitiesInZones);
@@ -127,6 +142,9 @@ public final class ParkingPopulationCheck implements StartupListener {
 		long activities = 0;
 		long parkingFreeActivities = 0;
 		long residentPersons = 0;
+		long activitiesInDistricts = 0;
+		long districtResidents = 0;
+		long ownDistrictActivitiesInPermitZones = 0;
 		for (Person person : population.getPersons().values()) {
 			Object personRing = person.getAttributes().getAttribute(LEGACY_RING_ATTRIBUTE);
 			if (personRing != null) {
@@ -135,31 +153,44 @@ public final class ParkingPopulationCheck implements StartupListener {
 			if (residentZone(person) != null) {
 				residentPersons++;
 			}
+			String homeDistrict = residentDistrict(person);
+			if (homeDistrict != null) {
+				districtResidents++;
+			}
 			List<? extends Plan> plans = person.getPlans();
 			for (int planIndex = 0; planIndex < plans.size(); planIndex++) {
 				List<Activity> planActivities = TripStructureUtils.getActivities(plans.get(planIndex),
 						StageActivityHandling.ExcludeStageActivities);
 				for (int activityIndex = 0; activityIndex < planActivities.size(); activityIndex++) {
 					Activity activity = planActivities.get(activityIndex);
-					ZoneType zoneType = zoneType(person, planIndex, activityIndex, activity);
-					if (zoneType != null) {
-						activitiesInZones.merge(zoneType, 1L, Long::sum);
+					ZoneTariff zone = zone(person, planIndex, activityIndex, activity);
+					if (zone != null) {
+						activitiesInZones.merge(zone.zoneType(), 1L, Long::sum);
 					}
-					if (parkingFree(person, planIndex, activityIndex, activity, zoneType != null)) {
+					if (parkingFree(person, planIndex, activityIndex, activity, zone != null)) {
 						parkingFreeActivities++;
+					}
+					String activityDistrict = activityDistrict(person, planIndex, activityIndex, activity);
+					if (activityDistrict != null) {
+						activitiesInDistricts++;
+						if (activityDistrict.equals(homeDistrict) && zone != null && zone.residentPermitsValid()) {
+							ownDistrictActivitiesInPermitZones++;
+						}
 					}
 					activities++;
 				}
 			}
 		}
 		return new Coverage(population.getPersons().size(), activities, activitiesInZones, parkingFreeActivities,
-				residentPersons);
+				residentPersons, activitiesInDistricts, districtResidents, ownDistrictActivitiesInPermitZones);
 	}
 
 	/**
 	 * The {@code [parking] population} line: persons and activities; activities in a zone with their rate among all
 	 * activities and their count per zone type, in declaration order; parkingFree activities; persons with a resident
-	 * zone and their rate among all persons. A rate of an empty total is 0.
+	 * zone and their rate among all persons; activities in a resident district and their rate, persons with a resident
+	 * district and their rate, and the activities in the own district that lie in a zone honouring resident permits (the
+	 * stays rule R2 can free) with their rate among all activities. A rate of an empty total is 0.
 	 */
 	static String summary(Coverage coverage) {
 		List<String> byZoneType = new ArrayList<>();
@@ -168,11 +199,16 @@ public final class ParkingPopulationCheck implements StartupListener {
 		}
 		String summary = String.format(Locale.ROOT,
 				"[parking] population: %d persons, %d activities; %d in a zone (%.1f %%: %s), %d parkingFree, %d persons"
-						+ " with residentParkingZone (%.1f %%)",
+						+ " with residentParkingZone (%.1f %%); %d in a resident district (%.1f %%), %d persons with"
+						+ " residentParkingDistrict (%.1f %%), %d in the own district and a zone that honours resident"
+						+ " permits (%.1f %%)",
 				coverage.persons(), coverage.activities(), coverage.activitiesInAZone(),
 				percent(coverage.activitiesInAZone(), coverage.activities()), String.join(", ", byZoneType),
 				coverage.parkingFreeActivities(), coverage.residentPersons(),
-				percent(coverage.residentPersons(), coverage.persons()));
+				percent(coverage.residentPersons(), coverage.persons()), coverage.activitiesInDistricts(),
+				percent(coverage.activitiesInDistricts(), coverage.activities()), coverage.districtResidents(),
+				percent(coverage.districtResidents(), coverage.persons()), coverage.ownDistrictActivitiesInPermitZones(),
+				percent(coverage.ownDistrictActivitiesInPermitZones(), coverage.activities()));
 		if (coverage.noActivityInAZone()) {
 			summary += "; no activity lies in a parking zone although " + ParkingConfigGroup.GROUP_NAME
 					+ " is enabled, so every car stay is priced NO_ZONE: were the plans written with parking_zones_enabled?";
@@ -181,10 +217,10 @@ public final class ParkingPopulationCheck implements StartupListener {
 	}
 
 	/**
-	 * The type of the zone the activity lies in, or null outside every zone; fails for the legacy ring attribute and for
+	 * The tariff of the zone the activity lies in, or null outside every zone; fails for the legacy ring attribute and for
 	 * a mistyped or unknown parkingZone.
 	 */
-	private ZoneType zoneType(Person person, int planIndex, int activityIndex, Activity activity) {
+	private ZoneTariff zone(Person person, int planIndex, int activityIndex, Activity activity) {
 		Object ring = activity.getAttributes().getAttribute(LEGACY_RING_ATTRIBUTE);
 		if (ring != null) {
 			throw legacyRing(activityName(person, planIndex, activityIndex, activity), ring);
@@ -199,10 +235,10 @@ public final class ParkingPopulationCheck implements StartupListener {
 		}
 		Optional<ZoneTariff> tariff = tariffs.zone(zoneId);
 		if (tariff.isEmpty()) {
-			throw unknownZone(activityName(person, planIndex, activityIndex, activity),
-					ZoneParkingCarCostModel.ZONE_ATTRIBUTE, zoneId);
+			throw unknown(activityName(person, planIndex, activityIndex, activity), ZoneParkingCarCostModel.ZONE_ATTRIBUTE,
+					zoneId, RESIDENT_ZONE_KIND);
 		}
-		return tariff.get().zoneType();
+		return tariff.get();
 	}
 
 	/**
@@ -242,7 +278,7 @@ public final class ParkingPopulationCheck implements StartupListener {
 		}
 		Optional<ZoneTariff> tariff = tariffs.zone(zoneId);
 		if (tariff.isEmpty()) {
-			throw unknownZone(personName(person), ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, zoneId);
+			throw unknown(personName(person), ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, zoneId, RESIDENT_ZONE_KIND);
 		}
 		ZoneType zoneType = tariff.get().zoneType();
 		if (zoneType != ZoneType.RESIDENT_ZONE) {
@@ -254,8 +290,40 @@ public final class ParkingPopulationCheck implements StartupListener {
 		return zoneId;
 	}
 
-	private IllegalStateException unknownZone(String owner, String attribute, String zoneId) {
-		return new IllegalStateException(owner + ": " + attribute + " " + zoneId + " is not a zone of the parking tariff"
+	/**
+	 * The person's residentParkingDistrict (rule R2), or null for a person whose home lies in no district; fails for a
+	 * mistyped value and for a district the tariff model does not list.
+	 */
+	private String residentDistrict(Person person) {
+		return districtId(personName(person), person.getAttributes().getAttribute(
+				ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE), ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE);
+	}
+
+	/**
+	 * The activity's parkingDistrict (rule R2), or null for an activity in no district; fails for a mistyped value and
+	 * for a district the tariff model does not list.
+	 */
+	private String activityDistrict(Person person, int planIndex, int activityIndex, Activity activity) {
+		return districtId(activityName(person, planIndex, activityIndex, activity),
+				activity.getAttributes().getAttribute(ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE),
+				ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE);
+	}
+
+	private String districtId(String owner, Object value, String attribute) {
+		if (value == null) {
+			return null;
+		}
+		if (!(value instanceof String districtId)) {
+			throw mistyped(owner, attribute, String.class, value);
+		}
+		if (tariffs.residentDistrict(districtId).isEmpty()) {
+			throw unknown(owner, attribute, districtId, RESIDENT_DISTRICT_KIND);
+		}
+		return districtId;
+	}
+
+	private IllegalStateException unknown(String owner, String attribute, String id, String kind) {
+		return new IllegalStateException(owner + ": " + attribute + " " + id + " is not " + kind + " of the parking tariff"
 				+ " model " + tariffsPath + " (" + ParkingConfigGroup.GROUP_NAME + ".tariffsPath); the tariff model and the"
 				+ " plans must come from the same release");
 	}

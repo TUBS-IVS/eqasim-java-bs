@@ -2,52 +2,107 @@ package org.eqasim.braunschweig.parking;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import org.eqasim.braunschweig.parking.ParkingOutcomeCounter.Cell;
 import org.junit.Test;
 
 /**
- * Per-iteration parking outcome counts. Mode choice prices car trips in parallel replanning threads, so the counter must
- * neither lose nor double count an outcome, also when a snapshot is taken while threads still record.
+ * Per-iteration parking outcome counts per cell (outcome, zone id, purpose). Mode choice prices car trips in parallel
+ * replanning threads, so the counter must neither lose nor double count a stay, also when a snapshot is taken while
+ * threads still record.
  */
 public class ParkingOutcomeCounterTest {
 	private static final int THREADS = 8;
 	private static final int RECORDS_PER_THREAD = 20_000;
 
-	@Test
-	public void snapshotHoldsEveryOutcomeInDeclarationOrderAndResets() {
-		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_METERED);
-		counter.record(ParkingOutcome.NO_ZONE);
-		counter.record(ParkingOutcome.PAID_METERED);
-
-		Map<ParkingOutcome, Long> snapshot = counter.snapshotAndReset();
-		assertEquals(List.of(ParkingOutcome.values()), new ArrayList<>(snapshot.keySet()));
-		assertEquals(Long.valueOf(1), snapshot.get(ParkingOutcome.NO_ZONE));
-		assertEquals(Long.valueOf(2), snapshot.get(ParkingOutcome.PAID_METERED));
-		assertEquals(Long.valueOf(0), snapshot.get(ParkingOutcome.HOME));
-		assertThrows(UnsupportedOperationException.class, () -> snapshot.put(ParkingOutcome.HOME, 1L));
-
-		// The next snapshot starts from zero.
-		Map<ParkingOutcome, Long> empty = counter.snapshotAndReset();
-		assertEquals(ParkingOutcome.values().length, empty.size());
-		assertEquals(0L, total(empty));
-		counter.record(ParkingOutcome.HOME);
-		assertEquals(Long.valueOf(1), counter.snapshotAndReset().get(ParkingOutcome.HOME));
+	/** Zone and purpose of the recorded stays: a stay outside every zone has no zone id, every other stay names its zone. */
+	private static Cell cell(ParkingOutcome outcome, int variant) {
+		String zoneId = outcome == ParkingOutcome.NO_ZONE ? "" : "fx_zone_" + (variant % 3);
+		return new Cell(outcome, zoneId, variant % 2 == 0 ? "work" : "shop");
 	}
 
 	@Test
-	public void recordRejectsAMissingOutcome() {
-		assertThrows(NullPointerException.class, () -> new ParkingOutcomeCounter().record(null));
+	public void snapshotHoldsEveryNonZeroCellInTheOrderOfTheReportAndResets() {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
+		counter.record(ParkingOutcome.NO_ZONE, null, "work");
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "leisure");
+		counter.record(ParkingOutcome.HOME, "fx_bs_ia", "home");
+		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
+
+		Map<Cell, Long> snapshot = counter.snapshotAndReset();
+		// Outcome declaration order, then zone id, then purpose; cells without a stay are not listed.
+		Map<Cell, Long> expected = new TreeMap<>();
+		expected.put(new Cell(ParkingOutcome.NO_ZONE, "", "work"), 1L);
+		expected.put(new Cell(ParkingOutcome.HOME, "fx_bs_ia", "home"), 1L);
+		expected.put(new Cell(ParkingOutcome.PAID_METERED, "fx_bs_ia", "leisure"), 1L);
+		expected.put(new Cell(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop"), 1L);
+		expected.put(new Cell(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work"), 2L);
+		expected.put(new Cell(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop"), 1L);
+		assertEquals(expected, snapshot);
+		assertEquals(List.copyOf(expected.keySet()), new ArrayList<>(snapshot.keySet()));
+		assertThrows(UnsupportedOperationException.class,
+				() -> snapshot.put(new Cell(ParkingOutcome.HOME, "fx_bs_ia", "work"), 1L));
+
+		// The next snapshot starts from zero.
+		assertTrue(counter.snapshotAndReset().isEmpty());
+		counter.record(ParkingOutcome.HOME, "fx_bs_ia", "home");
+		assertEquals(Map.of(new Cell(ParkingOutcome.HOME, "fx_bs_ia", "home"), 1L), counter.snapshotAndReset());
+	}
+
+	@Test
+	public void cellsOrderByOutcomeDeclarationThenZoneIdThenPurpose() {
+		List<Cell> inReportOrder = List.of(new Cell(ParkingOutcome.NO_ZONE, "", "shop"),
+				new Cell(ParkingOutcome.NO_ZONE, "", "work"), new Cell(ParkingOutcome.PAID_METERED, "fx_a", "zzz"),
+				new Cell(ParkingOutcome.PAID_METERED, "fx_b", "aaa"), new Cell(ParkingOutcome.PAID_COMMUTER, "fx_a", "aaa"));
+		List<Cell> sorted = new ArrayList<>(inReportOrder);
+		Collections.reverse(sorted);
+		Collections.sort(sorted);
+		assertEquals(inReportOrder, sorted);
+	}
+
+	/** A stay outside every zone has no zone id (the CSV cell is empty); every other outcome names the zone of its stay. */
+	@Test
+	public void recordRejectsAnInconsistentCellAndMissingValues() {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		assertThrows(NullPointerException.class, () -> counter.record(null, "fx_bs_ia", "work"));
+		assertThrows(NullPointerException.class, () -> counter.record(ParkingOutcome.NO_ZONE, null, null));
+		assertThrows(IllegalArgumentException.class, () -> counter.record(ParkingOutcome.NO_ZONE, "fx_bs_ia", "work"));
+		assertThrows(IllegalArgumentException.class, () -> counter.record(ParkingOutcome.PAID_METERED, null, "work"));
+		assertThrows(IllegalArgumentException.class, () -> counter.record(ParkingOutcome.PAID_METERED, "", "work"));
+		// A rejected record counts nothing.
+		assertTrue(counter.snapshotAndReset().isEmpty());
+	}
+
+	/** The log line and the priced-stay share need the counts per outcome, every outcome listed in declaration order. */
+	@Test
+	public void countsByOutcomeSumsTheCellsOverZonesAndPurposes() {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
+		counter.record(ParkingOutcome.NO_ZONE, null, "leisure");
+		Map<ParkingOutcome, Long> counts = ParkingOutcomeCounter.countsByOutcome(counter.snapshotAndReset());
+		assertEquals(List.of(ParkingOutcome.values()), new ArrayList<>(counts.keySet()));
+		assertEquals(Long.valueOf(3), counts.get(ParkingOutcome.PAID_METERED));
+		assertEquals(Long.valueOf(1), counts.get(ParkingOutcome.NO_ZONE));
+		assertEquals(Long.valueOf(0), counts.get(ParkingOutcome.PAID_COMMUTER));
+		assertEquals(4L, total(counts));
+		assertThrows(UnsupportedOperationException.class, () -> counts.put(ParkingOutcome.HOME, 1L));
 	}
 
 	/**
@@ -58,12 +113,12 @@ public class ParkingOutcomeCounterTest {
 	public void minimumStayExtensionsAreCountedAndResetApartFromTheOutcomes() {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
 		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
-		counter.record(ParkingOutcome.PAID_METERED);
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
 		counter.recordMinimumStayExtension();
-		counter.record(ParkingOutcome.PAID_METERED);
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
 		counter.recordMinimumStayExtension();
-		counter.record(ParkingOutcome.PAID_METERED);
-		assertEquals(Long.valueOf(3), counter.snapshotAndReset().get(ParkingOutcome.PAID_METERED));
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
+		assertEquals(Map.of(new Cell(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop"), 3L), counter.snapshotAndReset());
 		assertEquals(2L, counter.snapshotAndResetMinimumStayExtensions());
 		// The next snapshot starts from zero.
 		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
@@ -74,8 +129,7 @@ public class ParkingOutcomeCounterTest {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
 		runConcurrently(counter, () -> {
 		});
-		Map<ParkingOutcome, Long> snapshot = counter.snapshotAndReset();
-		assertEquals(expectedCounts(), snapshot);
+		assertEquals(expectedCounts(), counter.snapshotAndReset());
 	}
 
 	/**
@@ -85,22 +139,19 @@ public class ParkingOutcomeCounterTest {
 	@Test
 	public void snapshotsDuringConcurrentRecordsNeitherLoseNorDoubleCount() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		Map<ParkingOutcome, Long> summed = new EnumMap<>(ParkingOutcome.class);
+		Map<Cell, Long> summed = new TreeMap<>();
 		runConcurrently(counter, () -> add(summed, counter.snapshotAndReset()));
 		add(summed, counter.snapshotAndReset());
 		assertEquals(expectedCounts(), summed);
 	}
 
-	/** Thread t records outcome values()[(t + i) % 10] for i = 0 .. RECORDS_PER_THREAD - 1. */
-	private static Map<ParkingOutcome, Long> expectedCounts() {
-		Map<ParkingOutcome, Long> expected = new EnumMap<>(ParkingOutcome.class);
+	/** Thread t records the cell of outcome values()[(t + i) % n] with the variant (t + i) for i = 0 .. RECORDS - 1. */
+	private static Map<Cell, Long> expectedCounts() {
+		Map<Cell, Long> expected = new TreeMap<>();
 		ParkingOutcome[] outcomes = ParkingOutcome.values();
-		for (ParkingOutcome outcome : outcomes) {
-			expected.put(outcome, 0L);
-		}
 		for (int thread = 0; thread < THREADS; thread++) {
 			for (int index = 0; index < RECORDS_PER_THREAD; index++) {
-				expected.merge(outcomes[(thread + index) % outcomes.length], 1L, Long::sum);
+				expected.merge(cell(outcomes[(thread + index) % outcomes.length], thread + index), 1L, Long::sum);
 			}
 		}
 		return expected;
@@ -118,7 +169,8 @@ public class ParkingOutcomeCounterTest {
 				recorders.add(executor.submit(() -> {
 					start.await();
 					for (int index = 0; index < RECORDS_PER_THREAD; index++) {
-						counter.record(outcomes[(offset + index) % outcomes.length]);
+						Cell cell = cell(outcomes[(offset + index) % outcomes.length], offset + index);
+						counter.record(cell.outcome(), cell.zoneId().isEmpty() ? null : cell.zoneId(), cell.purpose());
 					}
 					return null;
 				}));
@@ -137,8 +189,8 @@ public class ParkingOutcomeCounterTest {
 		}
 	}
 
-	private static void add(Map<ParkingOutcome, Long> sum, Map<ParkingOutcome, Long> snapshot) {
-		for (Map.Entry<ParkingOutcome, Long> entry : snapshot.entrySet()) {
+	private static void add(Map<Cell, Long> sum, Map<Cell, Long> snapshot) {
+		for (Map.Entry<Cell, Long> entry : snapshot.entrySet()) {
 			sum.merge(entry.getKey(), entry.getValue(), Long::sum);
 		}
 	}

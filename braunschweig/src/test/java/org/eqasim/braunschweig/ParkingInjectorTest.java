@@ -181,7 +181,8 @@ public class ParkingInjectorTest {
 		ParkingOutcomeCounter counter = injector.getInstance(ParkingOutcomeCounter.class);
 		counter.snapshotAndReset();
 		carCostModel.calculateCost_MU(person, trip, List.of(leg));
-		assertEquals(Long.valueOf(1), counter.snapshotAndReset().get(ParkingOutcome.NO_ZONE));
+		assertEquals(Map.of(new ParkingOutcomeCounter.Cell(ParkingOutcome.NO_ZONE, "", "work"), 1L),
+				counter.snapshotAndReset());
 	}
 
 	@Test

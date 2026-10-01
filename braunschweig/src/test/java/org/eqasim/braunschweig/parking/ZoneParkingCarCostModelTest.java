@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigCostParameters;
 import org.junit.Before;
@@ -164,6 +165,11 @@ public class ZoneParkingCarCostModelTest {
 		return model.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements());
 	}
 
+	/** The counts since the last snapshot summed per outcome over zones and purposes; the counter restarts from 0. */
+	private Map<ParkingOutcome, Long> countsByOutcome() {
+		return ParkingOutcomeCounter.countsByOutcome(counter.snapshotAndReset());
+	}
+
 	/** Counts of a snapshot with exactly the given outcome counted once and every other outcome 0. */
 	private static Map<ParkingOutcome, Long> onlyOnce(ParkingOutcome outcome) {
 		Map<ParkingOutcome, Long> expected = new EnumMap<>(ParkingOutcome.class);
@@ -185,14 +191,14 @@ public class ZoneParkingCarCostModelTest {
 	public void aHomeActivityOutsideEveryZoneCountsNoZoneNotHome() {
 		CarTrip carTrip = tripTo(activity("home", 61200.0), 27000, false);
 		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), countsByOutcome());
 	}
 
 	@Test
 	public void noZoneAttributeCostsTheDrivingOnlyAndCountsNoZone() {
 		CarTrip carTrip = tripTo(activity("work", 61200.0), 27000, false);
 		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), countsByOutcome());
 	}
 
 	/** Zone Ib, 08:00-17:00: fee hours 09:00-17:00 = 480 min at 180 ct/h = 1440 ct, capped at the 900 ct day cap. */
@@ -202,7 +208,7 @@ public class ZoneParkingCarCostModelTest {
 		CarTrip carTrip = tripTo(work, 27000, false);
 		int attributesBefore = work.getAttributes().size();
 		assertEquals(DRIVING_COST_EUR + 9.00, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 		// Pricing reads the plan, it never changes it.
 		assertEquals(61200.0, work.getEndTime().seconds(), 0.0);
 		assertEquals(attributesBefore, work.getAttributes().size());
@@ -215,7 +221,7 @@ public class ZoneParkingCarCostModelTest {
 		Activity work = inZone(activity("work", 61200.0), "fx_bs_ib");
 		work.getAttributes().putAttribute(ZoneParkingCarCostModel.FREE_ATTRIBUTE, true);
 		assertEquals(DRIVING_COST_EUR, cost_EUR(tripTo(work, 27000, false)), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.EMPLOYER_FREE), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.EMPLOYER_FREE), countsByOutcome());
 	}
 
 	/** Resident zone A, work 08:00-17:00: 540 min exceed the 120 min maximum stay, except for residents of the zone. */
@@ -224,11 +230,11 @@ public class ZoneParkingCarCostModelTest {
 		CarTrip resident = tripTo(inZone(activity("work", 61200.0), "fx_res_a"), 27000, false);
 		resident.person().getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, "fx_res_a");
 		assertEquals(DRIVING_COST_EUR, cost_EUR(resident), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.RESIDENT_FREE), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.RESIDENT_FREE), countsByOutcome());
 
 		CarTrip visitor = tripTo(inZone(activity("work", 61200.0), "fx_res_a"), 27000, false);
 		assertEquals(DRIVING_COST_EUR + 9.00, cost_EUR(visitor), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_LONG_STAY), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_LONG_STAY), countsByOutcome());
 
 		// A resident of another zone is a visitor here (assumption R1: the exemption holds in the own zone only). The
 		// fixture has one resident zone, so a street zone id stands in for the other one; ParkingPopulationCheck would
@@ -236,7 +242,7 @@ public class ZoneParkingCarCostModelTest {
 		CarTrip otherResident = tripTo(inZone(activity("work", 61200.0), "fx_res_a"), 27000, false);
 		otherResident.person().getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, "fx_bs_ia");
 		assertEquals(DRIVING_COST_EUR + 9.00, cost_EUR(otherResident), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_LONG_STAY), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_LONG_STAY), countsByOutcome());
 	}
 
 	/** Terminal rule T1: arriving 19:30 at the last activity, the car pays until the fee window ends at 20:00. */
@@ -244,7 +250,7 @@ public class ZoneParkingCarCostModelTest {
 	public void terminalStayPaysUntilTheFeeWindowOfTheArrivalDayEnds() {
 		CarTrip carTrip = tripTo(inZone(activity("shop", null), "fx_bs_ia"), 68400, true);
 		assertEquals(DRIVING_COST_EUR + 0.90, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 	}
 
 	/** The destination's activity type is the purpose: home is free in every zone (assumption H1). */
@@ -252,7 +258,7 @@ public class ZoneParkingCarCostModelTest {
 	public void homeInAPaidZoneCostsTheDrivingOnly() {
 		CarTrip carTrip = tripTo(inZone(activity("home", 61200.0), "fx_bs_ib"), 27000, false);
 		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.HOME), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.HOME), countsByOutcome());
 	}
 
 	/**
@@ -272,7 +278,7 @@ public class ZoneParkingCarCostModelTest {
 		elements.add(leg(TransportMode.walk, 400.0, 300.0));
 		CarTrip carTrip = tripTo(inZone(activity("shop", 39600.0), "fx_bs_ia"), 32400, false, elements);
 		assertEquals(DRIVING_COST_EUR + 2.40, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 	}
 
 	@Test
@@ -281,7 +287,7 @@ public class ZoneParkingCarCostModelTest {
 		IllegalStateException error = assertThrows(IllegalStateException.class, () -> cost_EUR(carTrip));
 		assertTrue(error.getMessage(), error.getMessage().contains("bs_zone_unknown"));
 		assertTrue(error.getMessage(), error.getMessage().contains(TARIFFS_PATH));
-		assertEquals(0L, total(counter.snapshotAndReset()));
+		assertEquals(0L, total(countsByOutcome()));
 	}
 
 	/** A resident zone id is a zone id of the same release: an unknown one fails instead of never exempting anyone. */
@@ -315,7 +321,7 @@ public class ZoneParkingCarCostModelTest {
 		IllegalStateException residentError = assertThrows(IllegalStateException.class, () -> cost_EUR(numericResident));
 		assertTrue(residentError.getMessage(),
 				residentError.getMessage().contains(ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE));
-		assertEquals(0L, total(counter.snapshotAndReset()));
+		assertEquals(0L, total(countsByOutcome()));
 	}
 
 	/**
@@ -328,7 +334,7 @@ public class ZoneParkingCarCostModelTest {
 	public void aLateArrivalIsAStayOfLengthZero() {
 		CarTrip carTrip = tripTo(inZone(activity("shop", 36000.0), "fx_bs_ia"), 35100, false);
 		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.OUTSIDE_FEE_HOURS), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.OUTSIDE_FEE_HOURS), countsByOutcome());
 		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
 	}
 
@@ -343,7 +349,7 @@ public class ZoneParkingCarCostModelTest {
 		CarTrip carTrip = tripTo(shop, 35100, false);
 		assertEquals(DRIVING_COST_EUR + 0.45,
 				withMinimumStay.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 		assertEquals(36000.0, shop.getEndTime().seconds(), 0.0);
 		assertEquals(35100.0, carTrip.trip().getDepartureTime(), 0.0);
 	}
@@ -369,7 +375,7 @@ public class ZoneParkingCarCostModelTest {
 		}
 		assertEquals(DRIVING_COST_EUR + 0.15, costs_EUR.get(1), EUR_TOLERANCE);
 		assertEquals(2L, counter.snapshotAndResetMinimumStayExtensions());
-		Map<ParkingOutcome, Long> counts = counter.snapshotAndReset();
+		Map<ParkingOutcome, Long> counts = countsByOutcome();
 		assertEquals(Long.valueOf(3), counts.get(ParkingOutcome.PAID_METERED));
 		assertEquals(Long.valueOf(1), counts.get(ParkingOutcome.NO_ZONE));
 		assertEquals(4L, total(counts));
@@ -378,7 +384,7 @@ public class ZoneParkingCarCostModelTest {
 			cost_EUR(carTrip);
 		}
 		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
-		assertEquals(4L, total(counter.snapshotAndReset()));
+		assertEquals(4L, total(countsByOutcome()));
 	}
 
 	/**
@@ -394,7 +400,7 @@ public class ZoneParkingCarCostModelTest {
 				() -> ignoringDelays.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()));
 		assertTrue(error.getMessage(), error.getMessage().contains("driver"));
 		assertTrue(error.getMessage(), error.getMessage().contains("tripDurationHandling"));
-		assertEquals(0L, total(counter.snapshotAndReset()));
+		assertEquals(0L, total(countsByOutcome()));
 	}
 
 	/** A non-terminal activity without end time and duration has no departure: a plan defect, not a free stay. */
@@ -436,7 +442,7 @@ public class ZoneParkingCarCostModelTest {
 		error = assertThrows(IllegalStateException.class, () -> cost_EUR(lastElement));
 		assertTrue(error.getMessage(), error.getMessage().startsWith("person driver: element 0 (leg car) of the car trip"
 				+ " at trip index 0 (home to shop, departing at 32400.0 s) has no defined end time"));
-		assertEquals(0L, total(counter.snapshotAndReset()));
+		assertEquals(0L, total(countsByOutcome()));
 	}
 
 	/** Every priced call records exactly one outcome, so the report shows the outcome mix of all evaluated car trips. */
@@ -449,10 +455,62 @@ public class ZoneParkingCarCostModelTest {
 		}
 		cost_EUR(paid);
 		cost_EUR(paid);
-		Map<ParkingOutcome, Long> counts = counter.snapshotAndReset();
+		Map<ParkingOutcome, Long> counts = countsByOutcome();
 		assertEquals(Long.valueOf(3), counts.get(ParkingOutcome.NO_ZONE));
 		assertEquals(Long.valueOf(2), counts.get(ParkingOutcome.PAID_METERED));
 		assertEquals(5L, total(counts));
+	}
+
+	/**
+	 * Every call counts its outcome in the cell of the zone of the destination and the purpose of the stay (outcome CSV
+	 * v2, spec amendment A5): a stay outside every zone has no zone id, and the resident rules R1 and R2 count under the
+	 * zone of the stay like a priced outcome does.
+	 */
+	@Test
+	public void everyCallCountsItsOutcomeUnderTheZoneAndThePurposeOfTheStay() {
+		cost_EUR(tripTo(inZone(activity("work", 61200.0), "fx_bs_ib"), 27000, false));
+		cost_EUR(tripTo(inZone(activity("work", 61200.0), "fx_bs_ib"), 27000, false));
+		cost_EUR(tripTo(activity("home", 61200.0), 27000, false));
+		cost_EUR(tripTo(activity("leisure", 61200.0), 27000, false));
+		CarTrip resident = tripTo(inZone(activity("work", 61200.0), "fx_res_a"), 27000, false);
+		resident.person().getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, "fx_res_a");
+		cost_EUR(resident);
+		cost_EUR(withHomeDistrict(tripTo(inDistrict(shopInZoneIa(), "fx_district_a"), 32400, false), "fx_district_a"));
+		Activity freeWork = inZone(activity("work", 61200.0), "fx_bs_ib");
+		freeWork.getAttributes().putAttribute(ZoneParkingCarCostModel.FREE_ATTRIBUTE, true);
+		cost_EUR(tripTo(freeWork, 27000, false));
+
+		Map<ParkingOutcomeCounter.Cell, Long> expected = new TreeMap<>();
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.NO_ZONE, "", "home"), 1L);
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.NO_ZONE, "", "leisure"), 1L);
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.EMPLOYER_FREE, "fx_bs_ib", "work"), 1L);
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.RESIDENT_FREE, "fx_bs_ia", "shop"), 1L);
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.RESIDENT_FREE, "fx_res_a", "work"), 1L);
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work"), 2L);
+		assertEquals(expected, counter.snapshotAndReset());
+	}
+
+	/**
+	 * The garage and the commuter product reach the price and the counter through the cost model (spec lever 2): in zone
+	 * fx_bs_ia_v2 a shop stay 09:00-13:00 has 240 chargeable minutes above the street maximum stay of 180 without a
+	 * long-stay product, so the garage charges 4 started hours at 120 ct (golden case V01); in fx_bs_ib_v2 a work stay
+	 * 08:00-17:00 takes the commuter product 376 ct (V04) and a leisure stay the street product capped at 900 ct (V05).
+	 * The car trips depart 30 min before the stay starts.
+	 */
+	@Test
+	public void theGarageAndTheCommuterProductPriceAndCountThroughTheCostModel() {
+		CarTrip garage = tripTo(inZone(activity("shop", 46800.0), "fx_bs_ia_v2"), 30600, false);
+		assertEquals(DRIVING_COST_EUR + 4.80, cost_EUR(garage), EUR_TOLERANCE);
+		CarTrip commuter = tripTo(inZone(activity("work", 61200.0), "fx_bs_ib_v2"), 27000, false);
+		assertEquals(DRIVING_COST_EUR + 3.76, cost_EUR(commuter), EUR_TOLERANCE);
+		CarTrip leisure = tripTo(inZone(activity("leisure", 61200.0), "fx_bs_ib_v2"), 27000, false);
+		assertEquals(DRIVING_COST_EUR + 9.00, cost_EUR(leisure), EUR_TOLERANCE);
+
+		Map<ParkingOutcomeCounter.Cell, Long> expected = new TreeMap<>();
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_METERED, "fx_bs_ib_v2", "leisure"), 1L);
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_GARAGE, "fx_bs_ia_v2", "shop"), 1L);
+		expected.put(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_COMMUTER, "fx_bs_ib_v2", "work"), 1L);
+		assertEquals(expected, counter.snapshotAndReset());
 	}
 
 	/** Activity attribute of the plans writer (spec Amendment C3): the resident parking district the activity lies in. */
@@ -484,7 +542,7 @@ public class ZoneParkingCarCostModelTest {
 	public void aStayInTheDistrictOfThePersonsHomeIsFree() {
 		CarTrip carTrip = withHomeDistrict(tripTo(inDistrict(shopInZoneIa(), "fx_district_a"), 32400, false), "fx_district_a");
 		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.RESIDENT_FREE), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.RESIDENT_FREE), countsByOutcome());
 	}
 
 	/**
@@ -497,19 +555,19 @@ public class ZoneParkingCarCostModelTest {
 		CarTrip otherDistrict = withHomeDistrict(tripTo(inDistrict(shopInZoneIa(), "fx_district_b"), 32400, false),
 				"fx_district_a");
 		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(otherDistrict), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 
 		CarTrip noActivityDistrict = withHomeDistrict(tripTo(shopInZoneIa(), 32400, false), "fx_district_a");
 		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(noActivityDistrict), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 
 		CarTrip noHomeDistrict = tripTo(inDistrict(shopInZoneIa(), "fx_district_a"), 32400, false);
 		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(noHomeDistrict), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 
 		// Neither attribute set: the pricing of version 1.
 		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(tripTo(shopInZoneIa(), 32400, false)), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 	}
 
 	/**
@@ -521,12 +579,12 @@ public class ZoneParkingCarCostModelTest {
 		Activity shopInCarPark = inDistrict(inZone(activity("shop", 39600.0), "fx_bga_v2"), "fx_district_a");
 		CarTrip carPark = withHomeDistrict(tripTo(shopInCarPark, 32400, false), "fx_district_a");
 		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(carPark), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
 
 		Activity workOnCampus = inDistrict(inZone(activity("work", 61200.0), "fx_campus"), "fx_district_a");
 		CarTrip campus = withHomeDistrict(tripTo(workOnCampus, 27000, false), "fx_district_a");
 		assertEquals(DRIVING_COST_EUR + 3.50, cost_EUR(campus), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.PAID_CAMPUS_MEMBER), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.PAID_CAMPUS_MEMBER), countsByOutcome());
 	}
 
 	/**
@@ -538,18 +596,18 @@ public class ZoneParkingCarCostModelTest {
 		Activity shopOutsideEveryZone = inDistrict(activity("shop", 39600.0), "fx_district_a");
 		CarTrip noZone = withHomeDistrict(tripTo(shopOutsideEveryZone, 32400, false), "fx_district_a");
 		assertEquals(DRIVING_COST_EUR, cost_EUR(noZone), EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), countsByOutcome());
 
 		Activity homeInZone = inDistrict(inZone(activity("home", 61200.0), "fx_bs_ia"), "fx_district_a");
 		assertEquals(DRIVING_COST_EUR, cost_EUR(withHomeDistrict(tripTo(homeInZone, 27000, false), "fx_district_a")),
 				EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.HOME), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.HOME), countsByOutcome());
 
 		Activity freeWork = inDistrict(inZone(activity("work", 61200.0), "fx_bs_ib"), "fx_district_a");
 		freeWork.getAttributes().putAttribute(ZoneParkingCarCostModel.FREE_ATTRIBUTE, true);
 		assertEquals(DRIVING_COST_EUR, cost_EUR(withHomeDistrict(tripTo(freeWork, 27000, false), "fx_district_a")),
 				EUR_TOLERANCE);
-		assertEquals(onlyOnce(ParkingOutcome.EMPLOYER_FREE), counter.snapshotAndReset());
+		assertEquals(onlyOnce(ParkingOutcome.EMPLOYER_FREE), countsByOutcome());
 	}
 
 	/** A district id is an id of the same release as the tariff model: an unknown one fails instead of never matching. */
@@ -570,7 +628,7 @@ public class ZoneParkingCarCostModelTest {
 				"bs_district_unknown", TARIFFS_PATH }) {
 			assertTrue(personError.getMessage(), personError.getMessage().contains(fragment));
 		}
-		assertEquals(0L, total(counter.snapshotAndReset()));
+		assertEquals(0L, total(countsByOutcome()));
 	}
 
 	/** The plans writer types the district attributes (String ids); another type is a writer defect. */
@@ -588,6 +646,6 @@ public class ZoneParkingCarCostModelTest {
 		IllegalStateException personError = assertThrows(IllegalStateException.class, () -> cost_EUR(numericHomeDistrict));
 		assertTrue(personError.getMessage(),
 				personError.getMessage().contains(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE));
-		assertEquals(0L, total(counter.snapshotAndReset()));
+		assertEquals(0L, total(countsByOutcome()));
 	}
 }

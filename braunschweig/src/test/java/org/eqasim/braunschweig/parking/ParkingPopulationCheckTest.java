@@ -29,8 +29,9 @@ import org.matsim.core.population.PopulationUtils;
 /**
  * Startup check of the plans against the tariff model (design "parking cost zones"; eqasim-bs issue #436) on synthetic
  * populations and the fixture tariff model {@code parking/parking_tariffs_fixture.json}: fx_bs_ia, fx_bs_ib, fx_pe,
- * fx_sz and fx_wob are street_paid, fx_res_a is the resident_zone, fx_campus the campus. One test per failure rule and
- * one success case that pins the coverage counts and the log line.
+ * fx_sz and fx_wob are street_paid, fx_res_a is the resident_zone, fx_campus the campus; the model lists the resident
+ * districts fx_district_a, fx_district_b and fx_district_sz_a (spec Amendment C3). One test per failure rule and one
+ * success case that pins the coverage counts and the log line.
  */
 public class ParkingPopulationCheckTest {
 	private static final String FIXTURE_RESOURCE = "/parking/parking_tariffs_fixture.json";
@@ -90,6 +91,11 @@ public class ParkingPopulationCheckTest {
 	private static Activity inZone(String type, String zoneId) {
 		Activity activity = activity(type);
 		activity.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, zoneId);
+		return activity;
+	}
+
+	private static Activity inDistrict(Activity activity, String districtId) {
+		activity.getAttributes().putAttribute(ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE, districtId);
 		return activity;
 	}
 
@@ -201,26 +207,31 @@ public class ParkingPopulationCheckTest {
 	}
 
 	/**
-	 * Counts over every plan of every person without stage activities: a resident of fx_res_a works in fx_bs_ib with
-	 * free parking and shops in fx_res_a; a visitor has a campus plan and an unselected plan with a stay in fx_sz; an
-	 * outsider works outside every zone with an explicit parkingFree = false (legitimate: free parking outside a zone
-	 * costs nothing either way).
+	 * Counts over every plan of every person without stage activities: a resident of fx_res_a and fx_district_a works in
+	 * fx_bs_ib with free parking and shops in fx_res_a inside fx_district_a, the district of the home (rule R2 applies:
+	 * fx_res_a honours resident permits); a visitor without a home district has a campus plan with a stay in the district
+	 * fx_district_b and an unselected plan with a stay in fx_sz; an outsider of fx_district_b works outside every zone,
+	 * inside fx_district_b, with an explicit parkingFree = false (legitimate: free parking outside a zone costs nothing
+	 * either way; a district outside every zone is legitimate, the districts are independent of the fee zones).
 	 */
 	@Test
 	public void countsTheCoverageOfEveryPlanWithoutStageActivities() {
 		Person resident = person("resident");
 		resident.getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, "fx_res_a");
+		resident.getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE, "fx_district_a");
 		Activity freeWork = inZone("work", "fx_bs_ib");
 		freeWork.getAttributes().putAttribute(ZoneParkingCarCostModel.FREE_ATTRIBUTE, true);
-		plan(resident, activity("home"), freeWork, inZone("shop", "fx_res_a"), activity("home"));
+		plan(resident, activity("home"), freeWork, inDistrict(inZone("shop", "fx_res_a"), "fx_district_a"), activity("home"));
 
 		Person visitor = person("visitor");
-		plan(visitor, activity("home"), inZone("leisure", "fx_campus"), activity("home"));
+		plan(visitor, activity("home"), inDistrict(inZone("leisure", "fx_campus"), "fx_district_b"), activity("home"));
 		plan(visitor, activity("home"), inZone("leisure", "fx_sz"), activity("home"));
 
-		Activity outsideWork = activity("work");
+		Person outsider = person("outsider");
+		outsider.getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE, "fx_district_b");
+		Activity outsideWork = inDistrict(activity("work"), "fx_district_b");
 		outsideWork.getAttributes().putAttribute(ZoneParkingCarCostModel.FREE_ATTRIBUTE, false);
-		plan(person("outsider"), activity("home"), outsideWork, activity("home"));
+		plan(outsider, activity("home"), outsideWork, activity("home"));
 
 		ParkingPopulationCheck check = check();
 		Coverage coverage = check.scan();
@@ -228,14 +239,87 @@ public class ParkingPopulationCheckTest {
 		byZoneType.put(ZoneType.STREET_PAID, 2L);
 		byZoneType.put(ZoneType.RESIDENT_ZONE, 1L);
 		byZoneType.put(ZoneType.CAMPUS, 1L);
-		assertEquals(new Coverage(3, 13, byZoneType, 1, 1), coverage);
+		assertEquals(new Coverage(3, 13, byZoneType, 1, 1, 3, 2, 1), coverage);
 		assertEquals(4, coverage.activitiesInAZone());
 		assertFalse(coverage.noActivityInAZone());
 		assertEquals("[parking] population: 3 persons, 13 activities; 4 in a zone (30.8 %: street_paid 2, resident_zone"
-				+ " 1, campus 1), 1 parkingFree, 1 persons with residentParkingZone (33.3 %)",
-				ParkingPopulationCheck.summary(coverage));
+				+ " 1, campus 1), 1 parkingFree, 1 persons with residentParkingZone (33.3 %); 3 in a resident district"
+				+ " (23.1 %), 2 persons with residentParkingDistrict (66.7 %), 1 in the own district and a zone that"
+				+ " honours resident permits (7.7 %)", ParkingPopulationCheck.summary(coverage));
 		// The startup event scans the same population and passes.
 		check.notifyStartup(new StartupEvent(null));
+	}
+
+	/**
+	 * Rule R2 (spec Amendment C3): the plan attributes parkingDistrict and residentParkingDistrict name districts of the
+	 * tariff model's resident_districts; an id the model does not list fails at startup naming the person, the plan and
+	 * activity or the person alone, the attribute, the value and the tariffs path, because a stay in an unknown district
+	 * would otherwise be priced as if it lay in none.
+	 */
+	@Test
+	public void anUnknownParkingDistrictOrResidentDistrictFails() {
+		plan(person("p1"), activity("home"), inDistrict(inZone("work", "fx_bs_ib"), "bs_district_unknown"), activity("home"));
+		assertStartupFails("person p1, plan 0, activity 1 (work): parkingDistrict bs_district_unknown is not a resident"
+				+ " district of the parking tariff model " + TARIFFS_PATH);
+
+		population.removePerson(Id.createPersonId("p1"));
+		Person resident = person("p2");
+		resident.getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE, "bs_district_unknown");
+		plan(resident, activity("home"), activity("work"), activity("home"));
+		assertStartupFails("person p2: residentParkingDistrict bs_district_unknown is not a resident district of the parking"
+				+ " tariff model " + TARIFFS_PATH);
+	}
+
+	/** The fixture lists the districts of two municipalities; any of them is a valid value for either attribute. */
+	@Test
+	public void everyDistrictOfTheTariffModelIsValid() {
+		for (ParkingTariffs.ResidentDistrict district : tariffs.residentDistricts()) {
+			Person person = person("p_" + district.districtId());
+			person.getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE, district.districtId());
+			plan(person, activity("home"), inDistrict(activity("work"), district.districtId()), activity("home"));
+		}
+		check().notifyStartup(new StartupEvent(null));
+		assertEquals(3, check().scan().districtResidents());
+	}
+
+	/** The plans writer types the district attributes (String ids); another type fails at startup. */
+	@Test
+	public void mistypedDistrictAttributesFail() {
+		Activity numericDistrict = activity("work");
+		numericDistrict.getAttributes().putAttribute(ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE, 3);
+		Person p1 = person("p1");
+		plan(p1, activity("home"), numericDistrict, activity("home"));
+		assertStartupFails("person p1, plan 0, activity 1 (work): parkingDistrict must be a java.lang.String, got"
+				+ " java.lang.Integer 3");
+
+		population.removePerson(p1.getId());
+		Person p2 = person("p2");
+		p2.getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE, 3);
+		plan(p2, activity("home"), activity("work"), activity("home"));
+		assertStartupFails("person p2: residentParkingDistrict must be a java.lang.String, got java.lang.Integer 3");
+	}
+
+	/**
+	 * A schema-1 tariff model lists no district, so plans that carry district attributes (written for a model of schema 2)
+	 * fail at startup instead of silently matching nothing: the tariff model and the plans must come from the same release.
+	 */
+	@Test
+	public void aSchemaOneModelListsNoDistrictAndRejectsEveryDistrictValue() throws Exception {
+		URL resource = ParkingPopulationCheckTest.class.getResource(ParkingCostCalculatorTest.SCHEMA_1_TARIFFS_RESOURCE);
+		assertNotNull(resource);
+		ParkingTariffs schemaOne = ParkingTariffs.read(Path.of(resource.toURI()));
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.setEnabled("true");
+		parking.setTariffsPath(TARIFFS_PATH);
+		plan(person("p1"), activity("home"), inDistrict(inZone("work", "fx_bs_ib"), "fx_district_a"), activity("home"));
+		IllegalStateException error = assertThrows(IllegalStateException.class,
+				() -> new ParkingPopulationCheck(schemaOne, population, parking).notifyStartup(new StartupEvent(null)));
+		assertTrue(error.getMessage(), error.getMessage().contains("parkingDistrict fx_district_a is not a resident district"));
+
+		// Plans without district attributes pass against a schema-1 model, as they did under version 1.
+		population.removePerson(Id.createPersonId("p1"));
+		plan(person("p2"), activity("home"), inZone("work", "fx_bs_ib"), activity("home"));
+		new ParkingPopulationCheck(schemaOne, population, parking).notifyStartup(new StartupEvent(null));
 	}
 
 	/**
@@ -248,9 +332,11 @@ public class ParkingPopulationCheckTest {
 		Coverage coverage = check().scan();
 		assertTrue(coverage.noActivityInAZone());
 		assertEquals("[parking] population: 1 persons, 3 activities; 0 in a zone (0.0 %: street_paid 0, resident_zone 0,"
-				+ " campus 0), 0 parkingFree, 0 persons with residentParkingZone (0.0 %); no activity lies in a parking zone"
-				+ " although braunschweigParking is enabled, so every car stay is priced NO_ZONE: were the plans written"
-				+ " with parking_zones_enabled?", ParkingPopulationCheck.summary(coverage));
+				+ " campus 0), 0 parkingFree, 0 persons with residentParkingZone (0.0 %); 0 in a resident district (0.0 %),"
+				+ " 0 persons with residentParkingDistrict (0.0 %), 0 in the own district and a zone that honours resident"
+				+ " permits (0.0 %); no activity lies in a parking zone although braunschweigParking is enabled, so every"
+				+ " car stay is priced NO_ZONE: were the plans written with parking_zones_enabled?",
+				ParkingPopulationCheck.summary(coverage));
 
 		// An empty population prices nothing and is not flagged.
 		population.removePerson(Id.createPersonId("p1"));

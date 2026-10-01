@@ -12,6 +12,7 @@ import java.util.Map;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eqasim.braunschweig.parking.ParkingOutcomeCounter.Cell;
 import org.matsim.core.controler.OutputDirectoryHierarchy;
 import org.matsim.core.controler.events.IterationEndsEvent;
 import org.matsim.core.controler.events.StartupEvent;
@@ -22,17 +23,22 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
 /**
- * Reports the parking outcome counts of every iteration (design "parking cost zones", section 5.2; eqasim-bs issue
- * #436): writes {@code ITERS/it.N/N.parking_outcomes.csv} and logs one line
+ * Reports the parking outcome counts of every iteration (design "parking cost zones", section 5.2, and the outcome CSV v2
+ * of the v2 spec amendment A5; eqasim-bs issue #436): writes {@code ITERS/it.N/N.parking_outcomes.csv} and logs one line
  * {@code [parking] it N: NO_ZONE a (x.x %), PAID_METERED b (y.y %), ...} with every outcome that occurred, in
  * declaration order, or {@code [parking] it N: no car stay priced} when none did, followed by the line
  * {@code [parking] it N: minimum stay L min extended e of p priced stays (z.z %)} of assumption L1. At the controller
- * start it logs the active minimum parked duration once.
+ * start it logs the active minimum parked duration and the active search time factor once.
  *
- * <p>CSV columns: {@code outcome} (a {@link ParkingOutcome} name), {@code count} (car stays the rule priced in the
- * iteration) and {@code share} (count divided by all counted stays of the iteration, a fraction in [0, 1] with six
- * decimals; 0 when no stay was priced). One row per outcome in declaration order, zero counts included, so every
- * iteration file has the same rows.
+ * <p>CSV v2 columns: {@code outcome} (a {@link ParkingOutcome} name), {@code zone_id} (the parking zone of the stays, empty
+ * for NO_ZONE, the stays outside every zone), {@code purpose} (the activity type of the destination), {@code count} (car
+ * stays the rule priced in that zone for that purpose in the iteration) and {@code share} (count divided by all counted
+ * stays of the iteration, a fraction in [0, 1] with six decimals). One row per cell (outcome, zone, purpose) with a
+ * non-zero count, in outcome declaration order, then zone id, then purpose, so a file lists exactly the cells that
+ * occurred; an iteration without a priced stay has the header only. The rows are aggregate counts, no persons. A value
+ * with a comma, a quote or a line break is written in quotes, as RFC 4180 has it. The file name is unchanged; version 1
+ * of the report had the columns {@code outcome,count,share} and one row per outcome, zero counts included; readers of
+ * version 1 (the smoke harness of the first zone parking run) read that format only.
  *
  * <p>Minimum parked duration (assumption L1, {@code braunschweigParking.minimumStayMinutes} = L): e counts the priced
  * stays whose priced interval the minimum extended, because the simulated stay (for the last activity of a plan the
@@ -48,7 +54,7 @@ import com.google.inject.Singleton;
  * object, not by the route. Before it, the trip estimate cache of the discrete mode choice contrib (CachedTripEstimator,
  * for the cachedModes, which include car in the eqasim and Braunschweig configs) answers a repeated estimate of the same
  * trip at the same departure second without a call. Replanning happens before the iteration ends, so the iteration-0
- * file, written before any replanning, has zero counts. Version 1 reports only: no threshold, no failure.
+ * file, written before any replanning, has no row. Version 1 reports only: no threshold, no failure.
  */
 @Singleton
 public final class ParkingOutcomeReportListener implements StartupListener, IterationEndsListener {
@@ -57,7 +63,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	/** File name inside the iteration directory; MATSim prefixes it with the iteration number. */
 	static final String FILE_NAME = "parking_outcomes.csv";
 
-	private static final String HEADER = "outcome,count,share";
+	/** The columns of the report, CSV v2 (spec amendment A5). */
+	static final String HEADER = "outcome,zone_id,purpose,count,share";
 
 	private final ParkingOutcomeCounter counter;
 	private final OutputDirectoryHierarchy output;
@@ -82,14 +89,15 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	@Override
 	public void notifyIterationEnds(IterationEndsEvent event) {
 		int iteration = event.getIteration();
-		Map<ParkingOutcome, Long> counts = counter.snapshotAndReset();
+		Map<Cell, Long> cells = counter.snapshotAndReset();
 		long extendedStays = counter.snapshotAndResetMinimumStayExtensions();
 		Path path = Path.of(output.getIterationFilename(iteration, FILE_NAME));
 		try {
-			writeCsv(path, counts);
+			writeCsv(path, cells);
 		} catch (IOException error) {
 			throw new UncheckedIOException("cannot write the parking outcome report " + path, error);
 		}
+		Map<ParkingOutcome, Long> counts = ParkingOutcomeCounter.countsByOutcome(cells);
 		LOG.info(summary(iteration, counts));
 		LOG.info(minimumStaySummary(iteration, minimumStayMinutes, extendedStays, pricedStays(counts)));
 	}
@@ -115,18 +123,28 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		return total(counts) - counts.getOrDefault(ParkingOutcome.NO_ZONE, 0L);
 	}
 
-	private static void writeCsv(Path path, Map<ParkingOutcome, Long> counts) throws IOException {
-		long total = total(counts);
+	private static void writeCsv(Path path, Map<Cell, Long> cells) throws IOException {
+		long total = cells.values().stream().mapToLong(Long::longValue).sum();
 		StringBuilder csv = new StringBuilder(HEADER).append('\n');
-		for (ParkingOutcome outcome : ParkingOutcome.values()) {
-			long count = counts.getOrDefault(outcome, 0L);
-			csv.append(outcome.name()).append(',').append(count).append(',')
+		for (Map.Entry<Cell, Long> entry : cells.entrySet()) {
+			Cell cell = entry.getKey();
+			long count = entry.getValue();
+			csv.append(cell.outcome().name()).append(',').append(csvField(cell.zoneId())).append(',')
+					.append(csvField(cell.purpose())).append(',').append(count).append(',')
 					.append(String.format(Locale.ROOT, "%.6f", share(count, total))).append('\n');
 		}
 		if (path.getParent() != null) {
 			Files.createDirectories(path.getParent());
 		}
 		Files.writeString(path, csv.toString(), StandardCharsets.UTF_8);
+	}
+
+	/** A text field of the CSV: quoted, with doubled quotes, when it contains a comma, a quote or a line break. */
+	static String csvField(String value) {
+		if (value.indexOf(',') < 0 && value.indexOf('"') < 0 && value.indexOf('\n') < 0 && value.indexOf('\r') < 0) {
+			return value;
+		}
+		return '"' + value.replace("\"", "\"\"") + '"';
 	}
 
 	/** The {@code [parking]} log line of one iteration: every outcome with a non-zero count and its share in percent. */
