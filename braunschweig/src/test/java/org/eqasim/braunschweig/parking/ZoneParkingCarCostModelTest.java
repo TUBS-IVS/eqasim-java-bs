@@ -454,4 +454,140 @@ public class ZoneParkingCarCostModelTest {
 		assertEquals(Long.valueOf(2), counts.get(ParkingOutcome.PAID_METERED));
 		assertEquals(5L, total(counts));
 	}
+
+	/** Activity attribute of the plans writer (spec Amendment C3): the resident parking district the activity lies in. */
+	private static Activity inDistrict(Activity activity, String districtId) {
+		activity.getAttributes().putAttribute(ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE, districtId);
+		return activity;
+	}
+
+	/** Person attribute of the plans writer (spec Amendment C3): the resident parking district of the person's home. */
+	private static CarTrip withHomeDistrict(CarTrip carTrip, String districtId) {
+		carTrip.person().getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE, districtId);
+		return carTrip;
+	}
+
+	/**
+	 * A shop stay in the street zone fx_bs_ia: the car arrives 09:30 and the activity ends 11:00, 90 min at 3 ct/min =
+	 * 270 ct without rule R2. Zone fx_bs_ia honours resident permits.
+	 */
+	private static Activity shopInZoneIa() {
+		return inZone(activity("shop", 39600.0), "fx_bs_ia");
+	}
+
+	/**
+	 * Rule R2 (spec Amendment C3, ASSUMPTION R2-a): the calculator takes a flag, the cost model derives it from the plan
+	 * attributes. A stay in the district of the person's home (both attributes set and equal) is free, whatever the zone
+	 * type: fx_bs_ia is a street zone that exempts no resident.
+	 */
+	@Test
+	public void aStayInTheDistrictOfThePersonsHomeIsFree() {
+		CarTrip carTrip = withHomeDistrict(tripTo(inDistrict(shopInZoneIa(), "fx_district_a"), 32400, false), "fx_district_a");
+		assertEquals(DRIVING_COST_EUR, cost_EUR(carTrip), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.RESIDENT_FREE), counter.snapshotAndReset());
+	}
+
+	/**
+	 * The flag is false, so the stay is priced as without the rule, when the districts differ (a stay in another district),
+	 * when the activity lies in no district, and when the person has no home district. The calculator receives a boolean
+	 * only, so the golden cases cannot tell these apart; they are pinned here.
+	 */
+	@Test
+	public void aStayInAnotherDistrictOrInNoDistrictOrOfAPersonWithoutAHomeDistrictIsPriced() {
+		CarTrip otherDistrict = withHomeDistrict(tripTo(inDistrict(shopInZoneIa(), "fx_district_b"), 32400, false),
+				"fx_district_a");
+		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(otherDistrict), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+
+		CarTrip noActivityDistrict = withHomeDistrict(tripTo(shopInZoneIa(), 32400, false), "fx_district_a");
+		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(noActivityDistrict), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+
+		CarTrip noHomeDistrict = tripTo(inDistrict(shopInZoneIa(), "fx_district_a"), 32400, false);
+		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(noHomeDistrict), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+
+		// Neither attribute set: the pricing of version 1.
+		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(tripTo(shopInZoneIa(), 32400, false)), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+	}
+
+	/**
+	 * The district rule needs a zone that honours resident permits (ASSUMPTION R2-a): the separately operated car park
+	 * fx_bga_v2 does not, so the same stay in the own district is priced there; a campus never honours them.
+	 */
+	@Test
+	public void theDistrictRuleDoesNotFreeAStayInAZoneWithoutResidentPermits() {
+		Activity shopInCarPark = inDistrict(inZone(activity("shop", 39600.0), "fx_bga_v2"), "fx_district_a");
+		CarTrip carPark = withHomeDistrict(tripTo(shopInCarPark, 32400, false), "fx_district_a");
+		assertEquals(DRIVING_COST_EUR + 2.70, cost_EUR(carPark), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), counter.snapshotAndReset());
+
+		Activity workOnCampus = inDistrict(inZone(activity("work", 61200.0), "fx_campus"), "fx_district_a");
+		CarTrip campus = withHomeDistrict(tripTo(workOnCampus, 27000, false), "fx_district_a");
+		assertEquals(DRIVING_COST_EUR + 3.50, cost_EUR(campus), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_CAMPUS_MEMBER), counter.snapshotAndReset());
+	}
+
+	/**
+	 * Z1 first: the district rule acts inside a fee zone only, so a stay outside every zone stays NO_ZONE in the own
+	 * district; the home purpose and the employer's free parking come before the district rule.
+	 */
+	@Test
+	public void theDistrictRuleActsAfterNoZoneHomeAndEmployerFree() {
+		Activity shopOutsideEveryZone = inDistrict(activity("shop", 39600.0), "fx_district_a");
+		CarTrip noZone = withHomeDistrict(tripTo(shopOutsideEveryZone, 32400, false), "fx_district_a");
+		assertEquals(DRIVING_COST_EUR, cost_EUR(noZone), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.NO_ZONE), counter.snapshotAndReset());
+
+		Activity homeInZone = inDistrict(inZone(activity("home", 61200.0), "fx_bs_ia"), "fx_district_a");
+		assertEquals(DRIVING_COST_EUR, cost_EUR(withHomeDistrict(tripTo(homeInZone, 27000, false), "fx_district_a")),
+				EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.HOME), counter.snapshotAndReset());
+
+		Activity freeWork = inDistrict(inZone(activity("work", 61200.0), "fx_bs_ib"), "fx_district_a");
+		freeWork.getAttributes().putAttribute(ZoneParkingCarCostModel.FREE_ATTRIBUTE, true);
+		assertEquals(DRIVING_COST_EUR, cost_EUR(withHomeDistrict(tripTo(freeWork, 27000, false), "fx_district_a")),
+				EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.EMPLOYER_FREE), counter.snapshotAndReset());
+	}
+
+	/** A district id is an id of the same release as the tariff model: an unknown one fails instead of never matching. */
+	@Test
+	public void anUnknownDistrictIdFailsNamingThePersonTheAttributeAndTheTariffs() {
+		CarTrip unknownActivityDistrict = withHomeDistrict(
+				tripTo(inDistrict(shopInZoneIa(), "bs_district_unknown"), 32400, false), "fx_district_a");
+		IllegalStateException activityError = assertThrows(IllegalStateException.class,
+				() -> cost_EUR(unknownActivityDistrict));
+		for (String fragment : new String[] { "driver", ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE, "bs_district_unknown",
+				TARIFFS_PATH }) {
+			assertTrue(activityError.getMessage(), activityError.getMessage().contains(fragment));
+		}
+
+		CarTrip unknownHomeDistrict = withHomeDistrict(tripTo(shopInZoneIa(), 32400, false), "bs_district_unknown");
+		IllegalStateException personError = assertThrows(IllegalStateException.class, () -> cost_EUR(unknownHomeDistrict));
+		for (String fragment : new String[] { "driver", ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE,
+				"bs_district_unknown", TARIFFS_PATH }) {
+			assertTrue(personError.getMessage(), personError.getMessage().contains(fragment));
+		}
+		assertEquals(0L, total(counter.snapshotAndReset()));
+	}
+
+	/** The plans writer types the district attributes (String ids); another type is a writer defect. */
+	@Test
+	public void mistypedDistrictAttributesFailNamingTheAttribute() {
+		Activity numericDistrict = shopInZoneIa();
+		numericDistrict.getAttributes().putAttribute(ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE, 3);
+		IllegalStateException activityError = assertThrows(IllegalStateException.class,
+				() -> cost_EUR(tripTo(numericDistrict, 32400, false)));
+		assertTrue(activityError.getMessage(), activityError.getMessage().contains(ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE));
+		assertTrue(activityError.getMessage(), activityError.getMessage().contains("java.lang.Integer"));
+
+		CarTrip numericHomeDistrict = tripTo(shopInZoneIa(), 32400, false);
+		numericHomeDistrict.person().getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE, 3);
+		IllegalStateException personError = assertThrows(IllegalStateException.class, () -> cost_EUR(numericHomeDistrict));
+		assertTrue(personError.getMessage(),
+				personError.getMessage().contains(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE));
+		assertEquals(0L, total(counter.snapshotAndReset()));
+	}
 }

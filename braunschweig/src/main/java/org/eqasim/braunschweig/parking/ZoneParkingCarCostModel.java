@@ -15,6 +15,7 @@ import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
 import org.matsim.core.utils.misc.OptionalTime;
 import org.matsim.core.utils.timing.TimeInterpretation;
 import org.matsim.core.utils.timing.TimeTracker;
+import org.matsim.utils.objectattributes.attributable.Attributes;
 
 import com.google.inject.Inject;
 
@@ -35,6 +36,10 @@ import com.google.inject.Inject;
  * parking; absent means false;</li>
  * <li>person attribute {@value #RESIDENT_ATTRIBUTE} ({@code String}): the resident zone containing the person's home;
  * the person is a resident of the destination zone when both ids are equal (assumption R1);</li>
+ * <li>activity attribute {@value #DISTRICT_ATTRIBUTE} ({@code String}) and person attribute
+ * {@value #RESIDENT_DISTRICT_ATTRIBUTE} ({@code String}): the resident parking district the destination lies in and the
+ * one of the person's home, both absent where there is none; the stay is a stay in the person's own district when both
+ * are set and equal (rule R2, spec Amendment C3), which frees it where the destination zone honours resident permits;</li>
  * <li>purpose: the destination's activity type (home, work, education, shop, ...).</li>
  * </ul>
  *
@@ -55,11 +60,11 @@ import com.google.inject.Inject;
  *
  * <p>Every call records exactly one outcome in the {@link ParkingOutcomeCounter}, NO_ZONE included, so the
  * per-iteration report shows which rule priced the car trips, and counts the priced stays the minimum extended; a
- * failing call records nothing. An unknown zone id (in either zone attribute), a mistyped attribute, a non-terminal
- * activity without an end and an activity ending before the arrival raise IllegalStateException naming the person, the
- * activity and the attribute; a routed trip element without a defined end raises it naming the person, the index and
- * type of the element and the car trip. {@link ParkingPopulationCheck} checks the attributes of every plan once at the
- * controller start already.
+ * failing call records nothing. An unknown zone id (in either zone attribute), an unknown district id (in either district
+ * attribute), a mistyped attribute, a non-terminal activity without an end and an activity ending before the arrival
+ * raise IllegalStateException naming the person, the activity and the attribute; a routed trip element without a defined
+ * end raises it naming the person, the index and type of the element and the car trip. {@link ParkingPopulationCheck}
+ * checks the attributes of every plan once at the controller start already.
  *
  * <p>Free of side effects apart from the counter: the plan, its activities and the trip are only read. Thread-safe:
  * the state is immutable and every call uses its own TimeTracker; the counter is thread-safe.
@@ -73,6 +78,12 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 
 	/** Person attribute (String): id of the resident parking zone containing the person's home; absent: no zone. */
 	public static final String RESIDENT_ATTRIBUTE = "residentParkingZone";
+
+	/** Activity attribute (String): id of the resident parking district the activity lies in; absent: in no district. */
+	public static final String DISTRICT_ATTRIBUTE = "parkingDistrict";
+
+	/** Person attribute (String): id of the resident parking district of the person's home; absent: in no district. */
+	public static final String RESIDENT_DISTRICT_ATTRIBUTE = "residentParkingDistrict";
 
 	private static final ParkingPrice NO_ZONE = new ParkingPrice(new ParkingCostCalculator.Result(0, ParkingOutcome.NO_ZONE),
 			false);
@@ -132,12 +143,13 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		ZoneTariff tariff = knownZone(person, ZONE_ATTRIBUTE, zoneId);
 		boolean parkingFree = parkingFree(person, destination);
 		boolean residentOfZone = zoneId.equals(residentZoneId(person));
+		boolean residentOfDistrict = residentOfDistrict(person, destination);
 		Stay stay = stay(person, trip, elements, tariff);
 		// Assumption L1: priced for at least the minimum parked duration, before every tariff rule.
 		double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(stay.arrival_s(), stay.departure_s(),
 				minimumStay_s);
 		ParkingCostCalculator.Result result = ParkingCostCalculator.cents(tariff, stay.arrival_s(), pricedDeparture_s,
-				destination.getType(), parkingFree, residentOfZone);
+				destination.getType(), parkingFree, residentOfZone, residentOfDistrict);
 		return new ParkingPrice(result, pricedDeparture_s > stay.departure_s());
 	}
 
@@ -241,6 +253,38 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		// The resident zone comes from the same release as the tariff model: an unknown id would silently exempt nobody.
 		knownZone(person, RESIDENT_ATTRIBUTE, zoneId);
 		return zoneId;
+	}
+
+	/**
+	 * Rule R2 (spec Amendment C3): whether the destination lies in the resident parking district of the person's home,
+	 * i.e. the activity attribute parkingDistrict and the person attribute residentParkingDistrict are both set and equal.
+	 * An activity in no district and a person without a home district are both false, the same input as a stay in another
+	 * district; the calculator receives the flag only. A district id the tariff model does not list fails: the plans and
+	 * the model must come from the same release, and an unknown id would silently free or charge by chance.
+	 */
+	private boolean residentOfDistrict(Person person, Activity destination) {
+		String activityDistrict = districtId(person, "activity " + destination.getType(), destination.getAttributes(),
+				DISTRICT_ATTRIBUTE);
+		String homeDistrict = districtId(person, "person", person.getAttributes(), RESIDENT_DISTRICT_ATTRIBUTE);
+		return activityDistrict != null && activityDistrict.equals(homeDistrict);
+	}
+
+	/** The district id of the attribute, or null when it is not set; fails for a mistyped value and an unknown district. */
+	private String districtId(Person person, String owner, Attributes attributes, String attribute) {
+		Object value = attributes.getAttribute(attribute);
+		if (value == null) {
+			return null;
+		}
+		if (!(value instanceof String districtId)) {
+			throw mistyped(person, owner, attribute, String.class, value);
+		}
+		if (tariffs.residentDistrict(districtId).isEmpty()) {
+			throw new IllegalStateException("person " + person.getId() + ": " + attribute + " " + districtId
+					+ " is not a resident district of the parking tariff model " + tariffsPath + " ("
+					+ ParkingConfigGroup.GROUP_NAME + ".tariffsPath); the tariff model and the plans must come from the same"
+					+ " release");
+		}
+		return districtId;
 	}
 
 	private ZoneTariff knownZone(Person person, String attribute, String zoneId) {

@@ -151,7 +151,7 @@ public class ParkingInjectorTest {
 		CostModel carCostModel = carCostModel(injector);
 		assertTrue(carCostModel instanceof ZoneParkingCarCostModel);
 		// The tariff model is read through the config-relative path.
-		assertEquals(8, injector.getInstance(ParkingTariffs.class).zones().size());
+		assertEquals(18, injector.getInstance(ParkingTariffs.class).zones().size());
 		assertTrue(hasListener(injector, ParkingOutcomeReportListener.class));
 		// The startup check of the plans, which takes the tariff model when the controller builds its listeners.
 		assertTrue(hasListener(injector, ParkingPopulationCheck.class));
@@ -207,7 +207,7 @@ public class ParkingInjectorTest {
 	 */
 	@Test
 	public void anInvalidTariffModelFailsWhenTheControllerStarts() throws Exception {
-		Controler controller = controller(true, tariffModel -> tariffModel.put("schema_version", 2));
+		Controler controller = controller(true, tariffModel -> tariffModel.put("schema_version", 3));
 
 		RuntimeException error = assertThrows(RuntimeException.class, controller::run);
 		IllegalArgumentException readerError = null;
@@ -218,7 +218,7 @@ public class ParkingInjectorTest {
 		}
 		assertNotNull("no IllegalArgumentException of the tariff reader in " + error, readerError);
 		assertTrue(readerError.getMessage(), readerError.getMessage().contains(TARIFFS_FILE));
-		assertTrue(readerError.getMessage(), readerError.getMessage().contains("schema_version must be 1, got 2"));
+		assertTrue(readerError.getMessage(), readerError.getMessage().contains("schema_version must be one of [1, 2], got 3"));
 		// No iteration has begun.
 		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
 	}

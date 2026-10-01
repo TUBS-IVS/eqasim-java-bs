@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.eqasim.braunschweig.parking.ParkingCostCalculator.Result;
@@ -23,28 +24,38 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Parking cost of one stay (design section 3.2). The 38 golden cases in {@code parking/parking_golden_cases.json} are
- * the cross-language contract: the Python reference braunschweig.parking.cost (eqasim-bs) evaluates the same file to
- * the same cents and outcomes. The fixture tariffs pin the arithmetic, not real tariffs. The file is a byte-for-byte
- * copy of the one scripts/export_parking_golden_cases.py writes (eqasim-bs tests/fixtures/parking); regenerate it
- * there and copy it, never edit it here.
+ * Parking cost of one stay (design section 3.2 and the v2 lever 2). The 90 golden cases in
+ * {@code parking/parking_golden_cases.json} are the cross-language contract: the Python reference
+ * braunschweig.parking.cost (eqasim-bs) evaluates the same file to the same cents and outcomes. The fixture tariffs pin
+ * the arithmetic, not real tariffs. The file is a byte-for-byte copy of the one scripts/export_parking_golden_cases.py
+ * writes (eqasim-bs tests/fixtures/parking); regenerate it there and copy it, never edit it here. Every case is
+ * evaluated as the Python reference evaluates it (braunschweig.parking.golden_cases.evaluate_case): the terminal-stay
+ * rule T1 for a terminal case, then the minimum parked duration L1 of the case, then the pricing with the resident
+ * district flag of the case (rule R2) and the tariff of the file (its resident_permits_valid included).
  */
 public class ParkingCostCalculatorTest {
 	static final String GOLDEN_CASES_RESOURCE = "/parking/parking_golden_cases.json";
 
+	/** The schema-1 tariff model of version 1, kept as a resource of its own: schema 2 is additive. */
+	static final String SCHEMA_1_TARIFFS_RESOURCE = "/parking/parking_tariffs_fixture_schema1.json";
+
+	/** Version of the golden file: 3 since every case carries minimum_stay_min and resident_of_district. */
+	private static final int GOLDEN_SCHEMA_VERSION = 3;
+
 	/**
-	 * G01..G26 of the plan's golden table plus G27..G38 (half-up rounding with a fractional per-minute price, one
-	 * second past a threshold, the order of the early rules); a truncated or replaced fixture must not pass by
-	 * asserting fewer cases.
+	 * G01..G38 (the pricing before the minimum parked duration), L01..L08 at L = 15 and their twins L01Z..L08Z at L = 0,
+	 * V01..V23 (schema 2: the cheapest of the street, garage and commuter product) and R01..R13 (rule R2); a truncated or
+	 * replaced fixture must not pass by asserting fewer cases.
 	 */
-	private static final int GOLDEN_CASE_COUNT = 38;
+	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13);
 
 	/**
 	 * The keys of one golden case, as the Python generator writes them (braunschweig.parking.golden_cases.CASE_FIELDS):
 	 * a dropped or renamed key fails instead of being read as absent.
 	 */
 	private static final Set<String> CASE_FIELDS = Set.of("id", "zone_id", "arrival_s", "departure_s", "purpose",
-			"parking_free", "resident_of_zone", "terminal", "expected_cents", "expected_outcome", "expected_error");
+			"parking_free", "resident_of_zone", "resident_of_district", "terminal", "minimum_stay_min", "expected_cents",
+			"expected_outcome", "expected_error");
 
 	private static final int SECONDS_PER_DAY = 86400;
 
@@ -54,41 +65,44 @@ public class ParkingCostCalculatorTest {
 		return new ObjectMapper().readTree(Path.of(resource.toURI()).toFile());
 	}
 
-	/** The golden file's tariffs block, parsed by the production zone parser (the code that reads the tariff model). */
+	/** The golden file's tariffs block (zone entries of tariff schema 2), parsed by the production zone parser. */
 	static Map<String, ZoneTariff> goldenTariffs() throws Exception {
 		Map<String, ZoneTariff> tariffs = new LinkedHashMap<>();
 		for (Map.Entry<String, JsonNode> entry : readResource(GOLDEN_CASES_RESOURCE).get("tariffs").properties()) {
-			tariffs.put(entry.getKey(), ParkingTariffs.parseZone(entry.getKey(), entry.getValue()));
+			tariffs.put(entry.getKey(), ParkingTariffs.parseZone(entry.getKey(), entry.getValue(), ParkingTariffs.SCHEMA_VERSION));
 		}
 		return tariffs;
 	}
 
+	/** A zone of a tariff model of schema 1 (the 14 keys of version 1), parsed by the production zone parser. */
 	private static ZoneTariff zone(String json) throws Exception {
-		return ParkingTariffs.parseZone("test_zone", new ObjectMapper().readTree(json));
+		return ParkingTariffs.parseZone("test_zone", new ObjectMapper().readTree(json), 1);
+	}
+
+	/** Family of a golden case id: G for G01, L for L01, LZ for L01Z, V for V01 and R for R01. */
+	private static String family(String id) {
+		return id.endsWith("Z") ? id.substring(0, 1) + "Z" : id.substring(0, 1);
 	}
 
 	@Test
 	public void reproducesEveryGoldenCase() throws Exception {
 		JsonNode golden = readResource(GOLDEN_CASES_RESOURCE);
-		assertEquals(1, golden.get("schema_version").intValue());
+		assertEquals(GOLDEN_SCHEMA_VERSION, golden.get("schema_version").intValue());
 		Map<String, ZoneTariff> tariffs = goldenTariffs();
 		JsonNode cases = golden.get("cases");
-		assertEquals(GOLDEN_CASE_COUNT, cases.size());
+		assertEquals(CASES_PER_FAMILY.values().stream().mapToInt(Integer::intValue).sum(), cases.size());
 		Set<String> ids = new HashSet<>();
+		Map<String, Integer> casesPerFamily = new TreeMap<>();
 		Set<ParkingOutcome> pinnedOutcomes = EnumSet.noneOf(ParkingOutcome.class);
 		int errorCases = 0;
 		List<String> failures = new ArrayList<>();
 		for (JsonNode goldenCase : cases) {
 			String id = goldenCase.get("id").asText();
 			assertTrue("duplicate golden case id " + id, ids.add(id));
+			casesPerFamily.merge(family(id), 1, Integer::sum);
 			assertEquals(id + ": keys of the golden case", CASE_FIELDS, fieldNames(goldenCase));
 			ZoneTariff tariff = tariffs.get(goldenCase.get("zone_id").asText());
 			assertNotNull(id + ": unknown zone " + goldenCase.get("zone_id"), tariff);
-			double arrival_s = wholeSeconds(goldenCase, "arrival_s");
-			double departure_s = departure(goldenCase, tariff);
-			String purpose = goldenCase.get("purpose").asText();
-			boolean parkingFree = literalBoolean(goldenCase, "parking_free");
-			boolean residentOfZone = literalBoolean(goldenCase, "resident_of_zone");
 			if (literalBoolean(goldenCase, "expected_error")) {
 				// The generator writes no expectation for an invalid stay: both fields are JSON null.
 				assertTrue(id + ": an error case carries expected_cents = null", goldenCase.get("expected_cents").isNull());
@@ -96,11 +110,11 @@ public class ParkingCostCalculatorTest {
 						goldenCase.get("expected_outcome").isNull());
 				errorCases++;
 				try {
-					Result result = ParkingCostCalculator.cents(tariff, arrival_s, departure_s, purpose, parkingFree,
-							residentOfZone);
+					Result result = evaluate(goldenCase, tariff);
 					failures.add(id + ": expected IllegalArgumentException, got " + result);
 				} catch (IllegalArgumentException expected) {
-					// The golden contract: an invalid stay raises in both implementations.
+					// The golden contract: an invalid stay raises in both implementations, with the stay check's message.
+					assertTrue(id + ": " + expected.getMessage(), expected.getMessage().contains("before arrival_s"));
 				}
 				continue;
 			}
@@ -109,15 +123,67 @@ public class ParkingCostCalculatorTest {
 			Result expected = new Result(expectedCents.longValue(),
 					ParkingOutcome.valueOf(goldenCase.get("expected_outcome").asText()));
 			pinnedOutcomes.add(expected.outcome());
-			Result result = ParkingCostCalculator.cents(tariff, arrival_s, departure_s, purpose, parkingFree, residentOfZone);
+			Result result = evaluate(goldenCase, tariff);
 			if (!expected.equals(result)) {
 				failures.add(id + ": expected " + expected + ", got " + result);
 			}
 		}
 		assertTrue(String.join("; ", failures), failures.isEmpty());
+		assertEquals(new TreeMap<>(CASES_PER_FAMILY), casesPerFamily);
 		assertEquals(1, errorCases);
-		// Every outcome the calculator can return is pinned; NO_ZONE is decided by the car cost model, never here.
+		// Every outcome the calculator can return is pinned, the two schema-2 products included; NO_ZONE is decided by the
+		// car cost model, never here.
 		assertEquals(EnumSet.complementOf(EnumSet.of(ParkingOutcome.NO_ZONE)), pinnedOutcomes);
+	}
+
+	/**
+	 * Schema 2 is additive: a tariff model of schema 1 (the committed fixture of version 1) loads, and G01..G38,
+	 * L01..L08 and L01Z..L08Z, the cases on its zones, keep their cents and outcomes. Rule R2 and the products of schema 2
+	 * do not exist there: a schema-1 zone has no garage, no commuter product, and the permit flag of its zone type.
+	 */
+	@Test
+	public void aSchemaOneModelPricesTheVersionOneCasesUnchanged() throws Exception {
+		URL resource = ParkingCostCalculatorTest.class.getResource(SCHEMA_1_TARIFFS_RESOURCE);
+		assertNotNull("test resource " + SCHEMA_1_TARIFFS_RESOURCE + " is missing", resource);
+		ParkingTariffs schemaOne = ParkingTariffs.read(Path.of(resource.toURI()));
+		assertEquals(1, schemaOne.schemaVersion());
+		int priced = 0;
+		List<String> failures = new ArrayList<>();
+		for (JsonNode goldenCase : readResource(GOLDEN_CASES_RESOURCE).get("cases")) {
+			String id = goldenCase.get("id").asText();
+			if (!Set.of("G", "L", "LZ").contains(family(id))) {
+				continue;
+			}
+			ZoneTariff tariff = schemaOne.zone(goldenCase.get("zone_id").asText()).orElseThrow();
+			priced++;
+			if (literalBoolean(goldenCase, "expected_error")) {
+				assertThrows(id, IllegalArgumentException.class, () -> evaluate(goldenCase, tariff));
+				continue;
+			}
+			Result expected = new Result(goldenCase.get("expected_cents").longValue(),
+					ParkingOutcome.valueOf(goldenCase.get("expected_outcome").asText()));
+			Result result = evaluate(goldenCase, tariff);
+			if (!expected.equals(result)) {
+				failures.add(id + ": expected " + expected + ", got " + result);
+			}
+		}
+		assertTrue(String.join("; ", failures), failures.isEmpty());
+		assertEquals(38 + 8 + 8, priced);
+	}
+
+	/**
+	 * One golden case as braunschweig.parking.golden_cases.evaluate_case evaluates it: the departure of a terminal case
+	 * from the terminal-stay rule T1 (the STREET fee window), then the minimum parked duration of the case L1 (spec
+	 * amendment A3), then the pricing with the district flag of the case.
+	 */
+	private static Result evaluate(JsonNode goldenCase, ZoneTariff tariff) {
+		double arrival_s = wholeSeconds(goldenCase, "arrival_s");
+		double departure_s = departure(goldenCase, tariff);
+		int minimumStay_s = 60 * goldenCase.get("minimum_stay_min").intValue();
+		double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(arrival_s, departure_s, minimumStay_s);
+		return ParkingCostCalculator.cents(tariff, arrival_s, pricedDeparture_s, goldenCase.get("purpose").asText(),
+				literalBoolean(goldenCase, "parking_free"), literalBoolean(goldenCase, "resident_of_zone"),
+				literalBoolean(goldenCase, "resident_of_district"));
 	}
 
 	/** Golden times are integral JSON numbers; the calculator receives them as MATSim doubles. */
@@ -218,30 +284,47 @@ public class ParkingCostCalculatorTest {
 		ZoneTariff zoneIa = goldenTariffs().get("fx_bs_ia");
 		// 1800.5 s unfloored would start a 31st minute (93 ct); floored it is exactly 30 minutes (90 ct).
 		assertEquals(new Result(90, ParkingOutcome.PAID_METERED),
-				ParkingCostCalculator.cents(zoneIa, 36000.0, 37800.5, "shop", false, false));
+				ParkingCostCalculator.cents(zoneIa, 36000.0, 37800.5, "shop", false, false, false));
 		assertEquals(new Result(93, ParkingOutcome.PAID_METERED),
-				ParkingCostCalculator.cents(zoneIa, 36000.9, 37860.4, "shop", false, false));
+				ParkingCostCalculator.cents(zoneIa, 36000.9, 37860.4, "shop", false, false, false));
 		assertEquals(1800, ParkingCostCalculator.chargeableSeconds(36000.9, 37800.9, 32400, 72000));
+	}
+
+	/**
+	 * The garage product prices the same floored interval as the street. Stay [36000, 39600.5) in fx_wob_v2: floored it is
+	 * exactly one hour, so the street takes its first period of 110 ct and the garage one started hour of 100 ct, and the
+	 * garage wins; unfloored, the half second would start a second hour (garage 200 ct, street 230 ct).
+	 */
+	@Test
+	public void fractionalSecondsAreFlooredForTheGarageProductToo() throws Exception {
+		ZoneTariff zoneWob = goldenTariffs().get("fx_wob_v2");
+		assertEquals(new Result(100, ParkingOutcome.PAID_GARAGE),
+				ParkingCostCalculator.cents(zoneWob, 36000.0, 39600.5, "shop", false, false, false));
+		assertEquals(new Result(200, ParkingOutcome.PAID_GARAGE),
+				ParkingCostCalculator.cents(zoneWob, 36000.0, 39601.0, "shop", false, false, false));
 	}
 
 	@Test
 	public void invalidStaysAndWindowsAreRejectedBeforeAnyRule() throws Exception {
 		ZoneTariff zoneIa = goldenTariffs().get("fx_bs_ia");
 		// The home rule would return 0 ct; a departure before the arrival is still an input error.
-		assertThrows(IllegalArgumentException.class, () -> ParkingCostCalculator.cents(zoneIa, 37860, 36000, "home", false,
-				false));
+		assertThrows(IllegalArgumentException.class,
+				() -> ParkingCostCalculator.cents(zoneIa, 37860, 36000, "home", false, false, false));
+		// Rule R2 would free the stay; a departure before the arrival is still an input error.
+		assertThrows(IllegalArgumentException.class,
+				() -> ParkingCostCalculator.cents(zoneIa, 37860, 36000, "shop", false, false, true));
 		assertThrows(IllegalArgumentException.class, () -> ParkingCostCalculator.chargeableSeconds(100.7, 100.2, 0, 86400));
 		for (double invalid : new double[] { Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, -1.0 }) {
 			assertThrows(IllegalArgumentException.class,
-					() -> ParkingCostCalculator.cents(zoneIa, invalid, 40000, "shop", false, false));
+					() -> ParkingCostCalculator.cents(zoneIa, invalid, 40000, "shop", false, false, false));
 			assertThrows(IllegalArgumentException.class,
-					() -> ParkingCostCalculator.cents(zoneIa, 30000, invalid, "shop", false, false));
+					() -> ParkingCostCalculator.cents(zoneIa, 30000, invalid, "shop", false, false, false));
 		}
 		assertThrows(IllegalArgumentException.class, () -> ParkingCostCalculator.chargeableSeconds(0, 10, 72000, 32400));
 		assertThrows(IllegalArgumentException.class, () -> ParkingCostCalculator.chargeableSeconds(0, 10, -1, 100));
 		assertThrows(IllegalArgumentException.class, () -> ParkingCostCalculator.chargeableSeconds(0, 10, 0, 86401));
-		assertThrows(NullPointerException.class, () -> ParkingCostCalculator.cents(zoneIa, 0, 10, null, false, false));
-		assertThrows(NullPointerException.class, () -> ParkingCostCalculator.cents(null, 0, 10, "shop", false, false));
+		assertThrows(NullPointerException.class, () -> ParkingCostCalculator.cents(zoneIa, 0, 10, null, false, false, false));
+		assertThrows(NullPointerException.class, () -> ParkingCostCalculator.cents(null, 0, 10, "shop", false, false, false));
 	}
 
 	/**
@@ -268,7 +351,7 @@ public class ParkingCostCalculatorTest {
 				 "daily_cap_cents": null, "max_stay_min": null, "long_stay_product_cents": null, "member_day_cents": null,
 				 "guest_day_cents": null, "fee_start_s": 32400, "fee_end_s": 72000, "resident_exempt": false}
 				""".formatted(hourlyRateCents));
-		return ParkingCostCalculator.cents(perMinute, 36000, 36000 + duration_s, "shop", false, false);
+		return ParkingCostCalculator.cents(perMinute, 36000, 36000 + duration_s, "shop", false, false, false);
 	}
 
 	/**
@@ -280,19 +363,19 @@ public class ParkingCostCalculatorTest {
 		Map<String, ZoneTariff> tariffs = goldenTariffs();
 		ZoneTariff salzgitter = tariffs.get("fx_sz"); // free up to 30 min, first period 60 min for 70 ct
 		assertEquals(new Result(0, ParkingOutcome.FREE_WITHIN_LIMIT),
-				ParkingCostCalculator.cents(salzgitter, 39600, 39600 + 1800, "shop", false, false));
+				ParkingCostCalculator.cents(salzgitter, 39600, 39600 + 1800, "shop", false, false, false));
 		assertEquals(new Result(70, ParkingOutcome.PAID_METERED),
-				ParkingCostCalculator.cents(salzgitter, 39600, 39600 + 1801, "shop", false, false));
+				ParkingCostCalculator.cents(salzgitter, 39600, 39600 + 1801, "shop", false, false, false));
 		ZoneTariff zoneIa = tariffs.get("fx_bs_ia"); // 180 ct/h per minute, maximum stay 180 min, long-stay product 900 ct
 		assertEquals(new Result(540, ParkingOutcome.PAID_METERED),
-				ParkingCostCalculator.cents(zoneIa, 36000, 36000 + 10800, "shop", false, false));
+				ParkingCostCalculator.cents(zoneIa, 36000, 36000 + 10800, "shop", false, false, false));
 		assertEquals(new Result(900, ParkingOutcome.PAID_LONG_STAY),
-				ParkingCostCalculator.cents(zoneIa, 36000, 36000 + 10801, "shop", false, false));
+				ParkingCostCalculator.cents(zoneIa, 36000, 36000 + 10801, "shop", false, false, false));
 		ZoneTariff peine = tariffs.get("fx_pe"); // 100 ct/h in 30-minute units
 		assertEquals(new Result(50, ParkingOutcome.PAID_METERED),
-				ParkingCostCalculator.cents(peine, 36000, 36000 + 1800, "shop", false, false));
+				ParkingCostCalculator.cents(peine, 36000, 36000 + 1800, "shop", false, false, false));
 		assertEquals(new Result(100, ParkingOutcome.PAID_METERED),
-				ParkingCostCalculator.cents(peine, 36000, 36000 + 1801, "shop", false, false));
+				ParkingCostCalculator.cents(peine, 36000, 36000 + 1801, "shop", false, false, false));
 	}
 
 	/** Integer money never wraps around: an absurd rate fails loudly instead of producing a small or negative price. */
@@ -304,7 +387,8 @@ public class ParkingCostCalculatorTest {
 				 "daily_cap_cents": null, "max_stay_min": null, "long_stay_product_cents": null, "member_day_cents": null,
 				 "guest_day_cents": null, "fee_start_s": 32400, "fee_end_s": 72000, "resident_exempt": false}
 				""");
-		assertThrows(ArithmeticException.class, () -> ParkingCostCalculator.cents(absurd, 32400, 72000, "shop", false, false));
+		assertThrows(ArithmeticException.class,
+				() -> ParkingCostCalculator.cents(absurd, 32400, 72000, "shop", false, false, false));
 	}
 
 	@Test
@@ -312,41 +396,6 @@ public class ParkingCostCalculatorTest {
 		assertThrows(IllegalArgumentException.class, () -> new Result(-1, ParkingOutcome.PAID_METERED));
 		assertThrows(NullPointerException.class, () -> new Result(0, null));
 	}
-
-	/** Minimum parked duration of the shared cases L01 to L08 of assumption L1: 15 min. */
-	private static final int MINIMUM_STAY_15_MIN_S = 15 * 60;
-
-	/**
-	 * One shared case of the minimum parked duration (assumption L1): a stay [arrival_s, departure_s) in {@code zoneId} of
-	 * the golden fixture tariffs, the departure it is priced from with a minimum of 15 min, and its price with that
-	 * minimum and without one (L = 0, version 1).
-	 */
-	private record MinimumStayCase(String id, String zoneId, String purpose, double arrival_s, double departure_s,
-			double pricedDeparture_s, Result withMinimum, Result withoutMinimum) {
-	}
-
-	/**
-	 * The eight shared cases of assumption L1, computed with the Python reference braunschweig.parking.cost, which runs
-	 * the same table: zero-length stays of a late arrival (L01 to L04, L07), a stay shorter than the minimum (L05), a
-	 * longer one (L06) and a zero-length stay after the fee window (L08).
-	 */
-	private static final List<MinimumStayCase> MINIMUM_STAY_CASES = List.of( //
-			new MinimumStayCase("L01", "fx_bs_ia", "shop", 36000, 36000, 36900, //
-					new Result(45, ParkingOutcome.PAID_METERED), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
-			new MinimumStayCase("L02", "fx_sz", "shop", 40000, 40000, 40900, //
-					new Result(0, ParkingOutcome.FREE_WITHIN_LIMIT), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
-			new MinimumStayCase("L03", "fx_bs_ib", "shop", 71400, 71400, 72300, //
-					new Result(30, ParkingOutcome.PAID_METERED), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
-			new MinimumStayCase("L04", "fx_wob", "shop", 36000, 36000, 36900, //
-					new Result(110, ParkingOutcome.PAID_METERED), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
-			new MinimumStayCase("L05", "fx_bs_ia", "shop", 36000, 36300, 36900, //
-					new Result(45, ParkingOutcome.PAID_METERED), new Result(15, ParkingOutcome.PAID_METERED)),
-			new MinimumStayCase("L06", "fx_bs_ia", "shop", 36000, 39600, 39600, //
-					new Result(180, ParkingOutcome.PAID_METERED), new Result(180, ParkingOutcome.PAID_METERED)),
-			new MinimumStayCase("L07", "fx_campus", "work", 36000, 36000, 36900, //
-					new Result(350, ParkingOutcome.PAID_CAMPUS_MEMBER), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)),
-			new MinimumStayCase("L08", "fx_bs_ib", "shop", 73000, 73000, 73900, //
-					new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS), new Result(0, ParkingOutcome.OUTSIDE_FEE_HOURS)));
 
 	/**
 	 * Assumption L1: the priced stay is [arrival, max(departure, arrival + minimum)), so a shorter stay is priced for the
@@ -378,44 +427,6 @@ public class ParkingCostCalculatorTest {
 					() -> ParkingCostCalculator.minimumStayDeparture_s(invalid, 40000, 900));
 			assertThrows(IllegalArgumentException.class,
 					() -> ParkingCostCalculator.minimumStayDeparture_s(30000, invalid, 900));
-		}
-	}
-
-	/**
-	 * The shared cases with a minimum of 15 min: the helper yields the priced departure, and every tariff rule prices the
-	 * extended stay unchanged (fee window, free within the limit, first period, campus product).
-	 */
-	@Test
-	public void theSharedMinimumStayCasesPriceTheExtendedStay() throws Exception {
-		Map<String, ZoneTariff> tariffs = goldenTariffs();
-		Set<String> ids = new HashSet<>();
-		for (MinimumStayCase minimumStayCase : MINIMUM_STAY_CASES) {
-			String id = minimumStayCase.id();
-			assertTrue("duplicate minimum-stay case id " + id, ids.add(id));
-			ZoneTariff tariff = tariffs.get(minimumStayCase.zoneId());
-			assertNotNull(id + ": unknown zone " + minimumStayCase.zoneId(), tariff);
-			double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(minimumStayCase.arrival_s(),
-					minimumStayCase.departure_s(), MINIMUM_STAY_15_MIN_S);
-			assertEquals(id + ": priced departure", minimumStayCase.pricedDeparture_s(), pricedDeparture_s, 0.0);
-			assertEquals(id, minimumStayCase.withMinimum(), ParkingCostCalculator.cents(tariff, minimumStayCase.arrival_s(),
-					pricedDeparture_s, minimumStayCase.purpose(), false, false));
-		}
-		assertEquals(8, ids.size());
-	}
-
-	/** L = 0 reproduces version 1: every shared case keeps its departure and costs what its original stay costs. */
-	@Test
-	public void withoutAMinimumStayTheSharedCasesPriceTheOriginalStay() throws Exception {
-		Map<String, ZoneTariff> tariffs = goldenTariffs();
-		for (MinimumStayCase minimumStayCase : MINIMUM_STAY_CASES) {
-			String id = minimumStayCase.id();
-			ZoneTariff tariff = tariffs.get(minimumStayCase.zoneId());
-			assertNotNull(id + ": unknown zone " + minimumStayCase.zoneId(), tariff);
-			double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(minimumStayCase.arrival_s(),
-					minimumStayCase.departure_s(), 0);
-			assertEquals(id + ": priced departure", minimumStayCase.departure_s(), pricedDeparture_s, 0.0);
-			assertEquals(id, minimumStayCase.withoutMinimum(), ParkingCostCalculator.cents(tariff,
-					minimumStayCase.arrival_s(), pricedDeparture_s, minimumStayCase.purpose(), false, false));
 		}
 	}
 }

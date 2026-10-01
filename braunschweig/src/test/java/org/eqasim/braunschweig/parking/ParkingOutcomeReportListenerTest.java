@@ -79,7 +79,9 @@ public class ParkingOutcomeReportListenerTest {
 				"PAID_METERED,2,0.250000", //
 				"PAID_LONG_STAY,0,0.000000", //
 				"PAID_CAMPUS_MEMBER,0,0.000000", //
-				"PAID_CAMPUS_GUEST,0,0.000000"), Files.readAllLines(report, StandardCharsets.UTF_8));
+				"PAID_CAMPUS_GUEST,0,0.000000", //
+				"PAID_GARAGE,0,0.000000", //
+				"PAID_COMMUTER,0,0.000000"), Files.readAllLines(report, StandardCharsets.UTF_8));
 		assertEquals(List.of("[parking] it 3: NO_ZONE 5 (62.5 %), EMPLOYER_FREE 1 (12.5 %), PAID_METERED 2 (25.0 %)",
 				"[parking] it 3: minimum stay 15 min extended 1 of 3 priced stays (33.3 %)"), messages);
 		// The next iteration counts from zero.
