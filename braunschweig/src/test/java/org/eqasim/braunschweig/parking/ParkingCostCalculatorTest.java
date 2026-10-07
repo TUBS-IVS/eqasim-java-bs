@@ -40,23 +40,29 @@ public class ParkingCostCalculatorTest {
 	/** The schema-1 tariff model of version 1, kept as a resource of its own: schema 2 is additive. */
 	static final String SCHEMA_1_TARIFFS_RESOURCE = "/parking/parking_tariffs_fixture_schema1.json";
 
-	/** Version of the golden file: 3 since every case carries minimum_stay_min and resident_of_district. */
-	private static final int GOLDEN_SCHEMA_VERSION = 3;
+	/**
+	 * Version of the golden file: 3 since every case carries minimum_stay_min and resident_of_district, 4 since the garage
+	 * options (spec Amendment E: destination, decay and expected garage probability per case, the garages and the option
+	 * cases).
+	 */
+	private static final int GOLDEN_SCHEMA_VERSION = 4;
 
 	/**
 	 * G01..G38 (the pricing before the minimum parked duration), L01..L08 at L = 15 and their twins L01Z..L08Z at L = 0,
-	 * V01..V23 (schema 2: the cheapest of the street, garage and commuter product) and R01..R13 (rule R2); a truncated or
-	 * replaced fixture must not pass by asserting fewer cases.
+	 * V01..V23 (schema 2: the cheapest of the street, garage and commuter product), R01..R13 (rule R2) and E01..E32
+	 * (garage options, priced by GarageParkingCostCalculatorTest, not here); a truncated or replaced fixture must not pass
+	 * by asserting fewer cases.
 	 */
-	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13);
+	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13, "E", 32);
 
 	/**
 	 * The keys of one golden case, as the Python generator writes them (braunschweig.parking.golden_cases.CASE_FIELDS):
 	 * a dropped or renamed key fails instead of being read as absent.
 	 */
 	private static final Set<String> CASE_FIELDS = Set.of("id", "zone_id", "arrival_s", "departure_s", "purpose",
-			"parking_free", "resident_of_zone", "resident_of_district", "terminal", "minimum_stay_min", "expected_cents",
-			"expected_outcome", "expected_error");
+			"parking_free", "resident_of_zone", "resident_of_district", "terminal", "minimum_stay_min", "destination_x_m",
+			"destination_y_m", "garage_decay_m", "expected_cents", "expected_outcome", "expected_garage_probability",
+			"expected_error");
 
 	private static final int SECONDS_PER_DAY = 86400;
 
@@ -102,6 +108,10 @@ public class ParkingCostCalculatorTest {
 			assertTrue("duplicate golden case id " + id, ids.add(id));
 			casesPerFamily.merge(family(id), 1, Integer::sum);
 			assertEquals(id + ": keys of the golden case", CASE_FIELDS, fieldNames(goldenCase));
+			if ("E".equals(family(id))) {
+				// The garage option cases need the garages and the distance mixture: GarageParkingCostCalculatorTest.
+				continue;
+			}
 			ZoneTariff tariff = tariffs.get(goldenCase.get("zone_id").asText());
 			assertNotNull(id + ": unknown zone " + goldenCase.get("zone_id"), tariff);
 			if (literalBoolean(goldenCase, "expected_error")) {
@@ -133,8 +143,8 @@ public class ParkingCostCalculatorTest {
 		assertEquals(new TreeMap<>(CASES_PER_FAMILY), casesPerFamily);
 		assertEquals(1, errorCases);
 		// Every outcome the calculator can return is pinned, the two schema-2 products included; NO_ZONE is decided by the
-		// car cost model, never here.
-		assertEquals(EnumSet.complementOf(EnumSet.of(ParkingOutcome.NO_ZONE)), pinnedOutcomes);
+		// car cost model, never here, and PAID_EXPECTED belongs to GarageParkingCostCalculator.
+		assertEquals(EnumSet.complementOf(EnumSet.of(ParkingOutcome.NO_ZONE, ParkingOutcome.PAID_EXPECTED)), pinnedOutcomes);
 	}
 
 	/**

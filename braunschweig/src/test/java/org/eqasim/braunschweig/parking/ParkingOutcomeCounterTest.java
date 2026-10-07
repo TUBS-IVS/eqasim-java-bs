@@ -66,16 +66,18 @@ public class ParkingOutcomeCounterTest {
 
 	/**
 	 * The report lists outcomes in declaration order, so the order is part of the file format: the outcomes of version 1
-	 * keep their positions and the two schema-2 outcomes are appended at the end.
+	 * keep their positions; the two schema-2 outcomes and the schema-3 outcome PAID_EXPECTED are appended at the end, in the
+	 * order of the Python reference OUTCOMES.
 	 */
 	@Test
-	public void theOutcomeDeclarationOrderKeepsVersionOneAndAppendsTheSchemaTwoOutcomes() {
+	public void theOutcomeDeclarationOrderKeepsVersionOneAndAppendsTheSchemaTwoAndThreeOutcomes() {
 		List<String> names = new ArrayList<>();
 		for (ParkingOutcome outcome : ParkingOutcome.values()) {
 			names.add(outcome.name());
 		}
 		assertEquals(List.of("NO_ZONE", "HOME", "EMPLOYER_FREE", "RESIDENT_FREE", "OUTSIDE_FEE_HOURS", "FREE_WITHIN_LIMIT",
-				"PAID_METERED", "PAID_LONG_STAY", "PAID_CAMPUS_MEMBER", "PAID_CAMPUS_GUEST", "PAID_GARAGE", "PAID_COMMUTER"),
+				"PAID_METERED", "PAID_LONG_STAY", "PAID_CAMPUS_MEMBER", "PAID_CAMPUS_GUEST", "PAID_GARAGE", "PAID_COMMUTER",
+				"PAID_EXPECTED"),
 				names);
 	}
 

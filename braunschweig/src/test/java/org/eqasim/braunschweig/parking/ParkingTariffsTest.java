@@ -31,9 +31,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * Reading the parking tariff model JSON (design section 5.4; schema 1 of version 1 and schema 2 of the v2 levers and the
- * resident districts). The rejection cases mutate the parsed fixture tree, so they hold for any formatting of
- * {@code parking/parking_tariffs_fixture.json}, a byte-for-byte copy of the schema-2 model
+ * Reading the parking tariff model JSON (design section 5.4; schema 1 of version 1, schema 2 of the v2 levers and the
+ * resident districts, schema 3 of the garage options of spec Amendment E). The rejection cases mutate the parsed fixture
+ * tree, so they hold for any formatting of {@code parking/parking_tariffs_fixture.json}, a byte-for-byte copy of the
+ * schema-3 model
  * scripts/export_parking_golden_cases.py writes (eqasim-bs tests/fixtures/parking), and of
  * {@code parking/parking_tariffs_fixture_schema1.json}, the schema-1 model of version 1, which the reader must keep
  * accepting. Only facts of the fixture tariff table are pinned, not the exporter's metadata (assumption texts, sources).
@@ -95,14 +96,14 @@ public class ParkingTariffsTest {
 	@Test
 	public void readsTheFixtureTariffModel() throws Exception {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
-		assertEquals(2, tariffs.schemaVersion());
+		assertEquals(3, tariffs.schemaVersion());
 		assertEquals(Set.of("fx_bs_ia", "fx_bs_ib", "fx_sz", "fx_wob", "fx_pe", "fx_res_a", "fx_campus", "fx_frac",
 				"fx_bs_ia_v2", "fx_bs_ib_v2", "fx_wob_v2", "fx_campus_v2", "fx_garage_window_v2", "fx_capped_street_v2",
 				"fx_campus_tie_v2", "fx_res_garage_v2", "fx_bga_v2", "fx_res_nopermit_v2"), tariffs.zones());
 		assertNotNull(tariffs.tariffSnapshotDate());
 		assertEquals(ParkingCostCalculator.TERMINAL_STAY_RULE_UNTIL_FEE_END, tariffs.terminalStayRule());
 		assertFalse(tariffs.assumptions().isEmpty());
-		assertEquals(2, tariffs.sources().size());
+		assertEquals(3, tariffs.sources().size());
 
 		ZoneTariff salzgitter = tariffs.zone("fx_sz").orElseThrow();
 		assertEquals("fx_sz", salzgitter.zoneId());
@@ -250,9 +251,9 @@ public class ParkingTariffsTest {
 	/** Schema 1 and schema 2 are accepted; any other version, and any non-integral one, fails with the version. */
 	@Test
 	public void rejectsAnotherSchemaVersion() throws Exception {
-		assertRejected(root -> root.put("schema_version", 3), "schema_version must be one of [1, 2], got 3");
-		assertRejected(root -> root.put("schema_version", 0), "schema_version must be one of [1, 2], got 0");
-		assertRejected(root -> root.put("schema_version", -1), "schema_version must be one of [1, 2], got -1");
+		assertRejected(root -> root.put("schema_version", 4), "schema_version must be one of [1, 2, 3], got 4");
+		assertRejected(root -> root.put("schema_version", 0), "schema_version must be one of [1, 2, 3], got 0");
+		assertRejected(root -> root.put("schema_version", -1), "schema_version must be one of [1, 2, 3], got -1");
 		assertRejected(root -> root.put("schema_version", 1.5), "schema_version", "integral");
 		assertRejected(root -> root.put("schema_version", "2"), "schema_version", "integral");
 		assertRejected(root -> root.putNull("schema_version"), "schema_version", "integral");
@@ -264,14 +265,14 @@ public class ParkingTariffsTest {
 	 */
 	@Test
 	public void checksTheSchemaVersionBeforeTheDocumentFields() throws Exception {
-		ObjectNode schema3 = fixtureTree();
-		schema3.put("schema_version", 3);
-		schema3.remove("weekday_only");
-		schema3.remove("resident_districts");
-		schema3.put("service_days", "weekday");
-		zone(schema3, "fx_sz").remove("garage_daily_cap_cents");
-		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(schema3));
-		assertEquals("parking_tariffs: schema_version must be one of [1, 2], got 3", error.getMessage());
+		ObjectNode schema4 = fixtureTree();
+		schema4.put("schema_version", 4);
+		schema4.remove("weekday_only");
+		schema4.remove("resident_districts");
+		schema4.put("service_days", "weekday");
+		zone(schema4, "fx_sz").remove("garage_daily_cap_cents");
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(schema4));
+		assertEquals("parking_tariffs: schema_version must be one of [1, 2, 3], got 4", error.getMessage());
 
 		ObjectNode unversioned = fixtureTree();
 		unversioned.remove("schema_version");
@@ -282,18 +283,26 @@ public class ParkingTariffsTest {
 	/** After the version, the key set of THAT version is checked: schema 1 has no district list and no schema-2 zone keys. */
 	@Test
 	public void checksTheKeySetOfTheVersionTheDocumentDeclares() throws Exception {
-		// A schema-2 document declaring schema 1 has the keys of schema 2 too many.
+		// A schema-3 document declaring schema 1 has the keys of schemas 2 and 3 too many.
 		assertRejected(root -> root.put("schema_version", 1), "must have exactly the schema-1 fields",
-				"unknown [resident_districts]");
+				"unknown [garage_decay_m, garage_max_distance_m, garages, resident_districts]");
+		// A schema-3 document declaring schema 2 has the three garage keys too many.
+		assertRejected(root -> root.put("schema_version", 2), "must have exactly the schema-2 fields",
+				"unknown [garage_decay_m, garage_max_distance_m, garages]");
+		// A schema-2 document (the schema-3 fixture without the garage keys) declaring schema 3 lacks them.
+		assertRejected(root -> {
+			removeGarageKeys(root);
+			root.put("schema_version", 3);
+		}, "must have exactly the schema-3 fields", "missing [garage_decay_m, garage_max_distance_m, garages]");
 		// A schema-1 document declaring schema 2 lacks the district list.
 		ObjectNode schemaOne = schemaOneTree();
 		assertRejected(schemaOne, root -> root.put("schema_version", 2), "must have exactly the schema-2 fields",
 				"missing [resident_districts]");
-		// A schema-1 zone has none of the ten schema-2 keys; a schema-2 zone has all of them.
+		// A schema-1 zone has none of the ten schema-2 keys; a schema-2 or schema-3 zone has all of them.
 		assertRejected(schemaOneTree(), root -> zone(root, "fx_sz").put("search_time_min", 5), "zone fx_sz",
 				"must have exactly the schema-1 fields", "unknown [search_time_min]");
 		assertRejected(root -> zone(root, "fx_sz").remove("search_time_min"), "zone fx_sz",
-				"must have exactly the schema-2 fields", "missing [search_time_min]");
+				"must have exactly the schema-3 fields", "missing [search_time_min]");
 		assertRejected(root -> zone(root, "fx_sz").remove("resident_permits_valid"), "zone fx_sz",
 				"missing [resident_permits_valid]");
 		assertRejected(root -> root.remove("resident_districts"), "missing [resident_districts]");
@@ -735,12 +744,12 @@ public class ParkingTariffsTest {
 	@Test
 	public void readNamesTheFileOfAnInvalidModel() throws Exception {
 		ObjectNode root = fixtureTree();
-		root.put("schema_version", 3);
-		Path file = temporary.newFile("parking_tariffs_schema_3.json").toPath();
+		root.put("schema_version", 4);
+		Path file = temporary.newFile("parking_tariffs_schema_4.json").toPath();
 		MAPPER.writeValue(file.toFile(), root);
 		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.read(file));
-		assertTrue(error.getMessage(), error.getMessage().contains("parking_tariffs_schema_3.json"));
-		assertTrue(error.getMessage(), error.getMessage().contains("schema_version must be one of [1, 2], got 3"));
+		assertTrue(error.getMessage(), error.getMessage().contains("parking_tariffs_schema_4.json"));
+		assertTrue(error.getMessage(), error.getMessage().contains("schema_version must be one of [1, 2, 3], got 4"));
 	}
 
 	/**
@@ -761,8 +770,10 @@ public class ParkingTariffsTest {
 		assertTrue(tariffs.zone("fx_wob_v2").orElseThrow().hasSearchTime());
 		assertFalse(tariffs.zone("fx_sz").orElseThrow().hasSearchTime());
 		List<String> info = ParkingLogCapture.messages(events, Level.INFO);
-		assertEquals(info.toString(), 1, info.size());
+		// One line for the model and one for the garage options of schema 3.
+		assertEquals(info.toString(), 2, info.size());
 		assertTrue(info.get(0), info.get(0).contains("3 zone(s) with a search time"));
+		assertTrue(info.get(1), info.get(1).contains("garage options"));
 
 		ParkingTariffs[] readSchemaOne = new ParkingTariffs[1];
 		List<Event> schemaOneEvents = ParkingLogCapture.captureChecked(ParkingTariffs.class,
@@ -770,5 +781,250 @@ public class ParkingTariffsTest {
 		assertEquals(0L, readSchemaOne[0].zonesWithSearchTime());
 		List<String> schemaOneInfo = ParkingLogCapture.messages(schemaOneEvents, Level.INFO);
 		assertTrue(schemaOneInfo.toString(), schemaOneInfo.get(0).contains("0 zone(s) with a search time"));
+	}
+
+	private static void removeGarageKeys(ObjectNode root) {
+		root.remove("garages");
+		root.remove("garage_decay_m");
+		root.remove("garage_max_distance_m");
+	}
+
+	private static ObjectNode garage(ObjectNode root, String garageId) {
+		for (var entry : root.get("garages")) {
+			if (garageId.equals(entry.get("garage_id").asText())) {
+				return (ObjectNode) entry;
+			}
+		}
+		throw new AssertionError("fixture garage " + garageId + " is missing");
+	}
+
+	// ------------------------------------------------------------------------------------------ schema 3: garages
+
+	/** The 19 fixture garages, the decay length lambda and D_max, field by field for one garage of every structure. */
+	@Test
+	public void readsTheGaragesOfTheSchemaThreeFixture() throws Exception {
+		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
+		assertEquals(3, tariffs.schemaVersion());
+		assertEquals(400.0, tariffs.garageDecayMeters(), 0.0);
+		assertEquals(1000.0, tariffs.garageMaximumDistanceMeters(), 0.0);
+		assertTrue(tariffs.garageOptions().isActive());
+		assertEquals(19, tariffs.garages().size());
+		List<String> ids = tariffs.garages().stream().map(GarageTariff::garageId).toList();
+		assertEquals("garages are ordered by ascending id", ids.stream().sorted().toList(), ids);
+
+		GarageTariff core = garageById(tariffs, "fx_g01_core");
+		assertEquals(580300.0, core.x_m(), 0.0);
+		assertEquals(5750000.0, core.y_m(), 0.0);
+		assertEquals(OptionalLong.of(200), core.hourlyRateCents());
+		assertEquals(OptionalInt.of(60), core.billingUnitMinutes());
+		assertEquals(OptionalInt.of(0), core.feeStart_s());
+		assertEquals(OptionalInt.of(86400), core.feeEnd_s());
+		assertEquals(OptionalLong.of(6300), core.monthlyCents());
+		assertFalse(core.hasTiers());
+		assertFalse(core.hasBands());
+
+		GarageTariff tiers = garageById(tariffs, "fx_g07_tiers");
+		assertTrue(tiers.hasTiers());
+		assertFalse(tiers.hasBands());
+		assertEquals(4, tiers.tiers().size());
+		assertEquals(new GarageTariff.Tier(82800, 28800, 30, 10), tiers.tiers().get(3));
+		assertTrue("a tier may cross midnight", tiers.tiers().get(3).covers(3600));
+		assertEquals(OptionalInt.empty(), tiers.feeStart_s());
+
+		GarageTariff firstPeriodWindow = garageById(tariffs, "fx_g09_fp");
+		assertEquals(OptionalInt.of(60), firstPeriodWindow.firstPeriodMinutes());
+		assertEquals(OptionalLong.of(110), firstPeriodWindow.firstPeriodCents());
+		assertEquals(OptionalInt.of(21600), firstPeriodWindow.firstPeriodStart_s());
+		assertEquals(OptionalInt.of(86400), firstPeriodWindow.firstPeriodEnd_s());
+		assertEquals(OptionalLong.of(600), firstPeriodWindow.dailyCapCents());
+
+		GarageTariff bands = garageById(tariffs, "fx_g08_bands");
+		assertTrue(bands.hasBands());
+		assertFalse(bands.hasTiers());
+		assertEquals(5, bands.bands().size());
+		assertEquals(new GarageTariff.Band(120, OptionalInt.of(240), GarageTariff.BandKind.INCREMENT, 50, OptionalInt.of(60)),
+				bands.bands().get(2));
+		assertEquals(OptionalInt.empty(), bands.bands().get(4).toMinutes());
+		assertEquals(OptionalLong.of(1500), bands.dailyCapCents());
+
+		// Spec E14 amendment (1): a tiered garage with ONE closed free band as its grace period carries both lists.
+		GarageTariff tierGrace = garageById(tariffs, "fx_g15_tier_grace");
+		assertTrue(tierGrace.hasTiers());
+		assertTrue(tierGrace.hasBands());
+		assertEquals(1, tierGrace.bands().size());
+		assertEquals(GarageTariff.BandKind.FREE, tierGrace.bands().get(0).kind());
+
+		// The free schedule: one open free band with the formal fee window.
+		GarageTariff free = garageById(tariffs, "fx_g17_free");
+		assertEquals(1, free.bands().size());
+		assertEquals(OptionalInt.empty(), free.bands().get(0).toMinutes());
+		assertEquals(OptionalInt.of(86400), free.feeEnd_s());
+	}
+
+	private static GarageTariff garageById(ParkingTariffs tariffs, String garageId) {
+		return tariffs.garages().stream().filter(garage -> garage.garageId().equals(garageId)).findFirst()
+				.orElseThrow(() -> new AssertionError("fixture garage " + garageId + " is missing"));
+	}
+
+	/** Schema 2 is the schema-3 fixture without the garage keys: no garage, decay 0, the garage options off. */
+	@Test
+	public void aSchemaTwoModelHasNoGarageOptionsAndPricesAsBefore() throws Exception {
+		ObjectNode root = fixtureTree();
+		removeGarageKeys(root);
+		root.put("schema_version", 2);
+		ParkingTariffs schemaTwo = ParkingTariffs.parse(root);
+		assertEquals(2, schemaTwo.schemaVersion());
+		assertTrue(schemaTwo.garages().isEmpty());
+		assertEquals(0.0, schemaTwo.garageDecayMeters(), 0.0);
+		assertFalse(schemaTwo.garageOptions().isActive());
+		ParkingTariffs schemaThree = ParkingTariffs.read(fixturePath());
+		assertEquals(schemaThree.zones(), schemaTwo.zones());
+		for (String zoneId : schemaTwo.zones()) {
+			assertEquals(zoneId, schemaThree.zone(zoneId).orElseThrow(), schemaTwo.zone(zoneId).orElseThrow());
+		}
+		ParkingTariffs schemaOne = ParkingTariffs.read(resourcePath(SCHEMA_1_RESOURCE));
+		assertTrue(schemaOne.garages().isEmpty());
+		assertFalse(schemaOne.garageOptions().isActive());
+	}
+
+	/** Decay 0 switches the garage options off (the sensitivity arm): garages listed or not, no option code runs. */
+	@Test
+	public void aDecayOfZeroSwitchesTheGarageOptionsOff() throws Exception {
+		ParkingTariffs withGarages = assertAccepted(root -> root.put("garage_decay_m", 0.0));
+		assertEquals(19, withGarages.garages().size());
+		assertFalse(withGarages.garageOptions().isActive());
+		assertTrue(withGarages.garageOptionsSetting(), withGarages.garageOptionsSetting().startsWith("OFF"));
+		ParkingTariffs withoutGarages = assertAccepted(root -> {
+			root.put("garage_decay_m", 0);
+			root.putArray("garages");
+		});
+		assertTrue(withoutGarages.garages().isEmpty());
+		assertFalse(withoutGarages.garageOptions().isActive());
+	}
+
+	@Test
+	public void rejectsGarageOptionsThatAreOnWithoutAnyGarage() throws Exception {
+		assertRejected(root -> root.putArray("garages"), "garage_decay_m is 400.0", "lists no priced garage");
+	}
+
+	@Test
+	public void rejectsInvalidGarageParameters() throws Exception {
+		assertRejected(root -> root.put("garage_decay_m", -1.0), "garage_decay_m must be a finite number of metres >= 0");
+		assertRejected(root -> root.put("garage_decay_m", "400"), "garage_decay_m must be a finite number");
+		assertRejected(root -> root.putNull("garage_decay_m"), "garage_decay_m must be a finite number");
+		assertRejected(root -> root.put("garage_max_distance_m", 0.0), "garage_max_distance_m must be a finite number of metres > 0");
+		assertRejected(root -> root.put("garage_max_distance_m", -5), "garage_max_distance_m must be a finite number of metres > 0");
+		assertRejected(root -> root.put("garage_max_distance_m", "1000"), "garage_max_distance_m must be a finite number");
+		assertRejected(root -> root.put("garages", "none"), "garages must be an array of garages");
+	}
+
+	/** The garage entry has exactly the 15 keys of the Python reference; tiers 4 and bands 5. */
+	@Test
+	public void rejectsMissingOrUnknownGarageKeys() throws Exception {
+		assertRejected(root -> garage(root, "fx_g01_core").remove("monthly_cents"), "garages entry fx_g01_core",
+				"schema-3 fields", "missing [monthly_cents]");
+		assertRejected(root -> garage(root, "fx_g01_core").put("capacity", 100), "garages entry fx_g01_core",
+				"unknown [capacity]");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(0)).remove("unit_min"),
+				"fx_g07_tiers: tiers item", "missing [unit_min]");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(0)).put("label", "x"),
+				"fx_g08_bands: bands item", "unknown [label]");
+		assertRejected(root -> ((ArrayNode) root.get("garages")).add("fx_g99"), "a garages entry must be a JSON object");
+		assertRejected(root -> garage(root, "fx_g07_tiers").putArray("tiers"), "fx_g07_tiers: tiers must be null or a non-empty");
+		assertRejected(root -> garage(root, "fx_g08_bands").putArray("bands"), "fx_g08_bands: bands must be null or a non-empty");
+	}
+
+	@Test
+	public void rejectsMistypedGarageValues() throws Exception {
+		assertRejected(root -> garage(root, "fx_g01_core").put("hourly_rate_cents", 200.5), "garage fx_g01_core",
+				"hourly_rate_cents", "integral");
+		assertRejected(root -> garage(root, "fx_g01_core").put("billing_unit_min", "60"), "garage fx_g01_core",
+				"billing_unit_min", "integral");
+		assertRejected(root -> garage(root, "fx_g01_core").put("x_m", "580300"), "garage fx_g01_core", "x_m must be a finite number");
+		assertRejected(root -> garage(root, "fx_g01_core").putNull("y_m"), "garage fx_g01_core", "y_m must be a finite number");
+		assertRejected(root -> garage(root, "fx_g07_tiers").put("garage_id", " "), "garage_id");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(0)).put("price_cents", 30.5),
+				"fx_g07_tiers", "tier price_cents", "integral");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(0)).put("kind", "flat"),
+				"fx_g08_bands", "band kind flat is not one of free, total, increment");
+	}
+
+	@Test
+	public void rejectsDuplicateGarageIds() throws Exception {
+		assertRejected(root -> garage(root, "fx_g02_a").put("garage_id", "fx_g01_core"), "duplicate garage_id fx_g01_core");
+	}
+
+	/** Validation as strict as the Python dataclasses: structure, windows, caps, tiers, bands. */
+	@Test
+	public void rejectsAGarageThatBreaksTheRulesOfThePythonReference() throws Exception {
+		// Exactly one tariff structure.
+		assertRejected(root -> garage(root, "fx_g01_core").putNull("fee_end_s"), "garage fx_g01_core",
+				"exactly one tariff structure");
+		assertRejected(root -> {
+			ObjectNode garage = garage(root, "fx_g07_tiers");
+			garage.put("hourly_rate_cents", 100);
+		}, "garage fx_g07_tiers", "a tiered garage leaves the single-window core empty");
+		assertRejected(root -> garage(root, "fx_g08_bands").put("hourly_rate_cents", 100), "garage fx_g08_bands",
+				"a banded garage leaves the rate and the billing unit empty");
+		assertRejected(root -> garage(root, "fx_g08_bands").putNull("fee_start_s"), "garage fx_g08_bands",
+				"a banded garage needs its fee window");
+		assertRejected(root -> {
+			ObjectNode garage = garage(root, "fx_g08_bands");
+			garage.put("first_period_min", 30);
+			garage.put("first_period_cents", 100);
+		}, "garage fx_g08_bands", "a banded garage has no first period");
+		// Windows and caps.
+		assertRejected(root -> garage(root, "fx_g01_core").put("fee_end_s", 90000), "garage fx_g01_core", "fee window");
+		assertRejected(root -> garage(root, "fx_g01_core").put("fee_start_s", 86400), "garage fx_g01_core", "fee window");
+		assertRejected(root -> garage(root, "fx_g01_core").put("hourly_rate_cents", 0), "hourly_rate_cents must be at least 1");
+		assertRejected(root -> garage(root, "fx_g01_core").put("billing_unit_min", 0), "billing_unit_min must be at least 1");
+		assertRejected(root -> garage(root, "fx_g01_core").put("monthly_cents", 0), "monthly_cents must be at least 1");
+		assertRejected(root -> garage(root, "fx_g01_core").put("x_m", Double.POSITIVE_INFINITY), "x_m must be a finite number");
+		assertRejected(root -> garage(root, "fx_g09_fp").put("daily_cap_cents", 100), "garage fx_g09_fp",
+				"daily_cap_cents 100 is below first_period_cents 110");
+		assertRejected(root -> garage(root, "fx_g09_fp").putNull("first_period_cents"), "garage fx_g09_fp",
+				"first_period_min and first_period_cents must be given together");
+		assertRejected(root -> garage(root, "fx_g09_fp").putNull("first_period_end_s"), "garage fx_g09_fp",
+				"first_period_start_s and first_period_end_s must be given together");
+		assertRejected(root -> {
+			ObjectNode garage = garage(root, "fx_g01_core");
+			garage.put("first_period_start_s", 3600);
+			garage.put("first_period_end_s", 7200);
+		}, "garage fx_g01_core", "a first-period window needs a first period");
+		assertRejected(root -> garage(root, "fx_g09_fp").put("first_period_end_s", 100), "garage fx_g09_fp",
+				"first-period window");
+	}
+
+	@Test
+	public void rejectsInvalidTiersAndBands() throws Exception {
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(1)).put("unit_min", 60),
+				"fx_g07_tiers", "must share one unit length");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(1)).put("start_s", 30000),
+				"fx_g07_tiers", "tiers overlap");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(0)).put("end_s", 28800),
+				"fx_g07_tiers", "no time-of-day interval of positive length");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(0)).put("price_cents", 0),
+				"fx_g07_tiers", "positive price");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(1)).put("from_min", 25),
+				"fx_g08_bands", "band 1 starts at 25 min but the band before ends at 20");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(0)).put("price_cents", 5),
+				"fx_g08_bands", "band 0 is free");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(1)).put("price_cents", 0),
+				"fx_g08_bands", "band 1 is a total");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(2)).putNull("unit_min"),
+				"fx_g08_bands", "band 2 is an increment");
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(1)).put("to_min", 20),
+				"fx_g08_bands", "band 1 must end after it starts");
+		// Only the last band may be open-ended.
+		assertRejected(root -> ((ObjectNode) garage(root, "fx_g08_bands").get("bands").get(3)).putNull("to_min"),
+				"fx_g08_bands", "only the last may be open-ended");
+		// A tiered garage carries bands only as ONE closed free band (its grace period), never a schedule or a first period.
+		assertRejected(root -> garage(root, "fx_g07_tiers").set("bands", garage(root, "fx_g08_bands").get("bands")),
+				"fx_g07_tiers", "carries bands only as a grace period");
+		assertRejected(root -> {
+			ObjectNode graceGarage = garage(root, "fx_g15_tier_grace");
+			graceGarage.put("first_period_min", 30);
+			graceGarage.put("first_period_cents", 100);
+		}, "fx_g15_tier_grace", "has no first period");
 	}
 }

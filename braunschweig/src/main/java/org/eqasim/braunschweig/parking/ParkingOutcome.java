@@ -51,5 +51,13 @@ public enum ParkingOutcome {
 	 * Schema 2: the commuter product (commuter_day_cents per working day) was the cheapest product, or the cheapest for a
 	 * campus member (assumptions P1, P2; spec amendment A4). Offered to the purposes work and education only.
 	 */
-	PAID_COMMUTER
+	PAID_COMMUTER,
+	/**
+	 * Schema 3 (spec Amendment E, ruling R-4d-5): the stay was priced as the probability-weighted mean over the street option
+	 * and at least one garage option within the maximum distance, or over the garage options alone where the street product
+	 * is unavailable ({@link GarageParkingCostCalculator}). The price is the expected cost rounded half up to the cent once.
+	 * Appended at the end, at the position of the Python reference's OUTCOMES, so the declaration order of every earlier
+	 * outcome (part of the report contract) is unchanged.
+	 */
+	PAID_EXPECTED
 }
