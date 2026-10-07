@@ -23,6 +23,11 @@ import org.junit.Test;
  * quarter banded, half single window) and the grid index, for destinations spread over the region ("regional": most have no
  * garage in range) and for destinations that all lie next to garages ("dense": the worst case, several options each).
  *
+ * <p>What is NOT measured: the thread-safe counters ({@link GarageOptionCounters} LongAdders, passed as null in the timed
+ * passes) and the {@link ParkingOutcomeCounter} record of the cost model, both of which the real cost model adds per stay, and
+ * the rest of the cost model (time tracker, attribute reads). The measured increase per stay is therefore a floor, not the
+ * full cost of the options in a run; the 1 % scenario measurement of Task 5 is the figure for that.
+ *
  * <p>The numbers are measurements of the machine they run on, never a pinned bound: the test always checks that the three
  * ways agree where they must (the options-off price equals the schema-2 price) and that the priced sums are reproducible, and
  * it measures and writes {@code target/parking-benchmark/garage_options_benchmark.txt} only when started with
@@ -201,6 +206,8 @@ public class GarageOptionBenchmarkTest {
 		report.append("java.version=").append(System.getProperty("java.version")).append(" cores=")
 				.append(Runtime.getRuntime().availableProcessors()).append(" stays_per_pass=").append(STAYS)
 				.append(" rounds=").append(MEASURED_ROUNDS).append(" repeats=").append(REPEATS).append(" (best of repeats)\n");
+		report.append("EXCLUDED from the timed passes: the LongAdder counters and the ParkingOutcomeCounter record of the cost"
+				+ " model and the rest of the cost model, so the increase per stay below is a floor\n");
 		report.append("garages=").append(garages.size()).append(" region_m=").append(REGION_SIZE_M).append(" max_distance_m=")
 				.append(on.maximumDistanceMeters()).append(" decay_m=").append(on.decayMeters()).append('\n');
 		for (boolean denseDestinations : new boolean[] { false, true }) {
