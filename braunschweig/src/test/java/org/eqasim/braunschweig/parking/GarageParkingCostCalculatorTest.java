@@ -47,7 +47,7 @@ public class GarageParkingCostCalculatorTest {
 
 	/**
 	 * A pinned expectation keeps this distance in cents from a half cent (the Python generator asserts it), so that the
-	 * Math.exp of Java cannot flip the rounding; the port checks the same margin on its own unrounded expectation.
+	 * StrictMath.exp of Java cannot flip the rounding; the port checks the same margin on its own unrounded expectation.
 	 */
 	private static final double ROUNDING_MARGIN_CENTS = 1e-6;
 
