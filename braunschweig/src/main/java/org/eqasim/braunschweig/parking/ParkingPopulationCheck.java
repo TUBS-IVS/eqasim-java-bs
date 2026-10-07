@@ -99,8 +99,9 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 * @param ownDistrictActivitiesInPermitZones activities in the district of the person's home (both attributes set and
 	 *        equal) that lie in a zone which honours resident permits: the stays rule R2 frees unless the activity is home
 	 *        or parkingFree
-	 * @param activitiesWithSearchTime activities in a zone whose search_time_min is above 0: the destinations the search
-	 *        time factor of lever 4 acts on
+	 * @param activitiesWithSearchTime activities the search time of lever 4 acts on: in a zone whose search_time_min is above
+	 *        0 and not of purpose home, counted by the same predicate as the car utility term
+	 *        ({@link ParkingSearchTime#minutesIn})
 	 */
 	record Coverage(long persons, long activities, Map<ZoneType, Long> activitiesInZones, long parkingFreeActivities,
 			long residentPersons, long activitiesInDistricts, long districtResidents,
@@ -156,8 +157,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 		}
 		return Optional.of("[parking] searchTimeFactor " + searchTimeFactorText + " is configured and "
 				+ (zones == 1 ? "1 zone carries" : zones + " zones carry") + " a search_time_min above 0, but no activity of the"
-				+ " population lies in such a zone: the search time cannot act in this run; were the plans written with the"
-				+ " parkingZone attributes of these zones?");
+				+ " population lies in such a zone (home destinations excluded): the search time cannot act in this run; were"
+				+ " the plans written with the parkingZone attributes of these zones?");
 	}
 
 	/** Checks every plan of every person and counts the coverage, without logging. */
@@ -194,7 +195,7 @@ public final class ParkingPopulationCheck implements StartupListener {
 					ZoneTariff zone = zone(person, planIndex, activityIndex, activity);
 					if (zone != null) {
 						activitiesInZones.merge(zone.zoneType(), 1L, Long::sum);
-						if (zone.searchTimeMinutes().orElse(0) > 0) {
+						if (ParkingSearchTime.minutesIn(zone, activity.getType()) > 0) {
 							activitiesWithSearchTime++;
 						}
 					}
@@ -222,8 +223,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 * activities and their count per zone type, in declaration order; parkingFree activities; persons with a resident
 	 * zone and their rate among all persons; activities in a resident district and their rate, persons with a resident
 	 * district and their rate, and the activities in the own district that lie in a zone honouring resident permits (the
-	 * stays rule R2 can free) with their rate among all activities; the activities in a zone with a search time above 0
-	 * minutes, the ones lever 4 acts on, with their rate. A rate of an empty total is 0.
+	 * stays rule R2 can free) with their rate among all activities; the activities lever 4 acts on (in a zone with a search
+	 * time above 0 minutes, home excluded) with their rate. A rate of an empty total is 0.
 	 */
 	static String summary(Coverage coverage) {
 		List<String> byZoneType = new ArrayList<>();

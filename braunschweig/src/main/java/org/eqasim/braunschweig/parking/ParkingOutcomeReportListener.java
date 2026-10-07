@@ -135,8 +135,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 					+ searchTimeFactorText + ")";
 		}
 		return setting + "active in " + zonesWithSearchTime + (zonesWithSearchTime == 1 ? " zone" : " zones")
-				+ " (searchTimeFactor " + searchTimeFactorText + "); the car utility of a trip to a destination in such a zone"
-				+ " adds betaTravelTime_u_min * " + searchTimeFactorText + " * search_time_min of the zone";
+				+ " (searchTimeFactor " + searchTimeFactorText + "); the car utility of a trip to a non-home destination in such"
+				+ " a zone adds betaTravelTime_u_min * " + searchTimeFactorText + " * search_time_min of the zone";
 	}
 
 	/** The minimum parked duration line of one iteration: the priced stays it extended, as a count and in percent. */

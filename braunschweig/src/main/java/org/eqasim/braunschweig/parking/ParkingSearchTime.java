@@ -18,9 +18,11 @@ import com.google.inject.Inject;
  * module is enabled, and by {@code BraunschweigModeChoiceModule} as {@link #none()} otherwise, so that the car utility
  * estimator needs no optional injection and a run without the module is unchanged: factor 0 and 0 minutes everywhere.
  *
- * <p>The search time applies to the destination whatever its purpose: the spec attaches it to the zone, not to the
- * stay, so a destination of purpose home that lies in a zone carries the zone's search minutes too (ASSUMPTION; the home
- * stay itself is never charged, rule H1, which concerns the fee only).
+ * <p>The search time applies to a destination of every purpose except home (ASSUMPTION, ruling R-T3-a): parking at home
+ * is free (rule H1) and needs no search, so a destination of purpose home gets none, whatever its zone. The purpose test is
+ * the one of the home rule of the fee ({@link ParkingCostCalculator#isHomePurpose}), and {@link #minutesIn} is the single
+ * predicate of where the search time acts, used by the car utility term and by the coverage count of
+ * {@link ParkingPopulationCheck}.
  *
  * <p>Immutable and thread-safe; no side effects.
  */
@@ -64,10 +66,27 @@ public final class ParkingSearchTime {
 	}
 
 	/**
+	 * The single predicate of where the parking search time acts: the search minutes of a destination of this purpose in this
+	 * zone, i.e. the {@code search_time_min} of the zone (0 where the column is empty) for every purpose except home, and 0
+	 * for the home purpose (rule H1: parking at home is free and needs no search). The car utility term
+	 * ({@link #minutes}) and the coverage count of {@link ParkingPopulationCheck} both call it, so the count never includes a
+	 * destination the term ignores.
+	 *
+	 * @param zone the zone the destination lies in
+	 * @param purpose the MATSim activity type of the destination
+	 */
+	static int minutesIn(ZoneTariff zone, String purpose) {
+		if (ParkingCostCalculator.isHomePurpose(purpose)) {
+			return 0;
+		}
+		return zone.searchTimeMinutesOrZero();
+	}
+
+	/**
 	 * The parking search time in minutes of a destination: the {@code search_time_min} of the zone named by its activity
 	 * attribute {@value ZoneParkingCarCostModel#ZONE_ATTRIBUTE}; 0 for a destination outside every zone (assumption Z1),
-	 * for a zone whose column is empty ("0 where empty") and always for {@link #none()}. The result does not depend on
-	 * the factor.
+	 * for a zone whose column is empty ("0 where empty"), for a destination of purpose home ({@link #minutesIn}) and
+	 * always for {@link #none()}. The result does not depend on the factor.
 	 *
 	 * @throws IllegalStateException for a zone attribute that is not a String or names a zone the tariff model does not
 	 *         contain: the plans and the model must come from the same release, and {@link ParkingPopulationCheck} has
@@ -90,6 +109,6 @@ public final class ParkingSearchTime {
 				+ destination.getType() + ": " + ZoneParkingCarCostModel.ZONE_ATTRIBUTE + " " + zoneId
 				+ " is not a zone of the parking tariff model " + tariffsPath + " (" + ParkingConfigGroup.GROUP_NAME
 				+ ".tariffsPath); the tariff model and the plans must come from the same release"));
-		return tariff.searchTimeMinutes().orElse(0);
+		return minutesIn(tariff, destination.getType());
 	}
 }

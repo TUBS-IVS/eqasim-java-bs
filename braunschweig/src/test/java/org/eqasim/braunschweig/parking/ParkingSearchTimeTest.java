@@ -17,9 +17,10 @@ import org.matsim.core.population.PopulationUtils;
 
 /**
  * Parking search time of a destination (lever 4 of the zone-based parking costs): the search_time_min of the zone named
- * by the activity attribute parkingZone, 0 outside every zone, for a zone without the column and without the parking
- * module. The fixture tariff model gives fx_bs_ia_v2 and fx_bs_ib_v2 5 min, fx_wob_v2 2 min, fx_campus_v2 an explicit
- * 0 min and every other zone no value.
+ * by the activity attribute parkingZone, 0 outside every zone, for a zone without the column, for a destination of
+ * purpose home (rule H1: parking at home is free and needs no search) and without the parking module. The fixture tariff
+ * model gives fx_bs_ia_v2 and fx_bs_ib_v2 5 min, fx_wob_v2 2 min, fx_campus_v2 an explicit 0 min and every other zone no
+ * value.
  */
 public class ParkingSearchTimeTest {
 	private static final String FIXTURE_RESOURCE = "/parking/parking_tariffs_fixture.json";
@@ -72,16 +73,35 @@ public class ParkingSearchTimeTest {
 	}
 
 	/**
-	 * The minutes do not depend on the factor, only the term in the utility does; the spec attaches the search to the zone,
-	 * not to the purpose, so a destination of purpose home in a zone carries the zone's minutes as well (ASSUMPTION).
+	 * The minutes do not depend on the factor, only the term in the utility does. A destination of purpose home gets no
+	 * search time whatever the factor and the zone (ASSUMPTION, ruling R-T3-a: parking at home is free, rule H1, and needs
+	 * no search): the purpose test is the one of the home rule of the fee.
 	 */
 	@Test
-	public void minutesDoNotDependOnTheFactorOrThePurpose() {
+	public void minutesDoNotDependOnTheFactorAndAreZeroAtHome() {
 		for (String factor : new String[] { null, "0", "0.0", "2.5", "10" }) {
 			ParkingSearchTime searchTime = searchTime(factor);
 			assertEquals(5.0, searchTime.minutes(activity("shop", "fx_bs_ia_v2")), 0.0);
-			assertEquals(5.0, searchTime.minutes(activity("home", "fx_bs_ia_v2")), 0.0);
+			assertEquals(5.0, searchTime.minutes(activity("work", "fx_bs_ia_v2")), 0.0);
+			assertEquals(0.0, searchTime.minutes(activity("home", "fx_bs_ia_v2")), 0.0);
+			assertEquals(0.0, searchTime.minutes(activity("home", "fx_wob_v2")), 0.0);
 		}
+	}
+
+	/**
+	 * The one predicate of where lever 4 acts, shared by the car utility term and the coverage count of the startup check
+	 * of the population: the zone column, 0 where it is empty or an explicit 0, and 0 for the home purpose.
+	 */
+	@Test
+	public void theSinglePredicateOfWhereTheSearchTimeActsIsTheZoneColumnExceptAtHome() {
+		ZoneTariff withSearchTime = tariffs.zone("fx_bs_ia_v2").orElseThrow();
+		ZoneTariff withoutValue = tariffs.zone("fx_bs_ia").orElseThrow();
+		ZoneTariff explicitZero = tariffs.zone("fx_campus_v2").orElseThrow();
+		assertEquals(5, ParkingSearchTime.minutesIn(withSearchTime, "work"));
+		assertEquals(5, ParkingSearchTime.minutesIn(withSearchTime, "shop"));
+		assertEquals(0, ParkingSearchTime.minutesIn(withSearchTime, "home"));
+		assertEquals(0, ParkingSearchTime.minutesIn(withoutValue, "work"));
+		assertEquals(0, ParkingSearchTime.minutesIn(explicitZero, "work"));
 	}
 
 	@Test

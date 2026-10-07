@@ -304,6 +304,25 @@ public class ParkingPopulationCheckTest {
 		assertTrue(information.get(0), information.get(0).contains("0 in a zone with a search time (0.0 %)"));
 	}
 
+	/**
+	 * A destination of purpose home gets no search time (rule H1, ruling R-T3-a), so a home activity in a zone with a search
+	 * time is not one lever 4 acts on: it is not counted, and a population whose only activities in such zones are at home
+	 * still gets the warning that the factor cannot act. A non-home activity in the same zone is counted.
+	 */
+	@Test
+	public void aHomeActivityInASearchTimeZoneIsNotCountedAndDoesNotSilenceTheWarning() {
+		plan(person("p1"), inZone("home", "fx_bs_ia_v2"), inZone("work", "fx_sz"), inZone("home", "fx_bs_ia_v2"));
+		Coverage coverage = check().scan();
+		assertEquals(0, coverage.activitiesWithSearchTime());
+		List<String> warnings = ParkingLogCapture.messages(startup("1.0"), Level.WARN);
+		assertEquals(warnings.toString(), 1, warnings.size());
+		assertTrue(warnings.get(0), warnings.get(0).contains("home destinations excluded"));
+
+		plan(person("p2"), activity("home"), inZone("shop", "fx_bs_ia_v2"), activity("home"));
+		assertEquals(1, check().scan().activitiesWithSearchTime());
+		assertTrue(ParkingLogCapture.messages(startup("1.0"), Level.WARN).isEmpty());
+	}
+
 	/** An activity in a zone with a search time, or a factor of 0 (off), gives no search time warning. */
 	@Test
 	public void noSearchTimeWarningWhenTheTermCanActOrTheFactorIsZero() {

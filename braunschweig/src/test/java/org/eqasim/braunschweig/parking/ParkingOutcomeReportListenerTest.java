@@ -190,7 +190,7 @@ public class ParkingOutcomeReportListenerTest {
 		assertEquals(List.of("[parking] minimum stay 15 min (braunschweigParking.minimumStayMinutes, assumption L1): every"
 				+ " priced car stay lasts at least 900 s; the simulated timing is unchanged",
 				"[parking] search time (lever 4): active in 3 zones (searchTimeFactor 1.5); the car utility of a trip to a"
-						+ " destination in such a zone adds betaTravelTime_u_min * 1.5 * search_time_min of the zone"),
+						+ " non-home destination in such a zone adds betaTravelTime_u_min * 1.5 * search_time_min of the zone"),
 				logDuring(() -> listener.notifyStartup(new StartupEvent(null))));
 
 		ParkingOutcomeReportListener versionOne = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
@@ -231,7 +231,7 @@ public class ParkingOutcomeReportListenerTest {
 		ParkingOutcomeReportListener one = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
 				parking("15", "2.5"), tariffsWithOneSearchTimeZone);
 		assertEquals("[parking] search time (lever 4): active in 1 zone (searchTimeFactor 2.5); the car utility of a trip to a"
-				+ " destination in such a zone adds betaTravelTime_u_min * 2.5 * search_time_min of the zone",
+				+ " non-home destination in such a zone adds betaTravelTime_u_min * 2.5 * search_time_min of the zone",
 				logDuring(() -> one.notifyStartup(new StartupEvent(null))).get(1));
 	}
 

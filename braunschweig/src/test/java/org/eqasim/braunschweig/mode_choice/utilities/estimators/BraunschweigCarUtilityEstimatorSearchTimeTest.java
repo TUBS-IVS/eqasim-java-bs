@@ -162,6 +162,21 @@ public class BraunschweigCarUtilityEstimatorSearchTimeTest {
 	}
 
 	/**
+	 * A destination of purpose home gets no search time (rule H1, ruling R-T3-a), also in a zone with search minutes: the
+	 * utility equals the one without the term at any factor.
+	 */
+	@Test
+	public void aHomeDestinationInASearchTimeZoneIsUnchangedAtAnyFactor() {
+		Person person = person();
+		List<PlanElement> elements = elements();
+		Activity home = PopulationUtils.createActivityFromCoord("home", new Coord(5000, 0));
+		home.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, "fx_bs_ia_v2");
+		DiscreteModeChoiceTrip trip = trip(home);
+		double withoutTerm = estimator(ParkingSearchTime.none()).estimateUtility(person, trip, elements);
+		assertEquals(withoutTerm, estimator(searchTime("10")).estimateUtility(person, trip, elements), 0.0);
+	}
+
+	/**
 	 * The term sits in the estimator, not in the cached car variables: one predictor serves estimators of different
 	 * factors on the same trip object, and each gets its own term.
 	 */

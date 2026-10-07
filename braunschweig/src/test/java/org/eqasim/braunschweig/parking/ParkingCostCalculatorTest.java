@@ -1,6 +1,7 @@
 package org.eqasim.braunschweig.parking;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -389,6 +390,19 @@ public class ParkingCostCalculatorTest {
 				""");
 		assertThrows(ArithmeticException.class,
 				() -> ParkingCostCalculator.cents(absurd, 32400, 72000, "shop", false, false, false));
+	}
+
+	/**
+	 * The home purpose test of the fee rule H1, shared with the parking search time of lever 4 so that both agree on what
+	 * home is: exactly the activity type home.
+	 */
+	@Test
+	public void theHomePurposeTestIsExactlyTheTypeHome() {
+		assertTrue(ParkingCostCalculator.isHomePurpose("home"));
+		for (String other : new String[] { "work", "education", "shop", "Home", "home_1", "" }) {
+			assertFalse(other, ParkingCostCalculator.isHomePurpose(other));
+		}
+		assertFalse(ParkingCostCalculator.isHomePurpose(null));
 	}
 
 	@Test

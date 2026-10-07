@@ -73,6 +73,15 @@ public final class ParkingCostCalculator {
 	}
 
 	/**
+	 * Whether the purpose is the home purpose: the one test of the home rule H1 (a home stay is free) and of the parking
+	 * search time (a home destination gets none, lever 4), so that both agree on what home is. The purpose is the MATSim
+	 * activity type of the destination.
+	 */
+	public static boolean isHomePurpose(String purpose) {
+		return HOME_PURPOSE.equals(purpose);
+	}
+
+	/**
 	 * Seconds of the stay [arrival, departure) inside the daily fee window [feeStart_s, feeEnd_s), summed over every
 	 * simulated day the stay touches (section 3.2): the sum over k = floor(a / 86400) .. floor((d - 1) / 86400) of
 	 * {@code max(0, min(d, k * 86400 + feeEnd_s) - max(a, k * 86400 + feeStart_s))}, with a and d floored to whole seconds.
@@ -199,7 +208,7 @@ public final class ParkingCostCalculator {
 		Objects.requireNonNull(tariff, "tariff");
 		Objects.requireNonNull(purpose, "purpose");
 		long chargeable_s = chargeableSeconds(arrival_s, departure_s, tariff.feeStart_s(), tariff.feeEnd_s());
-		if (HOME_PURPOSE.equals(purpose)) {
+		if (isHomePurpose(purpose)) {
 			return new Result(0, ParkingOutcome.HOME);
 		}
 		if (parkingFree) {
