@@ -127,6 +127,41 @@ public class ParkingPopulationCheckTest {
 				+ " parking tariff model " + TARIFFS_PATH);
 	}
 
+	/**
+	 * With the garage options on (the fixture model has garage_decay_m 400) an activity in a zone needs a coordinate to find
+	 * its garages: the run fails at the controller start, naming the person, the activity and the way out, not at the first
+	 * car stay of a replanning iteration. Activities outside every zone need none, and with the options off neither do the
+	 * zoned ones.
+	 */
+	@Test
+	public void aZonedActivityWithoutACoordinateFailsWhenTheGarageOptionsAreOn() throws Exception {
+		Activity noCoordinate = PopulationUtils.createActivityFromLinkId("work", Id.createLinkId("link"));
+		noCoordinate.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, "fx_bs_ib");
+		plan(person("p1"), activity("home"), noCoordinate, activity("home"));
+		assertStartupFails("person p1, plan 0, activity 1 (work)", "has no coordinate", "garage_decay_m",
+				"set garage_decay_m to 0", TARIFFS_PATH);
+
+		// Outside every zone no coordinate is needed.
+		population.removePerson(Id.createPersonId("p1"));
+		Activity outsideZone = PopulationUtils.createActivityFromLinkId("work", Id.createLinkId("link"));
+		plan(person("p2"), activity("home"), outsideZone, activity("home"));
+		check().notifyStartup(new StartupEvent(null));
+
+		// With the garage options off the zoned activity needs none either.
+		population.removePerson(Id.createPersonId("p2"));
+		Activity zonedWithoutCoordinate = PopulationUtils.createActivityFromLinkId("work", Id.createLinkId("link"));
+		zonedWithoutCoordinate.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, "fx_bs_ib");
+		plan(person("p3"), activity("home"), zonedWithoutCoordinate, activity("home"));
+		com.fasterxml.jackson.databind.node.ObjectNode tree = (com.fasterxml.jackson.databind.node.ObjectNode)
+				new com.fasterxml.jackson.databind.ObjectMapper().readTree(Path.of(
+						ParkingPopulationCheckTest.class.getResource(FIXTURE_RESOURCE).toURI()).toFile());
+		tree.put("garage_decay_m", 0.0);
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.setEnabled("true");
+		parking.setTariffsPath(TARIFFS_PATH);
+		new ParkingPopulationCheck(ParkingTariffs.parse(tree), population, parking).notifyStartup(new StartupEvent(null));
+	}
+
 	@Test
 	public void anUnknownResidentZoneFails() {
 		Person person = person("p1");

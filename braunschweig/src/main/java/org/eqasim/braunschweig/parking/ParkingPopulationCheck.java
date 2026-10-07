@@ -47,6 +47,10 @@ import com.google.inject.Singleton;
  * <li>a person or an activity carries {@code isParis}, of any value: the plans were written for the legacy 8 km ring
  * parking (Python flag enable_urban_parking), which is mutually exclusive with the zones (Python flag
  * parking_zones_enabled);</li>
+ * <li>the garage options are on (schema 3 model, {@code garage_decay_m} above 0) and an activity with a
+ * {@value ZoneParkingCarCostModel#ZONE_ATTRIBUTE} has no coordinate: the garages within the maximum distance are found from
+ * the activity coordinate (spec Amendment E6), so the run stops here, at the start, instead of at the first car stay that
+ * reaches the garage options; the message names the way out, {@code garage_decay_m} 0;</li>
  * <li>one of the five parking attributes has another type than the plans writer writes (String zone and district ids,
  * Boolean parkingFree), which ZoneParkingCarCostModel would otherwise reject only when it first prices a car trip
  * there.</li>
@@ -192,6 +196,7 @@ public final class ParkingPopulationCheck implements StartupListener {
 					Activity activity = planActivities.get(activityIndex);
 					ZoneTariff zone = zone(person, planIndex, activityIndex, activity);
 					if (zone != null) {
+						requireCoordinateForGarageOptions(person, planIndex, activityIndex, activity);
 						activitiesInZones.merge(zone.zoneType(), 1L, Long::sum);
 						if (ParkingSearchTime.minutesIn(zone, activity.getType()) > 0) {
 							activitiesWithSearchTime++;
@@ -260,6 +265,23 @@ public final class ParkingPopulationCheck implements StartupListener {
 			throw legacyRing(ParkingAttributes.describe(person, planIndex, activityIndex, activity), ring);
 		}
 		return ParkingAttributes.zone(tariffs, tariffsPath, person, planIndex, activityIndex, activity);
+	}
+
+	/**
+	 * With the garage options on, an activity in a zone needs a coordinate (ZoneParkingCarCostModel finds its garages from
+	 * it). Fails at the start, with the person, the plan and the activity, instead of mid-run at the first stay there.
+	 */
+	private void requireCoordinateForGarageOptions(Person person, int planIndex, int activityIndex, Activity activity) {
+		if (tariffs.garageOptions().isActive() && activity.getCoord() == null) {
+			throw new IllegalStateException(ParkingAttributes.describe(person, planIndex, activityIndex, activity)
+					+ ": the activity lies in the parking zone " + activity.getAttributes()
+							.getAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE)
+					+ " but has no coordinate, which the garage options of the parking tariff model " + tariffsPath + " ("
+					+ ParkingConfigGroup.GROUP_NAME + ".tariffsPath, garage_decay_m " + tariffs.garageDecayMeters()
+					+ " m) need to find the garages within " + tariffs.garageMaximumDistanceMeters()
+					+ " m; write the plans with activity coordinates (EPSG:25832) or set garage_decay_m to 0 to switch the"
+					+ " garage options off");
+		}
 	}
 
 	/**
