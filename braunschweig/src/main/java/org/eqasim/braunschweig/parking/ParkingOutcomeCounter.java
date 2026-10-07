@@ -27,6 +27,13 @@ import com.google.inject.Singleton;
  * The two snapshots are separate calls, so a car trip priced between them could fall into different iterations; the
  * report takes both at the end of an iteration, when replanning, which prices the car trips, has finished. The number of
  * cells is bounded by outcomes x zones x purposes of the run.
+ *
+ * <p>Garage options (spec Amendment E7 of parking cost zones v2): every cell also sums the garage probability of its stays
+ * (the sum of the probabilities that the stay uses one of the garages within the maximum distance, 0 where no garage
+ * acted) and counts its stays with at least one garage in range, so that the expected garage share per zone and purpose and
+ * the calibration universe can be read from every run. The sum is held in fixed point (1e-9 per unit), so that it does not
+ * depend on the order in which parallel replanning threads add their stays. The garage option rates of the whole run
+ * ({@link GarageOptionCounters}) are held here too, so that the cost model and the report share one singleton.
  */
 @Singleton
 public final class ParkingOutcomeCounter {
@@ -63,11 +70,34 @@ public final class ParkingOutcomeCounter {
 		}
 	}
 
-	private final ConcurrentHashMap<Cell, LongAdder> counts = new ConcurrentHashMap<>();
+	/**
+	 * What one cell of the report holds since the previous snapshot (CSV v3 columns count, garage_probability_sum and
+	 * stays_with_garages_in_range).
+	 *
+	 * @param count car stays the rule priced in the zone for the purpose
+	 * @param garageProbabilitySum sum over those stays of the garage probability (spec E3), 0 for a stay no garage acted on
+	 * @param staysWithGaragesInRange stays of the cell that had at least one garage within the maximum distance, whether or
+	 *        not the garage acted (a free street, spec E4, gives them probability 0)
+	 */
+	public record CellTotals(long count, double garageProbabilitySum, long staysWithGaragesInRange) {
+	}
+
+	/** The live counts of one cell; adders are only ever reset, never removed. */
+	private static final class CellCounts {
+		private final LongAdder count = new LongAdder();
+		private final LongAdder garageProbabilityNanos = new LongAdder();
+		private final LongAdder staysWithGaragesInRange = new LongAdder();
+	}
+
+	/** A garage probability is summed in units of 1e-9, rounded per stay, so that the sum is independent of thread order. */
+	private static final double NANOS_PER_UNIT = 1e9;
+
+	private final ConcurrentHashMap<Cell, CellCounts> counts = new ConcurrentHashMap<>();
 	private final LongAdder minimumStayExtensions = new LongAdder();
+	private final GarageOptionCounters garageOptionCounters = new GarageOptionCounters();
 
 	/**
-	 * Counts one car stay priced by {@code outcome}.
+	 * Counts one car stay priced by {@code outcome} that no garage acted on.
 	 *
 	 * @param outcome the rule that decided the price
 	 * @param zoneId id of the parking zone of the stay; null for NO_ZONE, the only outcome of a stay in no zone
@@ -75,8 +105,34 @@ public final class ParkingOutcomeCounter {
 	 * @throws IllegalArgumentException for NO_ZONE with a zone id, and for any other outcome without one
 	 */
 	public void record(ParkingOutcome outcome, String zoneId, String purpose) {
+		record(outcome, zoneId, purpose, 0.0, 0);
+	}
+
+	/**
+	 * Counts one car stay priced by {@code outcome} together with its garage options (spec Amendment E7).
+	 *
+	 * @param outcome the rule that decided the price
+	 * @param zoneId id of the parking zone of the stay; null for NO_ZONE, the only outcome of a stay in no zone
+	 * @param purpose the MATSim activity type of the destination
+	 * @param garageProbability the sum of the garage probabilities of the stay, in [0, 1]; 0 where no garage acted
+	 * @param garagesInRange garage options of the stay within the maximum distance, at least 0
+	 * @throws IllegalArgumentException for NO_ZONE with a zone id, for any other outcome without one, a garage probability
+	 *         outside [0, 1] and a negative number of garages
+	 */
+	public void record(ParkingOutcome outcome, String zoneId, String purpose, double garageProbability, int garagesInRange) {
+		if (!(garageProbability >= 0.0 && garageProbability <= 1.0 + 1e-12) || garagesInRange < 0) {
+			throw new IllegalArgumentException("a garage probability must lie in [0, 1] and the garages in range must not be"
+					+ " negative, got " + garageProbability + " and " + garagesInRange);
+		}
 		Cell cell = new Cell(outcome, zoneId == null ? "" : zoneId, purpose);
-		counts.computeIfAbsent(cell, key -> new LongAdder()).increment();
+		CellCounts cellCounts = counts.computeIfAbsent(cell, key -> new CellCounts());
+		cellCounts.count.increment();
+		if (garageProbability > 0.0) {
+			cellCounts.garageProbabilityNanos.add(Math.round(garageProbability * NANOS_PER_UNIT));
+		}
+		if (garagesInRange > 0) {
+			cellCounts.staysWithGaragesInRange.increment();
+		}
 	}
 
 	/**
@@ -85,13 +141,31 @@ public final class ParkingOutcomeCounter {
 	 */
 	public SortedMap<Cell, Long> snapshotAndReset() {
 		SortedMap<Cell, Long> snapshot = new TreeMap<>();
-		for (Map.Entry<Cell, LongAdder> entry : counts.entrySet()) {
-			long count = entry.getValue().sumThenReset();
+		snapshotAndResetTotals().forEach((cell, totals) -> snapshot.put(cell, totals.count()));
+		return Collections.unmodifiableSortedMap(snapshot);
+	}
+
+	/**
+	 * The totals of every cell with at least one stay since the previous snapshot (the stays, their garage probabilities and
+	 * their garages in range), in the order of the report rows; unmodifiable. The counter restarts from 0.
+	 */
+	public SortedMap<Cell, CellTotals> snapshotAndResetTotals() {
+		SortedMap<Cell, CellTotals> snapshot = new TreeMap<>();
+		for (Map.Entry<Cell, CellCounts> entry : counts.entrySet()) {
+			CellCounts cellCounts = entry.getValue();
+			long count = cellCounts.count.sumThenReset();
+			long nanos = cellCounts.garageProbabilityNanos.sumThenReset();
+			long inRange = cellCounts.staysWithGaragesInRange.sumThenReset();
 			if (count > 0) {
-				snapshot.put(entry.getKey(), count);
+				snapshot.put(entry.getKey(), new CellTotals(count, nanos / NANOS_PER_UNIT, inRange));
 			}
 		}
 		return Collections.unmodifiableSortedMap(snapshot);
+	}
+
+	/** The rates of the garage options of the whole run; the cost model counts into it, the report snapshots it. */
+	public GarageOptionCounters garageOptionCounters() {
+		return garageOptionCounters;
 	}
 
 	/**

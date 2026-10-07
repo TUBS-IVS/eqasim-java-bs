@@ -3,12 +3,12 @@ package org.eqasim.braunschweig.parking;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * The garage options of a destination (spec Amendment E2 of parking cost zones v2, eqasim-bs issue #436): the priced
@@ -23,10 +23,11 @@ import java.util.Set;
  *
  * <p>Distances are straight lines in the network CRS (EPSG:25832) computed as {@code Math.sqrt(dx * dx + dy * dy)}, never
  * {@code Math.hypot}, exactly as the Python reference {@code garage_options_in_range}, so both implementations compute the
- * same double and agree on the inclusive D_max test. Index: every garage is binned into a square cell of side D_max by its
- * own coordinates; the options of a destination all lie in the 3 x 3 cells around its own cell, which are scanned and
- * filtered by the exact distance. The result is ordered by ascending garage id, the order of the sums of the expected
- * cost.
+ * same double and agree on the inclusive D_max test. Index: every garage is binned into a square cell of side 2 * D_max by
+ * its own coordinates; the options of a destination lie in the cells that the square of half side D_max around it touches
+ * (at most 2 x 2 cells, looked up by binary search in a sorted array of primitive cell keys, so a lookup allocates nothing
+ * but its result), which are scanned and filtered by the exact distance. The result is ordered by ascending garage id, the
+ * order of the sums of the expected cost.
  */
 public final class GarageOptionModel {
 	/** One garage option of a destination: the garage and its straight-line distance in metres. */
@@ -38,7 +39,12 @@ public final class GarageOptionModel {
 	private final List<GarageTariff> garages;
 	private final double decayMeters;
 	private final double maximumDistanceMeters;
-	private final Map<Long, int[]> garageOrdinalsByCell;
+	/** Margin in metres added around the search square, far above the rounding of a UTM coordinate and far below any tariff. */
+	private static final double SEARCH_MARGIN_M = 1e-6;
+
+	private final double cellSizeMeters;
+	private final long[] cellKeys;
+	private final int[][] garageOrdinalsByCell;
 
 	/**
 	 * @param garages the priced garages; copied and ordered by ascending id
@@ -71,15 +77,21 @@ public final class GarageOptionModel {
 		this.garages = List.copyOf(ordered);
 		this.decayMeters = decayMeters;
 		this.maximumDistanceMeters = maximumDistanceMeters;
-		Map<Long, List<Integer>> byCell = new HashMap<>();
+		this.cellSizeMeters = 2.0 * maximumDistanceMeters;
+		TreeMap<Long, List<Integer>> byCell = new TreeMap<>();
 		for (int ordinal = 0; ordinal < this.garages.size(); ordinal++) {
 			GarageTariff garage = this.garages.get(ordinal);
 			byCell.computeIfAbsent(cellKey(cellIndex(garage.x_m()), cellIndex(garage.y_m())), key -> new ArrayList<>())
 					.add(ordinal);
 		}
-		Map<Long, int[]> index = new HashMap<>();
-		byCell.forEach((key, ordinals) -> index.put(key, ordinals.stream().mapToInt(Integer::intValue).toArray()));
-		this.garageOrdinalsByCell = Map.copyOf(index);
+		this.cellKeys = new long[byCell.size()];
+		this.garageOrdinalsByCell = new int[byCell.size()][];
+		int position = 0;
+		for (Map.Entry<Long, List<Integer>> cell : byCell.entrySet()) {
+			cellKeys[position] = cell.getKey();
+			garageOrdinalsByCell[position] = cell.getValue().stream().mapToInt(Integer::intValue).toArray();
+			position++;
+		}
 	}
 
 	/** Whether garage options act: lambda above 0 (and then at least one garage, which the constructor guarantees). */
@@ -113,17 +125,20 @@ public final class GarageOptionModel {
 			throw new IllegalArgumentException("the destination coordinates must be finite metres (EPSG:25832), got x_m=" + x_m
 					+ ", y_m=" + y_m);
 		}
-		long cellX = cellIndex(x_m);
-		long cellY = cellIndex(y_m);
+		long firstCellX = cellIndex(x_m - maximumDistanceMeters - SEARCH_MARGIN_M);
+		long lastCellX = cellIndex(x_m + maximumDistanceMeters + SEARCH_MARGIN_M);
+		long firstCellY = cellIndex(y_m - maximumDistanceMeters - SEARCH_MARGIN_M);
+		long lastCellY = cellIndex(y_m + maximumDistanceMeters + SEARCH_MARGIN_M);
 		Option[] found = NO_OPTIONS;
 		int[] foundOrdinals = null;
 		int count = 0;
-		for (long dx = -1; dx <= 1; dx++) {
-			for (long dy = -1; dy <= 1; dy++) {
-				int[] ordinals = garageOrdinalsByCell.get(cellKey(cellX + dx, cellY + dy));
-				if (ordinals == null) {
+		for (long cellX = firstCellX; cellX <= lastCellX; cellX++) {
+			for (long cellY = firstCellY; cellY <= lastCellY; cellY++) {
+				int cell = Arrays.binarySearch(cellKeys, cellKey(cellX, cellY));
+				if (cell < 0) {
 					continue;
 				}
+				int[] ordinals = garageOrdinalsByCell[cell];
 				for (int ordinal : ordinals) {
 					GarageTariff garage = garages.get(ordinal);
 					double deltaX = garage.x_m() - x_m;
@@ -147,7 +162,7 @@ public final class GarageOptionModel {
 		if (count <= 1) {
 			return count == 0 ? NO_OPTIONS : new Option[] { found[0] };
 		}
-		// The nine cells are scanned in cell order, so restore the ascending garage id (= ordinal) order by insertion sort
+		// The cells are scanned in cell order, so restore the ascending garage id (= ordinal) order by insertion sort
 		// (a destination has a handful of options at most).
 		for (int position = 1; position < count; position++) {
 			Option option = found[position];
@@ -165,7 +180,7 @@ public final class GarageOptionModel {
 	}
 
 	private long cellIndex(double coordinate_m) {
-		return (long) Math.floor(coordinate_m / maximumDistanceMeters);
+		return (long) Math.floor(coordinate_m / cellSizeMeters);
 	}
 
 	private static long cellKey(long cellX, long cellY) {

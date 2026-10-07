@@ -2,6 +2,7 @@ package org.eqasim.braunschweig.parking;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -35,8 +36,17 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * active value is logged once at startup. Version 1 only reports: no threshold, no failure.
  */
 public class ParkingOutcomeReportListenerTest {
-	/** The schema-2 fixture tariff model: three zones carry a search time (fx_bs_ia_v2, fx_bs_ib_v2, fx_wob_v2). */
+	private static final String V3_HEADER = "outcome,zone_id,purpose,count,share,garage_probability_sum,"
+			+ "stays_with_garages_in_range";
+
+	/**
+	 * The fixture tariff model with the garage options OFF (garage_decay_m 0): three zones carry a search time (fx_bs_ia_v2,
+	 * fx_bs_ib_v2, fx_wob_v2), and the report has no garage option line.
+	 */
 	private static ParkingTariffs tariffsWithSearchTimes;
+
+	/** The fixture tariff model as written, with the garage options ON (garage_decay_m 400, the 19 fixture garages). */
+	private static ParkingTariffs tariffsWithGarageOptions;
 
 	/** The schema-1 fixture tariff model of version 1: no zone carries a search time. */
 	private static ParkingTariffs tariffsWithoutSearchTimes;
@@ -46,7 +56,11 @@ public class ParkingOutcomeReportListenerTest {
 
 	@BeforeClass
 	public static void readTariffs() throws Exception {
-		tariffsWithSearchTimes = read("/parking/parking_tariffs_fixture.json");
+		tariffsWithGarageOptions = read("/parking/parking_tariffs_fixture.json");
+		ObjectNode optionsOff = (ObjectNode) new ObjectMapper().readTree(Path.of(ParkingOutcomeReportListenerTest.class
+				.getResource("/parking/parking_tariffs_fixture.json").toURI()).toFile());
+		optionsOff.put("garage_decay_m", 0.0);
+		tariffsWithSearchTimes = ParkingTariffs.parse(optionsOff);
 		tariffsWithoutSearchTimes = read(ParkingCostCalculatorTest.SCHEMA_1_TARIFFS_RESOURCE);
 	}
 
@@ -111,12 +125,12 @@ public class ParkingOutcomeReportListenerTest {
 
 		Path report = reportOfIteration(3);
 		assertEquals(Path.of(output.getIterationFilename(3, ParkingOutcomeReportListener.FILE_NAME)), report);
-		assertEquals(List.of("outcome,zone_id,purpose,count,share", //
-				"NO_ZONE,,shop,2,0.250000", //
-				"NO_ZONE,,work,3,0.375000", //
-				"EMPLOYER_FREE,fx_bs_ib,work,1,0.125000", //
-				"PAID_METERED,fx_bs_ia,shop,1,0.125000", //
-				"PAID_METERED,fx_bs_ib,work,1,0.125000"), Files.readAllLines(report, StandardCharsets.UTF_8));
+		assertEquals(List.of(V3_HEADER, //
+				"NO_ZONE,,shop,2,0.250000,0.000000,0", //
+				"NO_ZONE,,work,3,0.375000,0.000000,0", //
+				"EMPLOYER_FREE,fx_bs_ib,work,1,0.125000,0.000000,0", //
+				"PAID_METERED,fx_bs_ia,shop,1,0.125000,0.000000,0", //
+				"PAID_METERED,fx_bs_ib,work,1,0.125000,0.000000,0"), Files.readAllLines(report, StandardCharsets.UTF_8));
 		assertEquals(List.of("[parking] it 3: NO_ZONE 5 (62.5 %), EMPLOYER_FREE 1 (12.5 %), PAID_METERED 2 (25.0 %)",
 				"[parking] it 3: minimum stay 15 min extended 1 of 3 priced stays (33.3 %)"), messages);
 		// The next iteration counts from zero.
@@ -137,10 +151,11 @@ public class ParkingOutcomeReportListenerTest {
 
 		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 1, false)));
 
-		assertEquals(List.of("outcome,zone_id,purpose,count,share", //
-				"PAID_CAMPUS_GUEST,fx_campus_v2,shop,1,0.250000", //
-				"PAID_GARAGE,fx_wob_v2,shop,2,0.500000", //
-				"PAID_COMMUTER,fx_bs_ib_v2,work,1,0.250000"), Files.readAllLines(reportOfIteration(1), StandardCharsets.UTF_8));
+		assertEquals(List.of(V3_HEADER, //
+				"PAID_CAMPUS_GUEST,fx_campus_v2,shop,1,0.250000,0.000000,0", //
+				"PAID_GARAGE,fx_wob_v2,shop,2,0.500000,0.000000,0", //
+				"PAID_COMMUTER,fx_bs_ib_v2,work,1,0.250000,0.000000,0"),
+				Files.readAllLines(reportOfIteration(1), StandardCharsets.UTF_8));
 	}
 
 	/** Without replanning (iteration 0) no car trip is priced: the file holds the header only and the log lines say so. */
@@ -151,7 +166,7 @@ public class ParkingOutcomeReportListenerTest {
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 0, false)));
 
-		assertEquals(List.of("outcome,zone_id,purpose,count,share"),
+		assertEquals(List.of(V3_HEADER),
 				Files.readAllLines(reportOfIteration(0), StandardCharsets.UTF_8));
 		assertEquals(List.of("[parking] it 0: no car stay priced",
 				"[parking] it 0: minimum stay 15 min extended 0 of 0 priced stays (0.0 %)"), messages);
@@ -174,7 +189,7 @@ public class ParkingOutcomeReportListenerTest {
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(),
 				parking("15"), tariffsWithSearchTimes);
 		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 2, false)));
-		assertEquals(List.of("outcome,zone_id,purpose,count,share", "PAID_METERED,\"fx,zone\",work,1,1.000000"),
+		assertEquals(List.of(V3_HEADER, "PAID_METERED,\"fx,zone\",work,1,1.000000,0.000000,0"),
 				Files.readAllLines(reportOfIteration(2), StandardCharsets.UTF_8));
 	}
 
@@ -233,6 +248,94 @@ public class ParkingOutcomeReportListenerTest {
 		assertEquals("[parking] search time (lever 4): active in 1 zone (searchTimeFactor 2.5); the car utility of a trip to a"
 				+ " non-home destination in such a zone adds betaTravelTime_u_min * 2.5 * search_time_min of the zone",
 				logDuring(() -> one.notifyStartup(new StartupEvent(null))).get(1));
+	}
+
+	/**
+	 * CSV v3 with the garage options on: the garage probability of the stays of a row is summed in garage_probability_sum
+	 * (here 0.25 + 0.5 over the two PAID_EXPECTED stays) and the stays with a garage in range are counted per row (the stay
+	 * with a free street, E4, has probability 0 and a garage in range). The extra log line carries the rates of the
+	 * counters and the expected garage share of the 4 priced stays (0.75 / 4); the NO_ZONE stay is no priced stay.
+	 */
+	@Test
+	public void writesTheGarageProbabilityPerRowAndLogsTheGarageOptionRatesWhenTheOptionsAreOn() throws Exception {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop", 0.25, 1);
+		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop", 0.5, 2);
+		counter.record(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_bs_ib", "shop", 0.0, 1);
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop");
+		counter.record(ParkingOutcome.NO_ZONE, null, "work");
+		GarageOptionCounters rates = counter.garageOptionCounters();
+		for (int stay = 0; stay < 4; stay++) {
+			rates.countStay();
+			rates.countEligible();
+		}
+		for (int stay = 0; stay < 3; stay++) {
+			rates.countWithGaragesInRange();
+			rates.countOptionEvaluation();
+		}
+		rates.countStreetFree();
+		rates.countExpected();
+		rates.countExpected();
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(), parking("15"),
+				tariffsWithGarageOptions);
+
+		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 4, false)));
+
+		assertEquals(List.of(V3_HEADER, //
+				"NO_ZONE,,work,1,0.200000,0.000000,0", //
+				"FREE_WITHIN_LIMIT,fx_bs_ib,shop,1,0.200000,0.000000,1", //
+				"PAID_METERED,fx_bs_ib,shop,1,0.200000,0.000000,0", //
+				"PAID_EXPECTED,fx_bs_ib,shop,2,0.400000,0.750000,2"),
+				Files.readAllLines(reportOfIteration(4), StandardCharsets.UTF_8));
+		assertEquals(List.of(
+				"[parking] it 4: NO_ZONE 1 (20.0 %), FREE_WITHIN_LIMIT 1 (20.0 %), PAID_METERED 1 (20.0 %),"
+						+ " PAID_EXPECTED 2 (40.0 %)",
+				"[parking] it 4: minimum stay 15 min extended 0 of 4 priced stays (0.0 %)",
+				"[parking] it 4: garage options: stays 4; eligible 4; garages in range 3/4 (75.0 %); street free (E4) 1/3 (33.3 %);"
+						+ " street unavailable 0/3 (0.0 %); priced as expectation 2; garage options priced 3, closed schedule"
+						+ " repeated (P9) 0/3 (0.0 %); expected garage share 0.1875 of 4 priced stays (sum of garage"
+						+ " probabilities 0.750)"),
+				messages);
+		// The rates restart from zero with the next iteration.
+		assertEquals(0L, counter.garageOptionCounters().snapshot().stays());
+	}
+
+	/**
+	 * Fallback transparency: an iteration in which stays reached the garage options but none had a garage within the maximum
+	 * distance is a warning (a wrong CRS or garage file prices every stay as before), not a quiet success.
+	 */
+	@Test
+	public void warnsWhenNoEligibleStayHadAGarageInRange() throws Exception {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop");
+		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
+		for (int stay = 0; stay < 2; stay++) {
+			counter.garageOptionCounters().countStay();
+			counter.garageOptionCounters().countEligible();
+		}
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(), parking("15"),
+				tariffsWithGarageOptions);
+
+		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 5, false)));
+
+		assertEquals(4, messages.size());
+		assertTrue(messages.get(2), messages.get(2)
+				.startsWith("[parking] it 5: garage options: stays 2; eligible 2; garages in range 0/2"));
+		assertTrue(messages.get(3), messages.get(3).contains("none of 2 eligible stays had a garage within the maximum distance"));
+		assertTrue(messages.get(3), messages.get(3).contains("EPSG:25832"));
+	}
+
+	/** An iteration without a stay that reached the garage options is no warning: nothing was eligible. */
+	@Test
+	public void doesNotWarnWhenNothingWasEligibleForTheGarageOptions() throws Exception {
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+				parking("15"), tariffsWithGarageOptions);
+
+		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 0, false)));
+
+		assertEquals(3, messages.size());
+		assertTrue(messages.get(2), messages.get(2).startsWith("[parking] it 0: garage options: stays 0; eligible 0;"));
+		assertEquals(List.of(V3_HEADER), Files.readAllLines(reportOfIteration(0), StandardCharsets.UTF_8));
 	}
 
 	/** Messages the listener logs while {@code action} runs. */

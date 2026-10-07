@@ -9,10 +9,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eqasim.braunschweig.parking.ParkingOutcomeCounter.Cell;
+import org.eqasim.braunschweig.parking.ParkingOutcomeCounter.CellTotals;
 import org.matsim.core.controler.OutputDirectoryHierarchy;
 import org.matsim.core.controler.events.IterationEndsEvent;
 import org.matsim.core.controler.events.StartupEvent;
@@ -27,8 +29,22 @@ import com.google.inject.Singleton;
  * of the v2 spec amendment A5; eqasim-bs issue #436): writes {@code ITERS/it.N/N.parking_outcomes.csv} and logs one line
  * {@code [parking] it N: NO_ZONE a (x.x %), PAID_METERED b (y.y %), ...} with every outcome that occurred, in
  * declaration order, or {@code [parking] it N: no car stay priced} when none did, followed by the line
- * {@code [parking] it N: minimum stay L min extended e of p priced stays (z.z %)} of assumption L1. At the controller
- * start it logs the active minimum parked duration and the active search time factor once.
+ * {@code [parking] it N: minimum stay L min extended e of p priced stays (z.z %)} of assumption L1 and, with the garage
+ * options on (schema 3 model, {@code garage_decay_m} above 0), the line {@code [parking] it N: garage options: ...} with the
+ * rates of {@link GarageOptionCounters.Snapshot} (stays, eligible, garages in range, street free, street unavailable,
+ * expected, option evaluations, repeated closed schedules) and the expected garage share of the priced stays; a WARN is
+ * logged when no eligible stay of the iteration had a garage in range (a wrong CRS or garage file looks like that). At the
+ * controller start it logs the active minimum parked duration and the active search time factor once.
+ *
+ * <p>CSV v3 (spec Amendment E7 of parking cost zones v2) appends two columns to the columns of v2 below, which keep their
+ * names and order: {@code garage_probability_sum}, the sum over the stays of the row of the garage probability (the
+ * probability that the stay uses one of the garages within the maximum distance, spec E3; 0 for a stay no garage acted on,
+ * six decimals), and {@code stays_with_garages_in_range}, the stays of the row that had at least one garage within the
+ * maximum distance, whether or not the garage acted (a stay with a free street pays 0 and has probability 0, spec E4). The
+ * expected garage share of a zone and a purpose is the sum of {@code garage_probability_sum} over its rows divided by the
+ * sum of {@code count} over the same rows (restrict the rows to the stays of the universe asked for, for example by
+ * outcome); the stays priced as an expectation are the rows of the outcome PAID_EXPECTED. A run with the garage options off
+ * writes 0 in both columns. Readers of v2 read the first five columns and ignore the rest; v1 is described below.
  *
  * <p>CSV v2 columns: {@code outcome} (a {@link ParkingOutcome} name), {@code zone_id} (the parking zone of the stays, empty
  * for NO_ZONE, the stays outside every zone), {@code purpose} (the activity type of the destination), {@code count} (car
@@ -63,8 +79,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	/** File name inside the iteration directory; MATSim prefixes it with the iteration number. */
 	static final String FILE_NAME = "parking_outcomes.csv";
 
-	/** The columns of the report, CSV v2 (spec amendment A5). */
-	static final String HEADER = "outcome,zone_id,purpose,count,share";
+	/** The columns of the report, CSV v3 (spec amendment A5 and Amendment E7): v2 plus the two garage option columns. */
+	static final String HEADER = "outcome,zone_id,purpose,count,share,garage_probability_sum,stays_with_garages_in_range";
 
 	private final ParkingOutcomeCounter counter;
 	private final OutputDirectoryHierarchy output;
@@ -73,6 +89,7 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	private final double searchTimeFactor;
 	private final String searchTimeFactorText;
 	private final long zonesWithSearchTime;
+	private final boolean garageOptionsActive;
 
 	@Inject
 	public ParkingOutcomeReportListener(ParkingOutcomeCounter counter, OutputDirectoryHierarchy output,
@@ -84,9 +101,14 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		this.searchTimeFactor = parking.searchTimeFactor();
 		this.searchTimeFactorText = parking.getSearchTimeFactor();
 		this.zonesWithSearchTime = tariffs.zonesWithSearchTime();
+		this.garageOptionsActive = tariffs.garageOptions().isActive();
 	}
 
-	/** Logs the active minimum parked duration (assumption L1) and the active search time factor (lever 4) once. */
+	/**
+	 * Logs the active minimum parked duration (assumption L1) and the active search time factor (lever 4) once. The state of
+	 * the garage options (spec Amendment E) is logged once by {@link ParkingTariffs#read}, when the controller builds this
+	 * listener's tariff model.
+	 */
 	@Override
 	public void notifyStartup(StartupEvent event) {
 		LOG.info(minimumStaySetting(minimumStayMinutes, minimumStay_s));
@@ -96,17 +118,52 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	@Override
 	public void notifyIterationEnds(IterationEndsEvent event) {
 		int iteration = event.getIteration();
-		Map<Cell, Long> cells = counter.snapshotAndReset();
+		Map<Cell, CellTotals> cells = counter.snapshotAndResetTotals();
 		long extendedStays = counter.snapshotAndResetMinimumStayExtensions();
+		GarageOptionCounters.Snapshot garageRates = counter.garageOptionCounters().snapshotAndReset();
 		Path path = Path.of(output.getIterationFilename(iteration, FILE_NAME));
 		try {
 			writeCsv(path, cells);
 		} catch (IOException error) {
 			throw new UncheckedIOException("cannot write the parking outcome report " + path, error);
 		}
-		Map<ParkingOutcome, Long> counts = ParkingOutcomeCounter.countsByOutcome(cells);
+		Map<ParkingOutcome, Long> counts = ParkingOutcomeCounter.countsByOutcome(countsOf(cells));
 		LOG.info(summary(iteration, counts));
 		LOG.info(minimumStaySummary(iteration, minimumStayMinutes, extendedStays, pricedStays(counts)));
+		if (garageOptionsActive) {
+			LOG.info(garageOptionsSummary(iteration, garageRates, cells, pricedStays(counts)));
+			if (garageRates.eligible() > 0 && garageRates.withGaragesInRange() == 0) {
+				// Fallback transparency: every eligible stay was priced without a garage, which is the pre-garage price. A
+				// run in which no priced stay has a garage in range is far more likely a wrong CRS or a wrong garage file than
+				// a region without garages.
+				LOG.warn("[parking] it " + iteration + ": none of " + garageRates.eligible() + " eligible stays had a garage"
+						+ " within the maximum distance although the garage options are on; check that the activity coordinates"
+						+ " and the garage coordinates of the tariff model are both in EPSG:25832");
+			}
+		}
+	}
+
+	private static Map<Cell, Long> countsOf(Map<Cell, CellTotals> cells) {
+		Map<Cell, Long> counts = new TreeMap<>();
+		cells.forEach((cell, totals) -> counts.put(cell, totals.count()));
+		return counts;
+	}
+
+	/**
+	 * The garage option line of one iteration (spec Amendment E7): the rates of {@link GarageOptionCounters.Snapshot} and the
+	 * expected garage share of all priced stays (the sum of their garage probabilities divided by their number).
+	 */
+	private static String garageOptionsSummary(int iteration, GarageOptionCounters.Snapshot rates, Map<Cell, CellTotals> cells,
+			long pricedStays) {
+		double garageProbabilitySum = 0.0;
+		for (Map.Entry<Cell, CellTotals> entry : cells.entrySet()) {
+			if (entry.getKey().outcome() != ParkingOutcome.NO_ZONE) {
+				garageProbabilitySum += entry.getValue().garageProbabilitySum();
+			}
+		}
+		return String.format(Locale.ROOT, "[parking] it %d: garage options: %s; expected garage share %.4f of %d priced stays"
+				+ " (sum of garage probabilities %.3f)", iteration, rates.summary(), share(garageProbabilitySum, pricedStays),
+				pricedStays, garageProbabilitySum);
 	}
 
 	/** The startup line of the minimum parked duration; a minimum of 0 is the version 1 pricing. */
@@ -150,15 +207,17 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		return total(counts) - counts.getOrDefault(ParkingOutcome.NO_ZONE, 0L);
 	}
 
-	private static void writeCsv(Path path, Map<Cell, Long> cells) throws IOException {
-		long total = cells.values().stream().mapToLong(Long::longValue).sum();
+	private static void writeCsv(Path path, Map<Cell, CellTotals> cells) throws IOException {
+		long total = cells.values().stream().mapToLong(CellTotals::count).sum();
 		StringBuilder csv = new StringBuilder(HEADER).append('\n');
-		for (Map.Entry<Cell, Long> entry : cells.entrySet()) {
+		for (Map.Entry<Cell, CellTotals> entry : cells.entrySet()) {
 			Cell cell = entry.getKey();
-			long count = entry.getValue();
+			CellTotals totals = entry.getValue();
 			csv.append(cell.outcome().name()).append(',').append(csvField(cell.zoneId())).append(',')
-					.append(csvField(cell.purpose())).append(',').append(count).append(',')
-					.append(String.format(Locale.ROOT, "%.6f", share(count, total))).append('\n');
+					.append(csvField(cell.purpose())).append(',').append(totals.count()).append(',')
+					.append(String.format(Locale.ROOT, "%.6f", share(totals.count(), total))).append(',')
+					.append(String.format(Locale.ROOT, "%.6f", totals.garageProbabilitySum())).append(',')
+					.append(totals.staysWithGaragesInRange()).append('\n');
 		}
 		if (path.getParent() != null) {
 			Files.createDirectories(path.getParent());
@@ -192,6 +251,10 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 
 	private static double share(long count, long total) {
 		return total == 0 ? 0.0 : count / (double) total;
+	}
+
+	private static double share(double sum, long total) {
+		return total == 0 ? 0.0 : sum / total;
 	}
 
 	private static long total(Map<ParkingOutcome, Long> counts) {

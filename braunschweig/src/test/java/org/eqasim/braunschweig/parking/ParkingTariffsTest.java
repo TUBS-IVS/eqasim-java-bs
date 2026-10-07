@@ -912,8 +912,10 @@ public class ParkingTariffsTest {
 		assertRejected(root -> root.put("garage_decay_m", -1.0), "garage_decay_m must be a finite number of metres >= 0");
 		assertRejected(root -> root.put("garage_decay_m", "400"), "garage_decay_m must be a finite number");
 		assertRejected(root -> root.putNull("garage_decay_m"), "garage_decay_m must be a finite number");
-		assertRejected(root -> root.put("garage_max_distance_m", 0.0), "garage_max_distance_m must be a finite number of metres > 0");
-		assertRejected(root -> root.put("garage_max_distance_m", -5), "garage_max_distance_m must be a finite number of metres > 0");
+		assertRejected(root -> root.put("garage_max_distance_m", 0.0),
+				"garage_max_distance_m must be a finite number of metres > 0");
+		assertRejected(root -> root.put("garage_max_distance_m", -5),
+				"garage_max_distance_m must be a finite number of metres > 0");
 		assertRejected(root -> root.put("garage_max_distance_m", "1000"), "garage_max_distance_m must be a finite number");
 		assertRejected(root -> root.put("garages", "none"), "garages must be an array of garages");
 	}
@@ -940,7 +942,8 @@ public class ParkingTariffsTest {
 				"hourly_rate_cents", "integral");
 		assertRejected(root -> garage(root, "fx_g01_core").put("billing_unit_min", "60"), "garage fx_g01_core",
 				"billing_unit_min", "integral");
-		assertRejected(root -> garage(root, "fx_g01_core").put("x_m", "580300"), "garage fx_g01_core", "x_m must be a finite number");
+		assertRejected(root -> garage(root, "fx_g01_core").put("x_m", "580300"), "garage fx_g01_core",
+				"x_m must be a finite number");
 		assertRejected(root -> garage(root, "fx_g01_core").putNull("y_m"), "garage fx_g01_core", "y_m must be a finite number");
 		assertRejected(root -> garage(root, "fx_g07_tiers").put("garage_id", " "), "garage_id");
 		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(0)).put("price_cents", 30.5),

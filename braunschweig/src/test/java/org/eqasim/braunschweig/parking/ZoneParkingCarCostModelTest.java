@@ -37,6 +37,9 @@ import org.matsim.core.population.routes.RouteUtils;
 import org.matsim.core.utils.timing.TimeInterpretation;
 import org.matsim.utils.objectattributes.attributable.AttributesImpl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 /**
  * Car cost of one trip with zone-based parking (design "parking cost zones", sections 3.2 and 3.3): the driving cost
  * plus the parking cost at the destination, priced with the fixture tariff model
@@ -701,5 +704,121 @@ public class ZoneParkingCarCostModelTest {
 		assertTrue("the person attributes were read: " + calls, calls.containsKey("getAttributes"));
 		assertFalse(calls.toString(), calls.containsKey("getId"));
 		assertFalse(calls.toString(), calls.containsKey("getPlans"));
+	}
+
+	// ----------------------------------------------------------------------------------------- garage options (schema 3)
+
+	/** A destination activity at a coordinate in EPSG:25832, ending at {@code end_s}. */
+	private static Activity activityAt(String type, double end_s, double x_m, double y_m) {
+		Activity activity = PopulationUtils.createActivityFromCoord(type, new Coord(x_m, y_m));
+		activity.setEndTime(end_s);
+		return activity;
+	}
+
+	/** The model of the fixture tariff model with the given decay (garage_decay_m) and its counter. */
+	private static ZoneParkingCarCostModel modelWithDecay(double decayMeters, ParkingOutcomeCounter counter) throws Exception {
+		ObjectNode tree = (ObjectNode) new ObjectMapper().readTree(fixturePath().toFile());
+		tree.put("garage_decay_m", decayMeters);
+		BraunschweigCostParameters costParameters = new BraunschweigCostParameters();
+		costParameters.carCost_EUR_km = CAR_COST_EUR_KM;
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.setEnabled("true");
+		parking.setTariffsPath(TARIFFS_PATH);
+		return new ZoneParkingCarCostModel(costParameters, eqasimTimeInterpretation(), ParkingTariffs.parse(tree), counter,
+				parking);
+	}
+
+	/**
+	 * Golden case E02 through the cost model: a shop stay 09:00-10:00 (the car arrives 1800 s after the trip departs) in zone
+	 * fx_bs_ib at the coordinate of golden destination 580000/5750000, where one garage is within 1000 m. The price is the
+	 * expected cost of the golden file, 186 ct, with outcome PAID_EXPECTED; the report cell carries the garage probability.
+	 */
+	@Test
+	public void aStayWithAGarageInRangeIsPricedAsTheExpectedCostAndReportsTheGarageProbability() throws Exception {
+		Activity shop = inZone(activityAt("shop", 39600.0, 580000.0, 5750000.0), "fx_bs_ib");
+		CarTrip carTrip = tripTo(shop, 34200, false);
+
+		assertEquals(DRIVING_COST_EUR + 1.86, cost_EUR(carTrip), EUR_TOLERANCE);
+
+		var cells = counter.snapshotAndResetTotals();
+		assertEquals(1, cells.size());
+		var cell = cells.firstKey();
+		assertEquals(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop"), cell);
+		assertEquals(1L, cells.get(cell).count());
+		assertEquals(0.3208213008, cells.get(cell).garageProbabilitySum(), 1e-9);
+		assertEquals(1L, cells.get(cell).staysWithGaragesInRange());
+	}
+
+	/** Golden case E01: no garage within 1000 m, so the stay is priced as before and counted as eligible without garages. */
+	@Test
+	public void aStayWithoutAGarageInRangeIsPricedAsBeforeAndCounted() throws Exception {
+		Activity shop = inZone(activityAt("shop", 39600.0, 570000.0, 5750000.0), "fx_bs_ib");
+
+		assertEquals(DRIVING_COST_EUR + 1.80, cost_EUR(tripTo(shop, 34200, false)), EUR_TOLERANCE);
+
+		var cells = counter.snapshotAndResetTotals();
+		var totals = cells.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop"));
+		assertEquals(1L, totals.count());
+		assertEquals(0.0, totals.garageProbabilitySum(), 0.0);
+		assertEquals(0L, totals.staysWithGaragesInRange());
+		GarageOptionCounters.Snapshot rates = counter.garageOptionCounters().snapshotAndReset();
+		assertEquals(1L, rates.stays());
+		assertEquals(1L, rates.eligible());
+		assertEquals(0L, rates.withGaragesInRange());
+	}
+
+	/** Golden case E07: a free street pays 0 although a garage is in range (E4); the stay has garages in range, probability 0. */
+	@Test
+	public void aFreeStreetPaysNothingAlthoughAGarageIsInRange() throws Exception {
+		Activity shop = inZone(activityAt("shop", 41100.0, 610000.0, 5750000.0), "fx_sz");
+
+		assertEquals(DRIVING_COST_EUR, cost_EUR(tripTo(shop, 37800, false)), EUR_TOLERANCE);
+
+		var totals = counter.snapshotAndResetTotals()
+				.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_sz", "shop"));
+		assertEquals(1L, totals.count());
+		assertEquals(0.0, totals.garageProbabilitySum(), 0.0);
+		assertEquals(1L, totals.staysWithGaragesInRange());
+		assertEquals(1L, counter.garageOptionCounters().snapshotAndReset().streetFree());
+	}
+
+	/** Golden case E16: a decay of 0 switches the garage options off, the same stay as E02 pays the street price of 1.80 EUR. */
+	@Test
+	public void aDecayOfZeroPricesWithTheZoneProductsOnly() throws Exception {
+		ParkingOutcomeCounter offCounter = new ParkingOutcomeCounter();
+		ZoneParkingCarCostModel off = modelWithDecay(0.0, offCounter);
+		Activity shop = inZone(activityAt("shop", 39600.0, 580000.0, 5750000.0), "fx_bs_ib");
+		CarTrip carTrip = tripTo(shop, 34200, false);
+
+		assertEquals(DRIVING_COST_EUR + 1.80, off.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()),
+				EUR_TOLERANCE);
+
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), ParkingOutcomeCounter.countsByOutcome(offCounter.snapshotAndReset()));
+		// No option code ran: not even the stay was counted by the garage counters.
+		assertEquals(0L, offCounter.garageOptionCounters().snapshot().stays());
+	}
+
+	/**
+	 * With the garage options on, an activity without a coordinate that can reach the mixture fails and names the person, the
+	 * activity and the way out; a stay decided by an early rule needs no coordinate and prices as before.
+	 */
+	@Test
+	public void anActivityWithoutACoordinateFailsOnlyWhereTheGarageOptionsNeedIt() {
+		Activity shop = PopulationUtils.createActivityFromLinkId("shop", Id.createLinkId("link"));
+		shop.setEndTime(39600.0);
+		inZone(shop, "fx_bs_ib");
+		CarTrip carTrip = tripTo(shop, 34200, false);
+		IllegalStateException error = assertThrows(IllegalStateException.class, () -> cost_EUR(carTrip));
+		assertTrue(error.getMessage(), error.getMessage().contains("person driver"));
+		assertTrue(error.getMessage(), error.getMessage().contains("activity shop has no coordinate"));
+		assertTrue(error.getMessage(), error.getMessage().contains("garage_decay_m"));
+		// A failing call records nothing.
+		assertTrue(counter.snapshotAndReset().isEmpty());
+
+		Activity home = PopulationUtils.createActivityFromLinkId("home", Id.createLinkId("link"));
+		home.setEndTime(39600.0);
+		inZone(home, "fx_bs_ib");
+		assertEquals(DRIVING_COST_EUR, cost_EUR(tripTo(home, 34200, false)), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.HOME), countsByOutcome());
 	}
 }

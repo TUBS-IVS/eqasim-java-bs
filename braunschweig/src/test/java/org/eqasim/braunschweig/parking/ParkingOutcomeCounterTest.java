@@ -206,6 +206,74 @@ public class ParkingOutcomeCounterTest {
 		}
 	}
 
+	/**
+	 * Spec Amendment E7: a cell sums the garage probability of its stays and counts its stays with a garage in range; the old
+	 * record without them counts a stay no garage acted on. The next snapshot starts from zero.
+	 */
+	@Test
+	public void aCellSumsTheGarageProbabilityAndCountsTheStaysWithGaragesInRange() {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.25, 1);
+		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.5, 3);
+		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "work", 1.0, 2);
+		counter.record(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop", 0.0, 2);
+		counter.record(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop");
+
+		Map<Cell, ParkingOutcomeCounter.CellTotals> totals = counter.snapshotAndResetTotals();
+
+		assertEquals(new ParkingOutcomeCounter.CellTotals(2, 0.75, 2),
+				totals.get(new Cell(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop")));
+		assertEquals(new ParkingOutcomeCounter.CellTotals(1, 1.0, 1),
+				totals.get(new Cell(ParkingOutcome.PAID_EXPECTED, "fx_a", "work")));
+		assertEquals(new ParkingOutcomeCounter.CellTotals(2, 0.0, 1),
+				totals.get(new Cell(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop")));
+		assertTrue(counter.snapshotAndResetTotals().isEmpty());
+		assertTrue(counter.snapshotAndReset().isEmpty());
+	}
+
+	@Test
+	public void recordRejectsAnImplausibleGarageProbability() {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		assertThrows(IllegalArgumentException.class,
+				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 1.5, 1));
+		assertThrows(IllegalArgumentException.class,
+				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", -0.1, 1));
+		assertThrows(IllegalArgumentException.class,
+				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", Double.NaN, 1));
+		assertThrows(IllegalArgumentException.class,
+				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.5, -1));
+		// Nothing was recorded by a failing call.
+		assertTrue(counter.snapshotAndReset().isEmpty());
+	}
+
+	/** The garage probability sum does not depend on the order in which threads add their stays (fixed-point sum). */
+	@Test
+	public void theGarageProbabilitySumIsExactWhateverTheThreadOrder() throws Exception {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		ExecutorService executor = Executors.newFixedThreadPool(THREADS);
+		try {
+			List<Future<?>> recorders = new ArrayList<>();
+			for (int thread = 0; thread < THREADS; thread++) {
+				recorders.add(executor.submit(() -> {
+					for (int index = 0; index < RECORDS_PER_THREAD; index++) {
+						counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.1, 1);
+					}
+					return null;
+				}));
+			}
+			for (Future<?> recorder : recorders) {
+				recorder.get(60, TimeUnit.SECONDS);
+			}
+		} finally {
+			executor.shutdownNow();
+		}
+		ParkingOutcomeCounter.CellTotals totals = counter.snapshotAndResetTotals()
+				.get(new Cell(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop"));
+		assertEquals((long) THREADS * RECORDS_PER_THREAD, totals.count());
+		assertEquals(0.1 * THREADS * RECORDS_PER_THREAD, totals.garageProbabilitySum(), 1e-6);
+		assertEquals((long) THREADS * RECORDS_PER_THREAD, totals.staysWithGaragesInRange());
+	}
+
 	private static void add(Map<Cell, Long> sum, Map<Cell, Long> snapshot) {
 		for (Map.Entry<Cell, Long> entry : snapshot.entrySet()) {
 			sum.merge(entry.getKey(), entry.getValue(), Long::sum);

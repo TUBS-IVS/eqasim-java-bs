@@ -32,8 +32,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * list {@code garages} with their tariffs, the decay length {@code garage_decay_m} and the maximum distance
  * {@code garage_max_distance_m} of the distance-weighted garage options), schema 2 (garage and commuter products of a zone,
  * the parking search time, the resident permit flag and the list of resident districts) and, unchanged, schema 1 of
- * version 1. Schema 3 adds only the three document keys; its zone entries are those of schema 2. Money in euro cents, durations in minutes, fee windows in seconds after midnight of the simulated weekday; the class
- * holds no tariff constants of its own.
+ * version 1. Schema 3 adds only the three document keys; its zone entries are those of schema 2. Money in euro cents,
+ * durations in minutes, fee windows in seconds after midnight of the simulated weekday; the class holds no tariff constants
+ * of its own.
  *
  * <p>The reader is strict so that a contract drift fails at read time instead of silently changing prices: the schema
  * version must be one of {@link #SUPPORTED_SCHEMA_VERSIONS} (checked first, as it decides the other fields), the currency
