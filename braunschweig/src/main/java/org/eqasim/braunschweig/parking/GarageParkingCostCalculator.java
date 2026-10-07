@@ -17,7 +17,7 @@ import java.util.Set;
  * outside the street fee window), a campus stay, a garage decay of 0 and a stay with no garage in range keep that result:
  * same cents, same outcome, probability 0;</li>
  * <li>otherwise the options are the street (weight 1) and every garage within the maximum distance (weight
- * {@code Math.exp(-distance / decay)}, ASSUMPTION G1, spec E3), in this order, the garages by ascending id. The street
+ * {@code StrictMath.exp(-distance / decay)}, ASSUMPTION G1, spec E3), in this order, the garages by ascending id. The street
  * option costs the cheaper of the street or long-stay product and the zone's commuter product (the zone-level garage family
  * is superseded, spec E8), or is unavailable above the maximum stay without a long-stay product; a garage option costs
  * {@link GarageOptionPricing#optionCents};</li>
@@ -29,8 +29,12 @@ import java.util.Set;
  *
  * <p>Numerical contract with the Python reference (R-4d-4): the weights, their sum and the expectation are summed left to
  * right in double precision in the order street, then the garages by ascending id; the rounding is applied once, at the end.
- * The golden generator keeps every pinned expectation at least 1e-6 cents from a half cent, so {@code Math.exp} of Java cannot
- * flip a rounding.
+ * The golden generator keeps every pinned expectation at least 1e-6 cents from a half cent, so the last-bit difference between
+ * the exponential of Java and that of Python's libm cannot flip a rounding. The exponential is {@link StrictMath#exp}
+ * (fdlibm), not {@link Math#exp}, which the JVM may replace by a CPU-specific intrinsic: the weights, and with them the
+ * expected cost and the garage probability, are then bit-identical on every JVM and CPU (a Windows development box and a Linux
+ * server). If every weight underflows to 0 (a decay far below the distances) the stay fails with the decay and the distances
+ * instead of being priced with undefined probabilities.
  *
  * <p>The garage options are looked up lazily through an {@link OptionSource}, only for a stay that reaches the mixture, so a
  * stay decided by an early rule, a campus stay and every stay of a model with the garage options off never pay for the lookup.
@@ -147,7 +151,7 @@ public final class GarageParkingCostCalculator {
 		}
 		for (int index = 0; index < garageOptions.length; index++) {
 			GarageOptionModel.Option option = garageOptions[index];
-			weights[firstGarage + index] = Math.exp(-option.distanceMeters() / decayMeters);
+			weights[firstGarage + index] = StrictMath.exp(-option.distanceMeters() / decayMeters);
 			costs[firstGarage + index] = GarageOptionPricing.optionCents(option.garage(), arrival_s, departure_s, purpose,
 					counters);
 		}
@@ -156,6 +160,16 @@ public final class GarageParkingCostCalculator {
 		double totalWeight = 0.0;
 		for (double weight : weights) {
 			totalWeight += weight;
+		}
+		if (!(totalWeight > 0.0)) {
+			StringBuilder distances = new StringBuilder();
+			for (GarageOptionModel.Option option : garageOptions) {
+				distances.append(distances.isEmpty() ? "" : ", ").append(option.garage().garageId()).append(' ')
+						.append(option.distanceMeters()).append(" m");
+			}
+			throw new IllegalArgumentException("every option weight underflowed to 0 (street option unavailable, decay "
+					+ decayMeters + " m, garage distances " + distances + "), so the garage probabilities are undefined;"
+					+ " garage_decay_m must be of the order of the garage distances, not far below them");
 		}
 		double expected = 0.0;
 		double garageProbability = 0.0;

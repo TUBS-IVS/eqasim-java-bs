@@ -269,6 +269,49 @@ public class GarageParkingCostCalculatorTest {
 		}
 	}
 
+	/**
+	 * When every weight underflows to 0 the mixture has no defined probabilities (the sum of the weights is 0): the stay fails
+	 * with the decay and the distances instead of being priced 0 ct PAID_EXPECTED with a NaN probability. Here the street is
+	 * unavailable (golden zone fx_bs_ia_v2, a 4 h stay above its maximum stay of 180 min, no long-stay product) and the one
+	 * garage lies 1000 m away at a decay of 1 m (exp(-1000) = 0). With an available street the street weight 1 keeps the
+	 * sum positive and the stay is priced as before.
+	 */
+	@Test
+	public void failsWhenEveryWeightUnderflows() throws Exception {
+		Map<String, ZoneTariff> tariffs = ParkingCostCalculatorTest.goldenTariffs();
+		JsonNode golden = ParkingCostCalculatorTest.readResource(ParkingCostCalculatorTest.GOLDEN_CASES_RESOURCE);
+		GarageTariff garage = ParkingTariffs.parseGarage(golden.get("garages").get(0));
+		GarageOptionModel.Option[] farGarage = { new GarageOptionModel.Option(garage, 1000.0) };
+
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> GarageParkingCostCalculator.cents(tariffs.get("fx_bs_ia_v2"), 32400, 46800, "shop", false, false, false,
+						1.0, () -> farGarage, null));
+		assertTrue(error.getMessage(), error.getMessage().contains("decay 1.0 m"));
+		assertTrue(error.getMessage(), error.getMessage().contains("1000.0"));
+		assertTrue(error.getMessage(), error.getMessage().contains(garage.garageId()));
+
+		Result priced = GarageParkingCostCalculator.cents(tariffs.get("fx_bs_ib"), 36000, 39600, "shop", false, false, false,
+				1.0, () -> farGarage, null);
+		assertEquals(ParkingOutcome.PAID_EXPECTED, priced.outcome());
+		assertEquals(180, priced.cents());
+		assertEquals(0.0, priced.garageProbability(), 0.0);
+	}
+
+	/**
+	 * The weights use StrictMath.exp (fdlibm), so that the expectation is bit-identical on every JVM and CPU: the probability
+	 * of one garage at 300 m and decay 400 m is exactly w / (1 + w) with w = StrictMath.exp(-300 / 400).
+	 */
+	@Test
+	public void theWeightsAreComputedWithStrictMath() throws Exception {
+		JsonNode golden = ParkingCostCalculatorTest.readResource(ParkingCostCalculatorTest.GOLDEN_CASES_RESOURCE);
+		GarageTariff garage = ParkingTariffs.parseGarage(golden.get("garages").get(0));
+		GarageOptionModel.Option[] options = { new GarageOptionModel.Option(garage, 300.0) };
+		Result result = GarageParkingCostCalculator.cents(ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib"), 36000,
+				39600, "shop", false, false, false, 400.0, () -> options, null);
+		double weight = StrictMath.exp(-300.0 / 400.0);
+		assertEquals(weight / (1.0 + weight), result.garageProbability(), 0.0);
+	}
+
 	/** One golden case as braunschweig.parking.golden_cases.evaluate_case_detail evaluates it. */
 	private static Result evaluate(JsonNode goldenCase, ZoneTariff tariff, GarageOptionModel model,
 			GarageOptionCounters counters) {
