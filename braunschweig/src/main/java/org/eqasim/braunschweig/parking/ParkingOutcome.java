@@ -27,8 +27,10 @@ public enum ParkingOutcome {
 	/** The stay overlaps the fee window of none of the days it touches. */
 	OUTSIDE_FEE_HOURS,
 	/**
-	 * The stay overlaps a fee window but costs 0 ct: it is within the zone's free-stay threshold, or the metered price is
-	 * 0 (disc parking in a resident zone, whose hourly rate is 0).
+	 * The stay overlaps a fee window but costs 0 ct: it is within the zone's free-stay threshold, the metered price is 0
+	 * (disc parking in a resident zone, whose hourly rate is 0), or, with the garage product of schema 2, the garage is the
+	 * cheapest product the driver can use and costs 0 ct, for instance a stay that lies in the street fee window but outside
+	 * the garage's own fee window (golden case V18).
 	 */
 	FREE_WITHIN_LIMIT,
 	/** Started billing units at the hourly rate, with the zone's first-period block and daily cap where it has them. */

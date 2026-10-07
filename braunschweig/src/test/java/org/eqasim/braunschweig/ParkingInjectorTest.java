@@ -225,8 +225,12 @@ public class ParkingInjectorTest {
 				counter.snapshotAndReset());
 	}
 
+	/**
+	 * Without the module the legacy car cost model stays, no zone cost model, listener or tariff model exists, and the only
+	 * parking binding is the neutral search time that the car utility estimator needs.
+	 */
 	@Test
-	public void withoutTheModuleTheLegacyCarCostModelStaysAndNothingOfParkingIsBound() throws Exception {
+	public void withoutTheModuleTheLegacyCarCostModelStaysAndOnlyTheNeutralSearchTimeIsBound() throws Exception {
 		Injector injector = injector(false);
 
 		assertTrue(carCostModel(injector) instanceof BraunschweigCarCostModel);
