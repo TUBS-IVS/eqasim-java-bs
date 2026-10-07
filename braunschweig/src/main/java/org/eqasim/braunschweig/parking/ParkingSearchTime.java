@@ -3,6 +3,7 @@ package org.eqasim.braunschweig.parking;
 import java.util.Objects;
 
 import org.matsim.api.core.v01.population.Activity;
+import org.matsim.api.core.v01.population.Person;
 
 import com.google.inject.Inject;
 
@@ -10,7 +11,7 @@ import com.google.inject.Inject;
  * Parking search time of a car trip destination (design "parking cost zones v2", lever 4; eqasim-bs issue #436): the
  * {@code search_time_min} column of the tariff model for the zone the destination lies in, and the factor
  * {@code braunschweigParking.searchTimeFactor} that scales it into the car utility. The utility term itself lives in
- * {@code BraunschweigCarUtilityEstimator}: {@code betaTravelTime_u_min * factor() * minutes(destination)}, so the time of
+ * {@code BraunschweigCarUtilityEstimator}: {@code betaTravelTime_u_min * factor() * minutes(person, destination)}, so the time of
  * the search is valued like car travel time; the global {@code car.constantParkingSearchPenalty_min} stays 0 and this
  * zone column is the only source of parking search time.
  *
@@ -88,27 +89,21 @@ public final class ParkingSearchTime {
 	 * for a zone whose column is empty ("0 where empty"), for a destination of purpose home ({@link #minutesIn}) and
 	 * always for {@link #none()}. The result does not depend on the factor.
 	 *
+	 * @param person the person who travels: only an error message uses it, to name the owner of the failing attribute
+	 * @param destination the destination activity of the trip
 	 * @throws IllegalStateException for a zone attribute that is not a String or names a zone the tariff model does not
-	 *         contain: the plans and the model must come from the same release, and {@link ParkingPopulationCheck} has
+	 *         contain, in the one format of {@link ParkingAttributes} (person, plan, activity, attribute, value, tariffs
+	 *         path): the plans and the model must come from the same release, and {@link ParkingPopulationCheck} has
 	 *         checked every plan at the controller start already
 	 */
-	public double minutes(Activity destination) {
+	public double minutes(Person person, Activity destination) {
 		if (tariffs == null) {
 			return 0.0;
 		}
-		Object value = destination.getAttributes().getAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE);
-		if (value == null) {
+		ZoneTariff zone = ParkingAttributes.zone(tariffs, tariffsPath, person, destination);
+		if (zone == null) {
 			return 0.0;
 		}
-		if (!(value instanceof String zoneId)) {
-			throw new IllegalStateException("activity " + destination.getType() + ": attribute "
-					+ ZoneParkingCarCostModel.ZONE_ATTRIBUTE + " must be a java.lang.String, got " + value.getClass().getName()
-					+ " " + value + "; the eqasim-bs plans writer writes it with this type");
-		}
-		ZoneTariff tariff = tariffs.zone(zoneId).orElseThrow(() -> new IllegalStateException("activity "
-				+ destination.getType() + ": " + ZoneParkingCarCostModel.ZONE_ATTRIBUTE + " " + zoneId
-				+ " is not a zone of the parking tariff model " + tariffsPath + " (" + ParkingConfigGroup.GROUP_NAME
-				+ ".tariffsPath); the tariff model and the plans must come from the same release"));
-		return minutesIn(tariff, destination.getType());
+		return minutesIn(zone, destination.getType());
 	}
 }

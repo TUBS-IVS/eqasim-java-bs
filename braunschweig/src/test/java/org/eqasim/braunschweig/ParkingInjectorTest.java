@@ -191,16 +191,16 @@ public class ParkingInjectorTest {
 		ParkingSearchTime searchTime = injector.getInstance(ParkingSearchTime.class);
 		assertNotSame(ParkingSearchTime.none(), searchTime);
 		assertEquals(0.0, searchTime.factor(), 0.0);
+		Person person = PopulationUtils.getFactory().createPerson(Id.createPersonId("driver"));
 		Activity zoned = PopulationUtils.createActivityFromCoord("shop", new Coord(0, 0));
 		zoned.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, "fx_bs_ia_v2");
-		assertEquals(5.0, searchTime.minutes(zoned), 0.0);
+		assertEquals(5.0, searchTime.minutes(person, zoned), 0.0);
 
 		// The cost model records into the counter the report listener reads.
 		Activity origin = PopulationUtils.createActivityFromCoord("home", new Coord(0, 0));
 		Activity destination = PopulationUtils.createActivityFromCoord("work", new Coord(10000, 0));
 		DiscreteModeChoiceTrip trip = new DiscreteModeChoiceTrip(origin, destination, TransportMode.car, List.of(), 0, 0, 0,
 				new AttributesImpl());
-		Person person = PopulationUtils.getFactory().createPerson(Id.createPersonId("driver"));
 		Leg leg = PopulationUtils.createLeg(TransportMode.car);
 		Route route = RouteUtils.createGenericRouteImpl(Id.createLinkId("from"), Id.createLinkId("to"));
 		route.setDistance(10000.0);

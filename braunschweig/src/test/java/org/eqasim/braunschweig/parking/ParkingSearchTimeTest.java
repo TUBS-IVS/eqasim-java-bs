@@ -12,7 +12,11 @@ import java.nio.file.Path;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.matsim.api.core.v01.Coord;
+import org.matsim.api.core.v01.Id;
+import org.matsim.api.core.v01.TransportMode;
 import org.matsim.api.core.v01.population.Activity;
+import org.matsim.api.core.v01.population.Person;
+import org.matsim.api.core.v01.population.Plan;
 import org.matsim.core.population.PopulationUtils;
 
 /**
@@ -25,6 +29,9 @@ import org.matsim.core.population.PopulationUtils;
 public class ParkingSearchTimeTest {
 	private static final String FIXTURE_RESOURCE = "/parking/parking_tariffs_fixture.json";
 	private static final String TARIFFS_PATH = "parking_tariffs_fixture.json";
+
+	/** The person of the destinations; it names the owner of a failing attribute in the message. */
+	private static final Person PERSON = PopulationUtils.getFactory().createPerson(Id.createPersonId("driver"));
 
 	private static ParkingTariffs tariffs;
 
@@ -57,19 +64,19 @@ public class ParkingSearchTimeTest {
 	@Test
 	public void minutesAreTheSearchTimeColumnOfTheDestinationZone() {
 		ParkingSearchTime searchTime = searchTime("1.0");
-		assertEquals(5.0, searchTime.minutes(activity("shop", "fx_bs_ia_v2")), 0.0);
-		assertEquals(5.0, searchTime.minutes(activity("work", "fx_bs_ib_v2")), 0.0);
-		assertEquals(2.0, searchTime.minutes(activity("leisure", "fx_wob_v2")), 0.0);
+		assertEquals(5.0, searchTime.minutes(PERSON, activity("shop", "fx_bs_ia_v2")), 0.0);
+		assertEquals(5.0, searchTime.minutes(PERSON, activity("work", "fx_bs_ib_v2")), 0.0);
+		assertEquals(2.0, searchTime.minutes(PERSON, activity("leisure", "fx_wob_v2")), 0.0);
 		// A zone with an explicit 0 and a zone without the column ("0 where empty") both give 0 minutes.
-		assertEquals(0.0, searchTime.minutes(activity("work", "fx_campus_v2")), 0.0);
-		assertEquals(0.0, searchTime.minutes(activity("shop", "fx_bs_ia")), 0.0);
-		assertEquals(0.0, searchTime.minutes(activity("shop", "fx_res_a")), 0.0);
+		assertEquals(0.0, searchTime.minutes(PERSON, activity("work", "fx_campus_v2")), 0.0);
+		assertEquals(0.0, searchTime.minutes(PERSON, activity("shop", "fx_bs_ia")), 0.0);
+		assertEquals(0.0, searchTime.minutes(PERSON, activity("shop", "fx_res_a")), 0.0);
 	}
 
 	/** Outside every zone (assumption Z1) there is no search time. */
 	@Test
 	public void aDestinationOutsideEveryZoneHasNoSearchTime() {
-		assertEquals(0.0, searchTime("1.0").minutes(activity("shop", null)), 0.0);
+		assertEquals(0.0, searchTime("1.0").minutes(PERSON, activity("shop", null)), 0.0);
 	}
 
 	/**
@@ -81,10 +88,10 @@ public class ParkingSearchTimeTest {
 	public void minutesDoNotDependOnTheFactorAndAreZeroAtHome() {
 		for (String factor : new String[] { null, "0", "0.0", "2.5", "10" }) {
 			ParkingSearchTime searchTime = searchTime(factor);
-			assertEquals(5.0, searchTime.minutes(activity("shop", "fx_bs_ia_v2")), 0.0);
-			assertEquals(5.0, searchTime.minutes(activity("work", "fx_bs_ia_v2")), 0.0);
-			assertEquals(0.0, searchTime.minutes(activity("home", "fx_bs_ia_v2")), 0.0);
-			assertEquals(0.0, searchTime.minutes(activity("home", "fx_wob_v2")), 0.0);
+			assertEquals(5.0, searchTime.minutes(PERSON, activity("shop", "fx_bs_ia_v2")), 0.0);
+			assertEquals(5.0, searchTime.minutes(PERSON, activity("work", "fx_bs_ia_v2")), 0.0);
+			assertEquals(0.0, searchTime.minutes(PERSON, activity("home", "fx_bs_ia_v2")), 0.0);
+			assertEquals(0.0, searchTime.minutes(PERSON, activity("home", "fx_wob_v2")), 0.0);
 		}
 	}
 
@@ -119,31 +126,46 @@ public class ParkingSearchTimeTest {
 		ParkingSearchTime none = ParkingSearchTime.none();
 		assertSame(none, ParkingSearchTime.none());
 		assertEquals(0.0, none.factor(), 0.0);
-		assertEquals(0.0, none.minutes(activity("shop", "fx_bs_ia_v2")), 0.0);
-		assertEquals(0.0, none.minutes(activity("shop", null)), 0.0);
+		assertEquals(0.0, none.minutes(PERSON, activity("shop", "fx_bs_ia_v2")), 0.0);
+		assertEquals(0.0, none.minutes(PERSON, activity("shop", null)), 0.0);
 		// It does not even read the attribute: an id it cannot know is no error without the module.
-		assertEquals(0.0, none.minutes(activity("shop", "any_zone")), 0.0);
+		assertEquals(0.0, none.minutes(PERSON, activity("shop", "any_zone")), 0.0);
 		Activity mistyped = activity("shop", null);
 		mistyped.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, 42);
-		assertEquals(0.0, none.minutes(mistyped), 0.0);
+		assertEquals(0.0, none.minutes(PERSON, mistyped), 0.0);
 	}
 
-	/** A zone the tariff model does not contain, or a zone attribute of the wrong type, fails instead of giving 0. */
+	/**
+	 * A zone the tariff model does not contain, or a zone attribute of the wrong type, fails instead of giving 0, naming the
+	 * person, the plan and the activity, the attribute, the value and the tariffs path (the one message format of all
+	 * readers of the parking attributes).
+	 */
 	@Test
-	public void anUnknownOrMistypedZoneFailsNamingTheAttributeAndTheTariffs() {
+	public void anUnknownOrMistypedZoneFailsNamingPersonPlanActivityAttributeValueAndTariffsPath() {
 		ParkingSearchTime searchTime = searchTime("1.0");
-		IllegalStateException unknown = assertThrows(IllegalStateException.class,
-				() -> searchTime.minutes(activity("work", "bs_zone_unknown")));
-		for (String fragment : new String[] { "work", ZoneParkingCarCostModel.ZONE_ATTRIBUTE, "bs_zone_unknown",
-				TARIFFS_PATH }) {
+		Person person = PopulationUtils.getFactory().createPerson(Id.createPersonId("driver"));
+		Activity unknownZone = activity("work", "bs_zone_unknown");
+		Activity mistypedZone = activity("shop", null);
+		mistypedZone.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, 42);
+		Plan plan = PopulationUtils.createPlan(person);
+		plan.addActivity(activity("home", null));
+		plan.addLeg(PopulationUtils.createLeg(TransportMode.car));
+		plan.addActivity(unknownZone);
+		plan.addLeg(PopulationUtils.createLeg(TransportMode.car));
+		plan.addActivity(mistypedZone);
+		person.addPlan(plan);
+
+		IllegalStateException unknown = assertThrows(IllegalStateException.class, () -> searchTime.minutes(person, unknownZone));
+		for (String fragment : new String[] { "person driver, plan 0, activity 1 (work)", ZoneParkingCarCostModel.ZONE_ATTRIBUTE,
+				"bs_zone_unknown", TARIFFS_PATH }) {
 			assertTrue(unknown.getMessage(), unknown.getMessage().contains(fragment));
 		}
 
-		Activity mistyped = activity("work", null);
-		mistyped.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, 42);
-		IllegalStateException wrongType = assertThrows(IllegalStateException.class, () -> searchTime.minutes(mistyped));
-		assertTrue(wrongType.getMessage(), wrongType.getMessage().contains(ZoneParkingCarCostModel.ZONE_ATTRIBUTE));
-		assertTrue(wrongType.getMessage(), wrongType.getMessage().contains("java.lang.Integer"));
+		IllegalStateException wrongType = assertThrows(IllegalStateException.class, () -> searchTime.minutes(person, mistypedZone));
+		for (String fragment : new String[] { "person driver, plan 0, activity 2 (shop)", ZoneParkingCarCostModel.ZONE_ATTRIBUTE,
+				"java.lang.Integer 42" }) {
+			assertTrue(wrongType.getMessage(), wrongType.getMessage().contains(fragment));
+		}
 	}
 
 	@Test

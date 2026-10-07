@@ -1,14 +1,18 @@
 package org.eqasim.braunschweig.parking;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -638,17 +642,16 @@ public class ZoneParkingCarCostModelTest {
 				tripTo(inDistrict(shopInZoneIa(), "bs_district_unknown"), 32400, false), "fx_district_a");
 		IllegalStateException activityError = assertThrows(IllegalStateException.class,
 				() -> cost_EUR(unknownActivityDistrict));
-		for (String fragment : new String[] { "driver", ZoneParkingCarCostModel.DISTRICT_ATTRIBUTE, "bs_district_unknown",
-				TARIFFS_PATH }) {
-			assertTrue(activityError.getMessage(), activityError.getMessage().contains(fragment));
-		}
+		// The message names the person, the plan and the activity as the startup check of the plans does.
+		assertEquals("person driver, plan 0, activity 1 (shop): parkingDistrict bs_district_unknown is not a resident district"
+				+ " of the parking tariff model " + TARIFFS_PATH + " (braunschweigParking.tariffsPath); the tariff model and the"
+				+ " plans must come from the same release", activityError.getMessage());
 
 		CarTrip unknownHomeDistrict = withHomeDistrict(tripTo(shopInZoneIa(), 32400, false), "bs_district_unknown");
 		IllegalStateException personError = assertThrows(IllegalStateException.class, () -> cost_EUR(unknownHomeDistrict));
-		for (String fragment : new String[] { "driver", ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE,
-				"bs_district_unknown", TARIFFS_PATH }) {
-			assertTrue(personError.getMessage(), personError.getMessage().contains(fragment));
-		}
+		assertEquals("person driver: residentParkingDistrict bs_district_unknown is not a resident district of the parking tariff"
+				+ " model " + TARIFFS_PATH + " (braunschweigParking.tariffsPath); the tariff model and the plans must come from"
+				+ " the same release", personError.getMessage());
 		assertEquals(0L, total(countsByOutcome()));
 	}
 
@@ -668,5 +671,35 @@ public class ZoneParkingCarCostModelTest {
 		assertTrue(personError.getMessage(),
 				personError.getMessage().contains(ZoneParkingCarCostModel.RESIDENT_DISTRICT_ATTRIBUTE));
 		assertEquals(0L, total(countsByOutcome()));
+	}
+
+	/**
+	 * The model prices every car stay, so its happy path builds no name for an error message: a priced stay that reads all
+	 * five attributes never asks the person for its id or for all of its plans, which only a message needs.
+	 */
+	@Test
+	public void aPricedStayBuildsNoNamesForErrorMessages() {
+		Activity work = inDistrict(inZone(activity("work", 61200.0), "fx_bs_ib"), "fx_district_a");
+		work.getAttributes().putAttribute(ZoneParkingCarCostModel.FREE_ATTRIBUTE, false);
+		CarTrip carTrip = withHomeDistrict(tripTo(work, 27000, false), "fx_district_b");
+		Person real = carTrip.person();
+		real.getAttributes().putAttribute(ZoneParkingCarCostModel.RESIDENT_ATTRIBUTE, "fx_res_a");
+		Map<String, Integer> calls = new HashMap<>();
+		Person counting = (Person) Proxy.newProxyInstance(Person.class.getClassLoader(), new Class<?>[] { Person.class },
+				(proxy, method, arguments) -> {
+					calls.merge(method.getName(), 1, Integer::sum);
+					try {
+						return method.invoke(real, arguments);
+					} catch (InvocationTargetException error) {
+						throw error.getCause();
+					}
+				});
+
+		assertEquals(DRIVING_COST_EUR + 9.00, model.calculateCost_MU(counting, carTrip.trip(), carTrip.elements()),
+				EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
+		assertTrue("the person attributes were read: " + calls, calls.containsKey("getAttributes"));
+		assertFalse(calls.toString(), calls.containsKey("getId"));
+		assertFalse(calls.toString(), calls.containsKey("getPlans"));
 	}
 }
