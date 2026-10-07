@@ -236,7 +236,7 @@ public final class ParkingCostCalculator {
 	 * the street: above the maximum stay the zone sells the long-stay product, or no street product at all (spec lever 2;
 	 * ZoneTariff then guarantees a garage). {@code chargeable_s} (above 0) are the seconds in the STREET fee window.
 	 */
-	private static Result streetProduct(ZoneTariff tariff, long chargeable_s) {
+	static Result streetProduct(ZoneTariff tariff, long chargeable_s) {
 		long chargeable_min = Math.ceilDiv(chargeable_s, SECONDS_PER_MINUTE);
 		if (tariff.freeIfStayAtMostMinutes().isPresent() && chargeable_min <= tariff.freeIfStayAtMostMinutes().getAsInt()) {
 			return new Result(0, ParkingOutcome.FREE_WITHIN_LIMIT);
@@ -274,7 +274,7 @@ public final class ParkingCostCalculator {
 	}
 
 	/** The commuter product per working day for the commuter purposes (assumption P2), or null. */
-	private static Result commuterProduct(ZoneTariff tariff, String purpose) {
+	static Result commuterProduct(ZoneTariff tariff, String purpose) {
 		if (tariff.commuterDayCents().isEmpty() || !COMMUTER_PURPOSES.contains(purpose)) {
 			return null;
 		}
@@ -308,7 +308,7 @@ public final class ParkingCostCalculator {
 	 * chargeable second nothing is used, not even the first period, so the price is 0 ct: the street product never meters
 	 * such a stay (rule 4 returns before), but the garage meters its own fee window and can miss a stay the street charges.
 	 */
-	private static long meteredCents(long chargeable_s, long hourlyRateCents, int billingUnitMinutes,
+	static long meteredCents(long chargeable_s, long hourlyRateCents, int billingUnitMinutes,
 			OptionalInt firstPeriodMinutes, OptionalLong firstPeriodCents, OptionalLong dailyCapCents) {
 		if (chargeable_s == 0) {
 			return 0;
@@ -347,7 +347,7 @@ public final class ParkingCostCalculator {
 	}
 
 	/** A MATSim time floored to whole seconds; NaN, infinities, negative times and values beyond the long range fail. */
-	private static long wholeSeconds(double time_s, String name) {
+	static long wholeSeconds(double time_s, String name) {
 		requireSimulationTime(time_s, name);
 		return (long) Math.floor(time_s);
 	}
