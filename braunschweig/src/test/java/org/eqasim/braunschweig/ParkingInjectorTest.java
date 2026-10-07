@@ -101,6 +101,18 @@ public class ParkingInjectorTest {
 
 	private Controler controller(boolean parkingEnabled, Consumer<ObjectNode> tariffModelChange,
 			Map<String, String> parkingParameters) throws Exception {
+		return controller(parkingEnabled, tariffModelChange, parkingParameters, new String[0], config -> {
+		});
+	}
+
+	/**
+	 * The controller of {@link #controller(boolean, Consumer)} for a run with the given command-line options (such as
+	 * --mode-choice-parameter:car.constantParkingSearchPenalty_min=3.0) and a change of the finished config, such as the path
+	 * of a mode parameters file.
+	 */
+	private Controler controller(boolean parkingEnabled, Consumer<ObjectNode> tariffModelChange,
+			Map<String, String> parkingParameters, String[] commandLineArguments, Consumer<Config> configChange)
+			throws Exception {
 		// The preparation stage writes the tariff model next to the prepared config; its path is config-relative.
 		Path prepared = folder.newFolder("prepared").toPath();
 		ObjectMapper mapper = new ObjectMapper();
@@ -111,7 +123,7 @@ public class ParkingInjectorTest {
 
 		// The pipeline's config chain: RunGenerateConfig, RunAdaptConfig, the braunschweigParking module written by the
 		// Python prepare stage, then RunSimulation's updateConfig on the loaded file.
-		CommandLine cmd = new CommandLine.Builder(new String[0]).allowAnyOption(true).build();
+		CommandLine cmd = new CommandLine.Builder(commandLineArguments).allowAnyOption(true).build();
 		BraunschweigConfigurator configurator = new BraunschweigConfigurator(cmd);
 		Config config = ConfigUtils.createConfig();
 		configurator.updateConfig(config);
@@ -130,6 +142,7 @@ public class ParkingInjectorTest {
 		config.controller().setOverwriteFileSetting(OverwriteFileSetting.deleteDirectoryIfExists);
 		config.controller().setLastIteration(0);
 		configurator.updateConfig(config);
+		configChange.accept(config);
 
 		Scenario scenario = ScenarioUtils.createScenario(config);
 		configurator.configureScenario(scenario);
@@ -265,6 +278,54 @@ public class ParkingInjectorTest {
 		assertTrue(readerError.getMessage(), readerError.getMessage().contains(TARIFFS_FILE));
 		assertTrue(readerError.getMessage(), readerError.getMessage().contains("schema_version must be one of [1, 2], got 3"));
 		// No iteration has begun.
+		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
+	}
+
+	/** The IllegalStateException of the first startup check in the causes of the failure of a controller run. */
+	private static IllegalStateException startupCheckError(RuntimeException error) {
+		for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+			if (cause instanceof IllegalStateException illegalState) {
+				return illegalState;
+			}
+		}
+		throw new AssertionError("no IllegalStateException of a startup check in " + error);
+	}
+
+	/**
+	 * Lever 4 configured (searchTimeFactor 1.0) next to a global car parking search penalty from the command line
+	 * (--mode-choice-parameter:car.constantParkingSearchPenalty_min) counts the search time twice: the run stops when the
+	 * controller starts, before iteration 0. The check reads the effective mode parameters, the ones the car predictor reads
+	 * after the overrides, so the default penalty 0 would not fail and the value in the message is the overridden one.
+	 */
+	@Test
+	public void aPenaltyFromTheCommandLineWithASearchTimeFactorFailsWhenTheControllerStarts() throws Exception {
+		Controler controller = controller(true, tariffModel -> {
+		}, Map.of("searchTimeFactor", "1.0"),
+				new String[] { "--mode-choice-parameter:car.constantParkingSearchPenalty_min", "3.0" }, config -> {
+				});
+
+		IllegalStateException checkError = startupCheckError(assertThrows(RuntimeException.class, controller::run));
+		for (String fragment : new String[] { "car.constantParkingSearchPenalty_min is 3.0",
+				"braunschweigParking.searchTimeFactor is 1.0", "counted twice" }) {
+			assertTrue("'" + fragment + "' missing in: " + checkError.getMessage(), checkError.getMessage().contains(fragment));
+		}
+		// No iteration has begun.
+		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
+	}
+
+	/** The same stop for a penalty set in the mode parameters file (modeParametersPath of the eqasim config group). */
+	@Test
+	public void aPenaltyFromTheModeParametersFileWithASearchTimeFactorFailsWhenTheControllerStarts() throws Exception {
+		Path modeParameters = folder.newFile("mode_parameters_with_penalty.yml").toPath();
+		Files.writeString(modeParameters, "car.constantParkingSearchPenalty_min: 2.5\n");
+		Controler controller = controller(true, tariffModel -> {
+		}, Map.of("searchTimeFactor", "1.0"), new String[0],
+				config -> EqasimConfigGroup.get(config).setModeParametersPath(modeParameters.toString()));
+
+		IllegalStateException checkError = startupCheckError(assertThrows(RuntimeException.class, controller::run));
+		for (String fragment : new String[] { "car.constantParkingSearchPenalty_min is 2.5", "counted twice" }) {
+			assertTrue("'" + fragment + "' missing in: " + checkError.getMessage(), checkError.getMessage().contains(fragment));
+		}
 		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
 	}
 

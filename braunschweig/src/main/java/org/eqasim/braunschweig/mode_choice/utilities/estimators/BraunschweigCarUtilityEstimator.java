@@ -63,8 +63,9 @@ public class BraunschweigCarUtilityEstimator extends CarUtilityEstimator {
 	 * the config parameter braunschweigParking.searchTimeFactor, valued like car travel time. 0 with the default factor
 	 * 0 (off) and without the parking module: then nothing about the destination is read, so the utility is the one
 	 * of version 1. The global car.constantParkingSearchPenalty_min stays 0, so the zone column is the only source of
-	 * search time. The term depends on the destination activity only (the person names the owner of a failing attribute in
-	 * the message and nothing else) and lives here, not in a predictor: the cached car variables are not involved.
+	 * search time (ParkingSearchTimeCheck stops a run with both at the controller start). The term depends on the
+	 * destination activity only (the person names the owner of a failing attribute in the message and nothing else) and
+	 * lives here, not in a predictor: the cached car variables are not involved.
 	 */
 	protected double estimateParkingSearchTimeUtility(Person person, Activity destination) {
 		double factor = searchTime.factor();

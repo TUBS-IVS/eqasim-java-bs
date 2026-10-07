@@ -13,7 +13,9 @@ import com.google.inject.Inject;
  * {@code braunschweigParking.searchTimeFactor} that scales it into the car utility. The utility term itself lives in
  * {@code BraunschweigCarUtilityEstimator}: {@code betaTravelTime_u_min * factor() * minutes(person, destination)}, so the time of
  * the search is valued like car travel time; the global {@code car.constantParkingSearchPenalty_min} stays 0 and this
- * zone column is the only source of parking search time.
+ * zone column is the only source of parking search time ({@link ParkingSearchTimeCheck} enforces it at the controller
+ * start: a penalty other than 0 next to a factor above 0 stops the run as double counting, and any penalty other than 0
+ * is warned about).
  *
  * <p>Bound by {@link ParkingModule} with the tariff model and the factor of the module when the braunschweigParking
  * module is enabled, and by {@code BraunschweigModeChoiceModule} as {@link #none()} otherwise, so that the car utility

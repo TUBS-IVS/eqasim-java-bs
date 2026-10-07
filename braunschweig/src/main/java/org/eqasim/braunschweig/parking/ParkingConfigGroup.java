@@ -131,7 +131,9 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 	/**
 	 * Factor that scales the parking search minutes of the destination zone into the car utility
 	 * ({@code betaTravelTime_u_min * factor * search_time_min}, lever 4); 0, the default when absent, leaves the utility as
-	 * in version 1.
+	 * in version 1. A factor above 0 needs a zone with a search time in the tariff model and the global
+	 * {@code car.constantParkingSearchPenalty_min} at 0; {@link ParkingSearchTimeCheck} stops the run at the controller
+	 * start otherwise.
 	 */
 	public double searchTimeFactor() {
 		return searchTimeFactor;
