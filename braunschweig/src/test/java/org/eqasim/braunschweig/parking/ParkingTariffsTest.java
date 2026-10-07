@@ -18,6 +18,8 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import org.apache.logging.log4j.Level;
+import org.eqasim.braunschweig.parking.ParkingLogCapture.Event;
 import org.eqasim.braunschweig.parking.ParkingTariffs.ResidentDistrict;
 import org.eqasim.braunschweig.parking.ZoneTariff.ZoneType;
 import org.junit.Rule;
@@ -739,5 +741,34 @@ public class ParkingTariffsTest {
 		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.read(file));
 		assertTrue(error.getMessage(), error.getMessage().contains("parking_tariffs_schema_3.json"));
 		assertTrue(error.getMessage(), error.getMessage().contains("schema_version must be one of [1, 2], got 3"));
+	}
+
+	/**
+	 * Lever 4 can act only in a zone whose search_time_min is above 0: the model counts those zones and the read log line
+	 * reports the number, so a model without search times is visible when it is loaded. The fixture has three
+	 * (fx_bs_ia_v2 and fx_bs_ib_v2 5 min, fx_wob_v2 2 min); fx_campus_v2 holds an explicit 0 and does not count, and the
+	 * schema-1 fixture has the column in none.
+	 */
+	@Test
+	public void countsTheZonesWithASearchTimeAndReportsThemWhenReadingTheModel() throws Exception {
+		ParkingTariffs[] read = new ParkingTariffs[1];
+		List<Event> events = ParkingLogCapture.captureChecked(ParkingTariffs.class,
+				() -> read[0] = ParkingTariffs.read(fixturePath()));
+		ParkingTariffs tariffs = read[0];
+		assertEquals(3L, tariffs.zonesWithSearchTime());
+		assertTrue(tariffs.zone("fx_campus_v2").orElseThrow().searchTimeMinutes().isPresent());
+		assertFalse(tariffs.zone("fx_campus_v2").orElseThrow().hasSearchTime());
+		assertTrue(tariffs.zone("fx_wob_v2").orElseThrow().hasSearchTime());
+		assertFalse(tariffs.zone("fx_sz").orElseThrow().hasSearchTime());
+		List<String> info = ParkingLogCapture.messages(events, Level.INFO);
+		assertEquals(info.toString(), 1, info.size());
+		assertTrue(info.get(0), info.get(0).contains("3 zone(s) with a search time"));
+
+		ParkingTariffs[] readSchemaOne = new ParkingTariffs[1];
+		List<Event> schemaOneEvents = ParkingLogCapture.captureChecked(ParkingTariffs.class,
+				() -> readSchemaOne[0] = ParkingTariffs.read(resourcePath(SCHEMA_1_RESOURCE)));
+		assertEquals(0L, readSchemaOne[0].zonesWithSearchTime());
+		List<String> schemaOneInfo = ParkingLogCapture.messages(schemaOneEvents, Level.INFO);
+		assertTrue(schemaOneInfo.toString(), schemaOneInfo.get(0).contains("0 zone(s) with a search time"));
 	}
 }

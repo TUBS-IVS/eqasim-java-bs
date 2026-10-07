@@ -157,8 +157,9 @@ public final class ParkingTariffs {
 	/**
 	 * Reads and validates a tariff model file. Duplicate keys (for example a zone id listed twice) and trailing content
 	 * (for example a second document appended to the file) fail, instead of the last duplicate silently replacing a
-	 * tariff or the rest of the file being ignored. Logs one line with the path, the zone counts per type, the snapshot
-	 * date, the schema version, the number of resident districts and the number of sources.
+	 * tariff or the rest of the file being ignored. Logs one line with the path, the zone counts per type, the number of
+	 * zones with a search time above 0 (lever 4 can act only there), the number of resident districts, the snapshot date,
+	 * the schema version and the number of sources.
 	 *
 	 * @throws IOException for an unreadable file or malformed JSON, including duplicate keys
 	 * @throws IllegalArgumentException for a document that violates the contract; the message names the file
@@ -174,9 +175,10 @@ public final class ParkingTariffs {
 			// The message already names the zone and field; add the file so that the release can be found.
 			throw new IllegalArgumentException(path + ": " + error.getMessage(), error);
 		}
-		LOG.info("[parking] tariff model {}: {} zones {}, {} resident district(s), snapshot {}, schema {}, {} source(s)", path,
-				tariffs.zonesById.size(), tariffs.zoneCountsByType(), tariffs.residentDistricts.size(),
-				tariffs.tariffSnapshotDate, tariffs.schemaVersion, tariffs.sources.size());
+		LOG.info("[parking] tariff model {}: {} zones {}, {} zone(s) with a search time, {} resident district(s), snapshot {},"
+				+ " schema {}, {} source(s)", path, tariffs.zonesById.size(), tariffs.zoneCountsByType(),
+				tariffs.zonesWithSearchTime(), tariffs.residentDistricts.size(), tariffs.tariffSnapshotDate,
+				tariffs.schemaVersion, tariffs.sources.size());
 		return tariffs;
 	}
 
@@ -274,6 +276,14 @@ public final class ParkingTariffs {
 	public Optional<ResidentDistrict> residentDistrict(String districtId) {
 		Objects.requireNonNull(districtId, "districtId");
 		return Optional.ofNullable(residentDistrictsById.get(districtId));
+	}
+
+	/**
+	 * Number of zones whose search_time_min is above 0: the zones in which the parking search time (lever 4) can act. A zone
+	 * with an empty column or an explicit 0 does not count.
+	 */
+	public long zonesWithSearchTime() {
+		return zonesById.values().stream().filter(ZoneTariff::hasSearchTime).count();
 	}
 
 	private Map<String, Integer> zoneCountsByType() {

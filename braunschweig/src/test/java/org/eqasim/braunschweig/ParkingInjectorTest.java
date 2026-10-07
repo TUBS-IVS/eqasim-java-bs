@@ -26,6 +26,7 @@ import org.eqasim.braunschweig.parking.ParkingOutcomeCounter;
 import org.eqasim.braunschweig.parking.ParkingOutcomeReportListener;
 import org.eqasim.braunschweig.parking.ParkingPopulationCheck;
 import org.eqasim.braunschweig.parking.ParkingSearchTime;
+import org.eqasim.braunschweig.parking.ParkingSearchTimeCheck;
 import org.eqasim.braunschweig.parking.ParkingTariffs;
 import org.eqasim.braunschweig.parking.ZoneParkingCarCostModel;
 import org.eqasim.braunschweig.scenario.RunAdaptConfig;
@@ -57,6 +58,7 @@ import org.matsim.core.population.routes.RouteUtils;
 import org.matsim.core.scenario.ScenarioUtils;
 import org.matsim.utils.objectattributes.attributable.AttributesImpl;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Injector;
@@ -170,6 +172,8 @@ public class ParkingInjectorTest {
 		assertTrue(hasListener(injector, ParkingOutcomeReportListener.class));
 		// The startup check of the plans, which takes the tariff model when the controller builds its listeners.
 		assertTrue(hasListener(injector, ParkingPopulationCheck.class));
+		// The startup check of lever 4 (search time factor against the tariff model), built the same way.
+		assertTrue(hasListener(injector, ParkingSearchTimeCheck.class));
 
 		// Only the car cost model name changed: car and car passenger keep their estimators.
 		EqasimConfigGroup eqasim = EqasimConfigGroup.get(injector.getInstance(Config.class));
@@ -217,6 +221,7 @@ public class ParkingInjectorTest {
 		assertFalse(hasListener(injector, ParkingOutcomeReportListener.class));
 		// Nothing scans the population and nothing logs its parking coverage.
 		assertFalse(hasListener(injector, ParkingPopulationCheck.class));
+		assertFalse(hasListener(injector, ParkingSearchTimeCheck.class));
 		assertNull(injector.getExistingBinding(Key.get(ParkingTariffs.class)));
 		// Lever 4 without the module: the car utility estimator is built with the neutral search time (factor 0, no
 		// minutes), although no tariff model exists to read search minutes from.
@@ -259,6 +264,35 @@ public class ParkingInjectorTest {
 		assertNotNull("no IllegalArgumentException of the tariff reader in " + error, readerError);
 		assertTrue(readerError.getMessage(), readerError.getMessage().contains(TARIFFS_FILE));
 		assertTrue(readerError.getMessage(), readerError.getMessage().contains("schema_version must be one of [1, 2], got 3"));
+		// No iteration has begun.
+		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
+	}
+
+	/**
+	 * Lever 4 configured (searchTimeFactor 1.0) while no zone of the tariff model has a search time cannot act: the run
+	 * stops when the controller starts, before iteration 0, with a message that names the factor, the tariffs path and
+	 * the missing column values, instead of silently running as the baseline. Without the factor the same model starts.
+	 */
+	@Test
+	public void aSearchTimeFactorWithoutAnyZoneSearchTimeFailsWhenTheControllerStarts() throws Exception {
+		Controler controller = controller(true, tariffModel -> {
+			for (JsonNode zone : tariffModel.get("zones")) {
+				((ObjectNode) zone).putNull("search_time_min");
+			}
+		}, Map.of("searchTimeFactor", "1.0"));
+
+		RuntimeException error = assertThrows(RuntimeException.class, controller::run);
+		IllegalStateException checkError = null;
+		for (Throwable cause = error; cause != null && checkError == null; cause = cause.getCause()) {
+			if (cause instanceof IllegalStateException illegalState) {
+				checkError = illegalState;
+			}
+		}
+		assertNotNull("no IllegalStateException of the search time check in " + error, checkError);
+		for (String fragment : new String[] { "braunschweigParking.searchTimeFactor", "1.0", TARIFFS_FILE,
+				"no zone of the parking tariff model", "cannot act" }) {
+			assertTrue("'" + fragment + "' missing in: " + checkError.getMessage(), checkError.getMessage().contains(fragment));
+		}
 		// No iteration has begun.
 		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
 	}

@@ -282,6 +282,16 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		return garageHourlyRateCents.isPresent();
 	}
 
+	/** The parking search time of a destination in this zone in minutes (lever 4); 0 where the column is empty. */
+	public int searchTimeMinutesOrZero() {
+		return searchTimeMinutes.orElse(0);
+	}
+
+	/** Whether the zone carries a search time above 0 minutes: only in such a zone can lever 4 act. */
+	public boolean hasSearchTime() {
+		return searchTimeMinutesOrZero() > 0;
+	}
+
 	/**
 	 * The garage rules of spec amendment A6: the core is complete or empty, the optional cap and first period need it, and
 	 * the garage's own fee window satisfies {@code 0 <= start < end <= 86400}.

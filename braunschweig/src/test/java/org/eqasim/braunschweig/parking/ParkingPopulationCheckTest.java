@@ -9,8 +9,11 @@ import static org.junit.Assert.assertTrue;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
+import org.apache.logging.log4j.Level;
+import org.eqasim.braunschweig.parking.ParkingLogCapture.Event;
 import org.eqasim.braunschweig.parking.ParkingPopulationCheck.Coverage;
 import org.eqasim.braunschweig.parking.ZoneTariff.ZoneType;
 import org.junit.BeforeClass;
@@ -49,9 +52,17 @@ public class ParkingPopulationCheckTest {
 	}
 
 	private ParkingPopulationCheck check() {
+		return check(null);
+	}
+
+	/** The check of an enabled module with the given searchTimeFactor, or without that parameter when null. */
+	private ParkingPopulationCheck check(String searchTimeFactor) {
 		ParkingConfigGroup parking = new ParkingConfigGroup();
 		parking.setEnabled("true");
 		parking.setTariffsPath(TARIFFS_PATH);
+		if (searchTimeFactor != null) {
+			parking.addParam("searchTimeFactor", searchTimeFactor);
+		}
 		return new ParkingPopulationCheck(tariffs, population, parking);
 	}
 
@@ -265,6 +276,45 @@ public class ParkingPopulationCheckTest {
 		assertEquals(2, coverage.activitiesWithSearchTime());
 		assertTrue(ParkingPopulationCheck.summary(coverage), ParkingPopulationCheck.summary(coverage)
 				.contains("2 in a zone with a search time (33.3 %)"));
+	}
+
+	/** The events the startup check of the population logs for a check with the given searchTimeFactor. */
+	private List<Event> startup(String searchTimeFactor) {
+		ParkingPopulationCheck check = check(searchTimeFactor);
+		return ParkingLogCapture.capture(ParkingPopulationCheck.class, () -> check.notifyStartup(new StartupEvent(null)));
+	}
+
+	/**
+	 * Lever 4 configured and the zone column filled (three zones), but no activity of the population lies in a zone with a
+	 * search time: the factor cannot act in this run, which is a WARNING (a model without any search time fails the run in
+	 * the check of the tariff model). The coverage line stays an information with its rate.
+	 */
+	@Test
+	public void aSearchTimeFactorWithoutAnyActivityInASearchTimeZoneWarns() {
+		plan(person("p1"), activity("home"), inZone("work", "fx_bs_ib"), inZone("shop", "fx_sz"), activity("home"));
+		List<Event> events = startup("1.0");
+		List<String> warnings = ParkingLogCapture.messages(events, Level.WARN);
+		assertEquals(warnings.toString(), 1, warnings.size());
+		for (String fragment : new String[] { "searchTimeFactor 1.0", "3 zones carry a search_time_min above 0",
+				"no activity of the population lies in such a zone", "cannot act in this run" }) {
+			assertTrue("'" + fragment + "' missing in: " + warnings.get(0), warnings.get(0).contains(fragment));
+		}
+		List<String> information = ParkingLogCapture.messages(events, Level.INFO);
+		assertEquals(information.toString(), 1, information.size());
+		assertTrue(information.get(0), information.get(0).contains("0 in a zone with a search time (0.0 %)"));
+	}
+
+	/** An activity in a zone with a search time, or a factor of 0 (off), gives no search time warning. */
+	@Test
+	public void noSearchTimeWarningWhenTheTermCanActOrTheFactorIsZero() {
+		plan(person("p1"), activity("home"), inZone("work", "fx_bs_ia_v2"), activity("home"));
+		assertTrue(ParkingLogCapture.messages(startup("1.0"), Level.WARN).isEmpty());
+
+		population.removePerson(Id.createPersonId("p1"));
+		plan(person("p2"), activity("home"), inZone("work", "fx_sz"), activity("home"));
+		for (String factor : new String[] { null, "0", "0.0" }) {
+			assertTrue(factor, ParkingLogCapture.messages(startup(factor), Level.WARN).isEmpty());
+		}
 	}
 
 	/**

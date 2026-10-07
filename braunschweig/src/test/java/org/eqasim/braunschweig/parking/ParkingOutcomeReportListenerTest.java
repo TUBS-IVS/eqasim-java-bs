@@ -1,7 +1,9 @@
 package org.eqasim.braunschweig.parking;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +15,7 @@ import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -22,6 +25,9 @@ import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 import org.matsim.core.controler.events.IterationEndsEvent;
 import org.matsim.core.controler.events.StartupEvent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 /**
  * Per-iteration parking outcome report: {@code ITERS/it.N/N.parking_outcomes.csv} (CSV v2 of the v2 spec amendment A5:
  * one row per non-zero cell of outcome, zone and purpose), one {@code [parking]} log line with the shares of the outcomes
@@ -29,8 +35,26 @@ import org.matsim.core.controler.events.StartupEvent;
  * active value is logged once at startup. Version 1 only reports: no threshold, no failure.
  */
 public class ParkingOutcomeReportListenerTest {
+	/** The schema-2 fixture tariff model: three zones carry a search time (fx_bs_ia_v2, fx_bs_ib_v2, fx_wob_v2). */
+	private static ParkingTariffs tariffsWithSearchTimes;
+
+	/** The schema-1 fixture tariff model of version 1: no zone carries a search time. */
+	private static ParkingTariffs tariffsWithoutSearchTimes;
+
 	@Rule
 	public TemporaryFolder folder = new TemporaryFolder();
+
+	@BeforeClass
+	public static void readTariffs() throws Exception {
+		tariffsWithSearchTimes = read("/parking/parking_tariffs_fixture.json");
+		tariffsWithoutSearchTimes = read(ParkingCostCalculatorTest.SCHEMA_1_TARIFFS_RESOURCE);
+	}
+
+	private static ParkingTariffs read(String resourceName) throws Exception {
+		URL resource = ParkingOutcomeReportListenerTest.class.getResource(resourceName);
+		assertNotNull("test resource " + resourceName + " is missing", resource);
+		return ParkingTariffs.read(Path.of(resource.toURI()));
+	}
 
 	private OutputDirectoryHierarchy output() {
 		return new OutputDirectoryHierarchy(folder.getRoot().toString(), OverwriteFileSetting.overwriteExistingFiles,
@@ -80,7 +104,8 @@ public class ParkingOutcomeReportListenerTest {
 		counter.record(ParkingOutcome.EMPLOYER_FREE, "fx_bs_ib", "work");
 		counter.record(ParkingOutcome.NO_ZONE, null, "shop");
 		OutputDirectoryHierarchy output = output();
-		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output, parking("15"));
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output,
+				parking("15"), tariffsWithSearchTimes);
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 3, false)));
 
@@ -107,7 +132,8 @@ public class ParkingOutcomeReportListenerTest {
 		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
 		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
 		counter.record(ParkingOutcome.PAID_CAMPUS_GUEST, "fx_campus_v2", "shop");
-		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(), parking("15"));
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(),
+				parking("15"), tariffsWithSearchTimes);
 
 		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 1, false)));
 
@@ -121,7 +147,7 @@ public class ParkingOutcomeReportListenerTest {
 	@Test
 	public void anIterationWithoutPricedStaysWritesTheHeaderOnly() throws Exception {
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
-				parking("15"));
+				parking("15"), tariffsWithSearchTimes);
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 0, false)));
 
@@ -145,40 +171,68 @@ public class ParkingOutcomeReportListenerTest {
 
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
 		counter.record(ParkingOutcome.PAID_METERED, "fx,zone", "work");
-		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(), parking("15"));
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(),
+				parking("15"), tariffsWithSearchTimes);
 		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 2, false)));
 		assertEquals(List.of("outcome,zone_id,purpose,count,share", "PAID_METERED,\"fx,zone\",work,1,1.000000"),
 				Files.readAllLines(reportOfIteration(2), StandardCharsets.UTF_8));
 	}
 
 	/**
-	 * The active minimum parked duration and the active search time factor are logged once, when the controller starts; a
-	 * config prepared before assumption L1 and lever 4 has neither and prices as version 1.
+	 * The active minimum parked duration and the state of the search time (lever 4) are logged once, when the controller
+	 * starts; a config prepared before assumption L1 and lever 4 has neither and prices as version 1. The search time
+	 * line never reads as active when the factor is 0 (off) or when it cannot act (no zone carries a search time).
 	 */
 	@Test
-	public void logsTheActiveMinimumStayAndSearchTimeFactorOnceAtStartup() {
+	public void logsTheActiveMinimumStayAndTheSearchTimeStateOnceAtStartup() {
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
-				parking("15", "1.5"));
+				parking("15", "1.5"), tariffsWithSearchTimes);
 		assertEquals(List.of("[parking] minimum stay 15 min (braunschweigParking.minimumStayMinutes, assumption L1): every"
 				+ " priced car stay lasts at least 900 s; the simulated timing is unchanged",
-				"[parking] search time factor 1.5 (braunschweigParking.searchTimeFactor, lever 4): the car utility of a trip"
-						+ " to a destination in a zone adds betaTravelTime_u_min * 1.5 * search_time_min of that zone"),
+				"[parking] search time (lever 4): active in 3 zones (searchTimeFactor 1.5); the car utility of a trip to a"
+						+ " destination in such a zone adds betaTravelTime_u_min * 1.5 * search_time_min of the zone"),
 				logDuring(() -> listener.notifyStartup(new StartupEvent(null))));
 
 		ParkingOutcomeReportListener versionOne = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
-				parking(null));
+				parking(null), tariffsWithSearchTimes);
 		assertEquals(List.of("[parking] minimum stay 0 min (braunschweigParking.minimumStayMinutes, assumption L1): car"
 				+ " stays are priced as simulated (version 1)",
-				"[parking] search time factor 0.0 (braunschweigParking.searchTimeFactor, lever 4): the car utility carries no"
-						+ " parking search time term (version 1)"),
+				"[parking] search time (lever 4): off (searchTimeFactor 0.0); the car utility carries no parking search time"
+						+ " term (version 1)"),
 				logDuring(() -> versionOne.notifyStartup(new StartupEvent(null))));
 
-		// An explicit 0 is the same as the default.
-		ParkingOutcomeReportListener explicitZero = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
-				parking("15", "0"));
-		assertEquals("[parking] search time factor 0.0 (braunschweigParking.searchTimeFactor, lever 4): the car utility"
-				+ " carries no parking search time term (version 1)",
-				logDuring(() -> explicitZero.notifyStartup(new StartupEvent(null))).get(1));
+		// An explicit 0 is the same as the default, also for a model without search times.
+		for (ParkingTariffs tariffs : new ParkingTariffs[] { tariffsWithSearchTimes, tariffsWithoutSearchTimes }) {
+			ParkingOutcomeReportListener explicitZero = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(),
+					output(), parking("15", "0"), tariffs);
+			assertEquals("[parking] search time (lever 4): off (searchTimeFactor 0.0); the car utility carries no parking"
+					+ " search time term (version 1)", logDuring(() -> explicitZero.notifyStartup(new StartupEvent(null))).get(1));
+		}
+	}
+
+	/**
+	 * With a factor above 0 the line says in how many zones the search time is active; it says that the term is NOT acting
+	 * when no zone carries a search time (the startup check of lever 4 stops such a run, but the line must not claim an
+	 * active term meanwhile), and it counts one zone as one zone.
+	 */
+	@Test
+	public void theSearchTimeLineCountsTheZonesItActsInAndNeverClaimsAnInertTermIsActive() throws Exception {
+		ParkingOutcomeReportListener withoutSearchTimes = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(),
+				output(), parking("15", "1.0"), tariffsWithoutSearchTimes);
+		assertEquals("[parking] search time (lever 4): NOT acting, no zone of the tariff model carries a search_time_min above"
+				+ " 0 (searchTimeFactor 1.0)", logDuring(() -> withoutSearchTimes.notifyStartup(new StartupEvent(null))).get(1));
+
+		ObjectNode oneZone = (ObjectNode) new ObjectMapper().readTree(Path.of(ParkingOutcomeReportListenerTest.class
+				.getResource("/parking/parking_tariffs_fixture.json").toURI()).toFile());
+		((ObjectNode) oneZone.get("zones").get("fx_bs_ib_v2")).putNull("search_time_min");
+		((ObjectNode) oneZone.get("zones").get("fx_wob_v2")).putNull("search_time_min");
+		ParkingTariffs tariffsWithOneSearchTimeZone = ParkingTariffs.parse(oneZone);
+		assertEquals(1L, tariffsWithOneSearchTimeZone.zonesWithSearchTime());
+		ParkingOutcomeReportListener one = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+				parking("15", "2.5"), tariffsWithOneSearchTimeZone);
+		assertEquals("[parking] search time (lever 4): active in 1 zone (searchTimeFactor 2.5); the car utility of a trip to a"
+				+ " destination in such a zone adds betaTravelTime_u_min * 2.5 * search_time_min of the zone",
+				logDuring(() -> one.notifyStartup(new StartupEvent(null))).get(1));
 	}
 
 	/** Messages the listener logs while {@code action} runs. */

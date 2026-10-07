@@ -18,8 +18,9 @@ import com.google.inject.Singleton;
  * #436); installed by BraunschweigModeChoiceModule only when the braunschweigParking module is enabled. Provides the
  * tariff model read from {@code braunschweigParking.tariffsPath}, resolved relative to the config file like every
  * MATSim input path (the preparation stage writes the JSON next to the prepared config), and binds the outcome counter,
- * the per-iteration outcome report and the startup check of the plans ({@link ParkingPopulationCheck}), which takes the
- * tariff model and so makes it load when the controller starts, and the parking search time of lever 4
+ * the per-iteration outcome report, the startup check of the plans ({@link ParkingPopulationCheck}), which takes the
+ * tariff model and so makes it load when the controller starts, the startup check of the search time factor against the
+ * tariff model ({@link ParkingSearchTimeCheck}) and the parking search time of lever 4
  * ({@link ParkingSearchTime}) with the tariff model and the factor of the module, which the car utility estimator takes.
  * Without the module BraunschweigModeChoiceModule binds the neutral {@link ParkingSearchTime#none()}.
  *
@@ -34,6 +35,7 @@ public final class ParkingModule extends AbstractModule {
 		bind(ParkingSearchTime.class).in(Singleton.class);
 		addControlerListenerBinding().to(ParkingOutcomeReportListener.class);
 		addControlerListenerBinding().to(ParkingPopulationCheck.class);
+		addControlerListenerBinding().to(ParkingSearchTimeCheck.class);
 	}
 
 	/**

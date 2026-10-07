@@ -59,7 +59,10 @@ import com.google.inject.Singleton;
  *
  * <p>Fallback transparency: one {@code [parking] population: ...} line reports the coverage as counts and rates
  * ({@link #summary}). It is a warning when activities exist but none lies in a zone: every car stay is then priced
- * NO_ZONE, the signature of plans written without the zones.
+ * NO_ZONE, the signature of plans written without the zones. A second warning ({@link #searchTimeWarning}) says that the
+ * search time factor of lever 4 cannot act in this run, when it is configured and the tariff model carries search times
+ * but no activity of the population lies in such a zone; a factor above 0 with no search time in the model at all fails
+ * the run in {@link ParkingSearchTimeCheck}.
  *
  * <p>Side effects: the log line; the population is only read.
  */
@@ -80,6 +83,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 	private final ParkingTariffs tariffs;
 	private final Population population;
 	private final String tariffsPath;
+	private final double searchTimeFactor;
+	private final String searchTimeFactorText;
 
 	/**
 	 * Coverage of the parking attributes, counted over every plan of every person without stage activities.
@@ -122,6 +127,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 		this.tariffs = Objects.requireNonNull(tariffs, "tariffs");
 		this.population = Objects.requireNonNull(population, "population");
 		this.tariffsPath = parking.getTariffsPath();
+		this.searchTimeFactor = parking.searchTimeFactor();
+		this.searchTimeFactorText = parking.getSearchTimeFactor();
 	}
 
 	/** Scans the population and logs its coverage; fails on the first inconsistency, see the class comment. */
@@ -133,6 +140,24 @@ public final class ParkingPopulationCheck implements StartupListener {
 		} else {
 			LOG.info(summary(coverage));
 		}
+		searchTimeWarning(coverage).ifPresent(LOG::warn);
+	}
+
+	/**
+	 * The warning that the search time factor cannot act in this run (lever 4): the factor is above 0 and the tariff model
+	 * carries a search time in at least one zone, but no activity of the population lies in such a zone, so every car
+	 * utility would equal the one without the term. Empty with the default factor 0 (off), when an activity lies in a zone
+	 * with a search time, and when the tariff model has no search time at all (ParkingSearchTimeCheck fails that run).
+	 */
+	Optional<String> searchTimeWarning(Coverage coverage) {
+		long zones = tariffs.zonesWithSearchTime();
+		if (searchTimeFactor == 0.0 || zones == 0 || coverage.activitiesWithSearchTime() > 0) {
+			return Optional.empty();
+		}
+		return Optional.of("[parking] searchTimeFactor " + searchTimeFactorText + " is configured and "
+				+ (zones == 1 ? "1 zone carries" : zones + " zones carry") + " a search_time_min above 0, but no activity of the"
+				+ " population lies in such a zone: the search time cannot act in this run; were the plans written with the"
+				+ " parkingZone attributes of these zones?");
 	}
 
 	/** Checks every plan of every person and counts the coverage, without logging. */

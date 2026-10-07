@@ -72,23 +72,25 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	private final int minimumStay_s;
 	private final double searchTimeFactor;
 	private final String searchTimeFactorText;
+	private final long zonesWithSearchTime;
 
 	@Inject
 	public ParkingOutcomeReportListener(ParkingOutcomeCounter counter, OutputDirectoryHierarchy output,
-			ParkingConfigGroup parking) {
+			ParkingConfigGroup parking, ParkingTariffs tariffs) {
 		this.counter = counter;
 		this.output = output;
 		this.minimumStayMinutes = parking.minimumStayMinutes();
 		this.minimumStay_s = parking.minimumStay_s();
 		this.searchTimeFactor = parking.searchTimeFactor();
 		this.searchTimeFactorText = parking.getSearchTimeFactor();
+		this.zonesWithSearchTime = tariffs.zonesWithSearchTime();
 	}
 
 	/** Logs the active minimum parked duration (assumption L1) and the active search time factor (lever 4) once. */
 	@Override
 	public void notifyStartup(StartupEvent event) {
 		LOG.info(minimumStaySetting(minimumStayMinutes, minimumStay_s));
-		LOG.info(searchTimeSetting(searchTimeFactor, searchTimeFactorText));
+		LOG.info(searchTimeSetting(searchTimeFactor, searchTimeFactorText, zonesWithSearchTime));
 	}
 
 	@Override
@@ -117,15 +119,24 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		return setting + "every priced car stay lasts at least " + minimumStay_s + " s; the simulated timing is unchanged";
 	}
 
-	/** The startup line of the search time factor; a factor of 0 is the car utility of version 1. */
-	private static String searchTimeSetting(double searchTimeFactor, String searchTimeFactorText) {
-		String setting = "[parking] search time factor " + searchTimeFactorText + " (" + ParkingConfigGroup.GROUP_NAME
-				+ ".searchTimeFactor, lever 4): ";
+	/**
+	 * The startup line of the search time (lever 4): off for a factor of 0 (the car utility of version 1), active in N zones
+	 * for a factor above 0 with N zones that carry a search time, and NOT acting for a factor above 0 without any such zone,
+	 * so the line never reads as active when the term cannot act.
+	 */
+	private static String searchTimeSetting(double searchTimeFactor, String searchTimeFactorText, long zonesWithSearchTime) {
+		String setting = "[parking] search time (lever 4): ";
 		if (searchTimeFactor == 0.0) {
-			return setting + "the car utility carries no parking search time term (version 1)";
+			return setting + "off (searchTimeFactor " + searchTimeFactorText + "); the car utility carries no parking search"
+					+ " time term (version 1)";
 		}
-		return setting + "the car utility of a trip to a destination in a zone adds betaTravelTime_u_min * "
-				+ searchTimeFactorText + " * search_time_min of that zone";
+		if (zonesWithSearchTime == 0) {
+			return setting + "NOT acting, no zone of the tariff model carries a search_time_min above 0 (searchTimeFactor "
+					+ searchTimeFactorText + ")";
+		}
+		return setting + "active in " + zonesWithSearchTime + (zonesWithSearchTime == 1 ? " zone" : " zones")
+				+ " (searchTimeFactor " + searchTimeFactorText + "); the car utility of a trip to a destination in such a zone"
+				+ " adds betaTravelTime_u_min * " + searchTimeFactorText + " * search_time_min of the zone";
 	}
 
 	/** The minimum parked duration line of one iteration: the priced stays it extended, as a count and in percent. */
