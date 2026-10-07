@@ -25,9 +25,13 @@ import java.util.TreeMap;
  * {@code Math.hypot}, exactly as the Python reference {@code garage_options_in_range}, so both implementations compute the
  * same double and agree on the inclusive D_max test. Index: every garage is binned into a square cell of side 2 * D_max by
  * its own coordinates; the options of a destination lie in the cells that the square of half side D_max around it touches
- * (at most 2 x 2 cells, looked up by binary search in a sorted array of primitive cell keys, so a lookup allocates nothing
- * but its result), which are scanned and filtered by the exact distance. The result is ordered by ascending garage id, the
- * order of the sums of the expected cost.
+ * (at most 2 x 2 cells, 3 on an axis within the 1e-6 m search margin of a cell midpoint; looked up by binary search in a
+ * sorted array of primitive cell keys, so a lookup allocates nothing but its result), which are scanned and filtered by the
+ * exact distance. The result is ordered by ascending garage id, the order of the sums of the expected cost.
+ *
+ * <p>A coordinate whose cell index would reach {@code 2^30} (more than about a billion cells from the origin, for example
+ * 1e30 m, a unit mix-up or a wrong CRS) is refused with an {@link IllegalArgumentException}: neither a lookup nor the cell key
+ * can then overflow, and an implausible position is never priced as "no garage in range".
  */
 public final class GarageOptionModel {
 	/** One garage option of a destination: the garage and its straight-line distance in metres. */
@@ -41,6 +45,9 @@ public final class GarageOptionModel {
 	private final double maximumDistanceMeters;
 	/** Margin in metres added around the search square, far above the rounding of a UTM coordinate and far below any tariff. */
 	private static final double SEARCH_MARGIN_M = 1e-6;
+
+	/** Cell indices stay below this bound, so that neither the index loop nor the packed cell key can overflow. */
+	private static final long MAXIMUM_CELL_INDEX = 1L << 30;
 
 	private final double cellSizeMeters;
 	private final long[] cellKeys;
@@ -179,8 +186,15 @@ public final class GarageOptionModel {
 		return Arrays.copyOf(found, count);
 	}
 
+	/** The index of the cell of a coordinate; fails for a coordinate more than {@link #MAXIMUM_CELL_INDEX} cells from 0. */
 	private long cellIndex(double coordinate_m) {
-		return (long) Math.floor(coordinate_m / cellSizeMeters);
+		double cell = Math.floor(coordinate_m / cellSizeMeters);
+		if (!(Math.abs(cell) < MAXIMUM_CELL_INDEX)) {
+			throw new IllegalArgumentException("the coordinate " + coordinate_m + " m lies more than " + MAXIMUM_CELL_INDEX
+					+ " cells of " + cellSizeMeters + " m from the origin, which is no position in EPSG:25832 for these garages:"
+					+ " check the CRS and the units of the activity and garage coordinates");
+		}
+		return (long) cell;
 	}
 
 	private static long cellKey(long cellX, long cellY) {

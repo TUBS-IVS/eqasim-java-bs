@@ -63,19 +63,58 @@ public class GarageOptionModelTest {
 		assertEquals(500.0, model.optionsWithin(580000.0, 5750000.0)[0].distanceMeters(), 0.0);
 	}
 
+	/**
+	 * Four garages in four different cells (cell side 2 * D_max = 2000 m, boundaries at x = 582000 and y = 5750000), around a
+	 * destination on the corner of the four cells. Cell order (x, then y) is g2, g4, g3, g1 and differs from the id order
+	 * g1, g2, g3, g4, so the merge of the cells by garage id is exercised; the input is listed in descending id order.
+	 */
 	@Test
 	public void theOptionsAreOrderedByAscendingGarageIdWhateverTheCellsAndTheInputOrder() {
-		// Garages in four different cells (cell side 1000 m), listed in descending id order.
-		List<GarageTariff> garages = List.of(garage("g4", 580900.0, 5750900.0), garage("g3", 580100.0, 5750900.0),
-				garage("g2", 580900.0, 5750100.0), garage("g1", 580100.0, 5750100.0));
+		List<GarageTariff> garages = List.of(garage("g4", 581700.0, 5750400.0), garage("g3", 582300.0, 5749800.0),
+				garage("g2", 581600.0, 5749700.0), garage("g1", 582400.0, 5750300.0));
 		GarageOptionModel model = new GarageOptionModel(garages, 400.0, MAXIMUM_DISTANCE_M);
-		Option[] options = model.optionsWithin(580500.0, 5750500.0);
+		Option[] options = model.optionsWithin(582000.0, 5750000.0);
 		List<String> ids = new ArrayList<>();
 		for (Option option : options) {
 			ids.add(option.garage().garageId());
 		}
 		assertEquals(List.of("g1", "g2", "g3", "g4"), ids);
 		assertEquals(List.of("g1", "g2", "g3", "g4"), model.garages().stream().map(GarageTariff::garageId).toList());
+		assertEquals(scan(garages, 582000.0, 5750000.0, MAXIMUM_DISTANCE_M), List.of(options));
+	}
+
+	/** Negative coordinates (cells with negative indices, garages on both sides of zero) are indexed like positive ones. */
+	@Test
+	public void negativeCoordinatesAreIndexedLikeThePositiveOnes() {
+		List<GarageTariff> garages = List.of(garage("n1", -100.0, 100.0), garage("n2", 100.0, -100.0),
+				garage("n3", -1900.0, -1900.0), garage("n4", -2100.0, -2100.0), garage("n5", 2500.0, 2500.0));
+		GarageOptionModel model = new GarageOptionModel(garages, 400.0, MAXIMUM_DISTANCE_M);
+		for (double[] destination : new double[][] { { 0.0, 0.0 }, { -2000.0, -2000.0 }, { -1000.0, -1000.0 },
+				{ 1800.0, 1800.0 }, { -2000.5, -1999.5 } }) {
+			assertEquals("destination " + destination[0] + ", " + destination[1],
+					scan(garages, destination[0], destination[1], MAXIMUM_DISTANCE_M),
+					List.of(model.optionsWithin(destination[0], destination[1])));
+		}
+		assertEquals(List.of("n1", "n2"), java.util.Arrays.stream(model.optionsWithin(0.0, 0.0))
+				.map(option -> option.garage().garageId()).toList());
+		assertEquals(List.of("n3", "n4"), java.util.Arrays.stream(model.optionsWithin(-2000.0, -2000.0))
+				.map(option -> option.garage().garageId()).toList());
+	}
+
+	/** A huge finite coordinate must neither loop over overflowing cell indices nor be silently priced: it is refused fast. */
+	@Test(timeout = 10_000)
+	public void aHugeCoordinateIsRefusedInsteadOfOverflowingTheCellIndex() {
+		GarageOptionModel model = new GarageOptionModel(List.of(garage("g", 580000.0, 5750000.0)), 400.0, MAXIMUM_DISTANCE_M);
+		for (double huge : new double[] { 1e30, -1e30, Double.MAX_VALUE, 1e19 }) {
+			IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> model.optionsWithin(huge, 0.0));
+			assertTrue(error.getMessage(), error.getMessage().contains("EPSG:25832"));
+			assertThrows(IllegalArgumentException.class, () -> model.optionsWithin(0.0, huge));
+		}
+		// A garage at an implausible coordinate is refused when the model is built.
+		assertThrows(IllegalArgumentException.class,
+				() -> new GarageOptionModel(List.of(garage("far", 1e30, 0.0)), 400.0, MAXIMUM_DISTANCE_M));
+		// A plausible coordinate is still answered.
+		assertEquals(1, model.optionsWithin(580000.0, 5750000.0).length);
 	}
 
 	@Test
