@@ -21,8 +21,7 @@ import com.google.inject.Singleton;
  * the per-iteration outcome report, the startup check of the plans ({@link ParkingPopulationCheck}), which takes the
  * tariff model and so makes it load when the controller starts, the startup check of the search time factor against the
  * tariff model and the global car parking search penalty ({@link ParkingSearchTimeCheck}) and the parking search time of
- * lever 4
- * ({@link ParkingSearchTime}) with the tariff model and the factor of the module, which the car utility estimator takes.
+ * lever 4 ({@link ParkingSearchTime}) with the tariff model and the factor of the module, which the car utility estimator takes.
  * Without the module BraunschweigModeChoiceModule binds the neutral {@link ParkingSearchTime#none()}.
  *
  * <p>{@link ParkingConfigGroup} is not bound here: MATSim's bootstrap injector already binds every typed config group

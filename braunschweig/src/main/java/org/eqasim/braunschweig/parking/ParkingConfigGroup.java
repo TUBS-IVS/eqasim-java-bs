@@ -146,7 +146,8 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 				"true switches the car cost model to zone-based parking costs (eqasim-bs issue #436); absent/false keeps the"
 						+ " existing car cost model");
 		comments.put("tariffsPath",
-				"parking tariff model JSON (schema 1 or 2) written by the preparation stage (relative to the config file)");
+				"parking tariff model JSON, schema 1, 2 or 3 (the Python pipeline writes 3), written by the preparation stage"
+						+ " (relative to the config file)");
 		comments.put("terminalStayRule",
 				"parking duration at the last activity of a plan; only until_fee_end: the car pays until the fee window of"
 						+ " its arrival day ends (ASSUMPTION T1)");
@@ -156,8 +157,11 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 						+ " L1). Absent: 0, the version 1 pricing");
 		comments.put("searchTimeFactor",
 				"factor (plain decimal in [0, 10]) on the parking search time of the destination zone in the car utility:"
-						+ " betaTravelTime_u_min * factor * search_time_min of the tariff model (lever 4). Absent or 0: no term,"
-						+ " the version 1 utility");
+						+ " betaTravelTime_u_min * factor * search_time_min of the tariff model (lever 4). A destination of"
+						+ " purpose home gets no search time, whatever its zone (rule H1). Absent or 0: no term, the version 1"
+						+ " utility. The run stops at startup (ParkingSearchTimeCheck) when the factor is above 0 and no zone of"
+						+ " the tariff model carries a search_time_min above 0, or when car.constantParkingSearchPenalty_min is"
+						+ " not 0 (the search time would be counted twice)");
 		return comments;
 	}
 
