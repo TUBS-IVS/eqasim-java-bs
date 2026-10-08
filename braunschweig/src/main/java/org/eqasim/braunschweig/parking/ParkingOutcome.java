@@ -44,7 +44,7 @@ public enum ParkingOutcome {
 	/**
 	 * Schema 2 (parking cost zones v2): the garage product was the cheapest the driver can use and costs more than 0 ct
 	 * (assumption P1). A garage stay of 0 ct, for instance outside the garage's own fee window, is FREE_WITHIN_LIMIT.
-	 * Appended at the end of the declaration, so the order of the version 1 outcomes and of the outcome report is unchanged.
+	 * Appended at the end of the declaration, so the row order of the version 1 outcomes in the outcome report is unchanged.
 	 */
 	PAID_GARAGE,
 	/**
@@ -56,8 +56,9 @@ public enum ParkingOutcome {
 	 * Schema 3 (spec Amendment E, ruling R-4d-5): the stay was priced as the probability-weighted mean over the street option
 	 * and at least one garage option within the maximum distance, or over the garage options alone where the street product
 	 * is unavailable ({@link GarageParkingCostCalculator}). The price is the expected cost rounded half up to the cent once.
-	 * Appended at the end, at the position of the Python reference's OUTCOMES, so the declaration order of every earlier
-	 * outcome (part of the report contract) is unchanged.
+	 * Appended at the end, so the row order of the outcome report for the earlier outcomes is unchanged. The declaration
+	 * order is not a contract: it differs from the Python reference's OUTCOMES (NO_ZONE comes first here), and readers of
+	 * the outcome report key its rows by the outcome name (eqasim-bs ADR-0140).
 	 */
 	PAID_EXPECTED
 }
