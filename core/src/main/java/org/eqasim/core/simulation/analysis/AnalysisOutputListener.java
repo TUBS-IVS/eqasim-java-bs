@@ -47,9 +47,15 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 	 * output root keeps the name TRIPS_FILE_NAME.
 	 */
 	public static final String ITERATION_TRIPS_FILE_NAME = "eqasim_trips_iteration.csv";
-	private static final String LEGS_FILE_NAME = "eqasim_legs.csv";
+	/** File name of the eqasim legs table in the output root. */
+	public static final String LEGS_FILE_NAME = "eqasim_legs.csv";
+	/** Per-iteration legs file; must not end with "legs.csv" (MATSim matchInput suffix collision, see ITERATION_TRIPS_FILE_NAME). */
+	public static final String ITERATION_LEGS_FILE_NAME = "eqasim_legs_iteration.csv";
 	private static final String PT_FILE_NAME = "eqasim_pt.csv";
-	private static final String ACTIVITIES_FILE_NAME = "eqasim_activities.csv";
+	/** File name of the eqasim activities table in the output root. */
+	public static final String ACTIVITIES_FILE_NAME = "eqasim_activities.csv";
+	/** Per-iteration activities file; must not end with "activities.csv" (MATSim matchInput suffix collision, see ITERATION_TRIPS_FILE_NAME). */
+	public static final String ITERATION_ACTIVITIES_FILE_NAME = "eqasim_activities_iteration.csv";
 	private static final String TRAVEL_TIMES_FILE_NAME = "eqasim_travel_times.bin";
 
 	private final OutputDirectoryHierarchy outputDirectory;
@@ -129,10 +135,10 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 						.write(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_TRIPS_FILE_NAME, compressionType));
 
 				new LegWriter(legAnalysisListener.getLegItems(), scenarioDistanceUnit, analysisDistanceUnit, delimiter)
-						.write(outputDirectory.getIterationFilename(event.getIteration(), LEGS_FILE_NAME, compressionType));
+						.write(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_LEGS_FILE_NAME, compressionType));
 
 				new ActivityWriter(activityAnalysisListener.getActivityItems(), delimiter)
-						.write(outputDirectory.getIterationFilename(event.getIteration(), ACTIVITIES_FILE_NAME, compressionType));
+						.write(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_ACTIVITIES_FILE_NAME, compressionType));
 
 				new PublicTransportLegWriter(ptAnalysisListener.getTripItems(), delimiter)
 						.write(outputDirectory.getIterationFilename(event.getIteration(), PT_FILE_NAME, compressionType));
@@ -155,12 +161,12 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 		try {
 			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_TRIPS_FILE_NAME, compressionType)).toPath(),
 					new File(outputDirectory.getOutputFilename(TRIPS_FILE_NAME, compressionType)).toPath());
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), LEGS_FILE_NAME, compressionType)).toPath(),
+			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_LEGS_FILE_NAME, compressionType)).toPath(),
 					new File(outputDirectory.getOutputFilename(LEGS_FILE_NAME, compressionType)).toPath());
 			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), PT_FILE_NAME, compressionType)).toPath(),
 					new File(outputDirectory.getOutputFilename(PT_FILE_NAME, compressionType)).toPath());
 			Files.copy(
-					new File(outputDirectory.getIterationFilename(event.getIteration(), ACTIVITIES_FILE_NAME, compressionType)).toPath(),
+					new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_ACTIVITIES_FILE_NAME, compressionType)).toPath(),
 					new File(outputDirectory.getOutputFilename(ACTIVITIES_FILE_NAME, compressionType)).toPath());
 			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), TRAVEL_TIMES_FILE_NAME, compressionType))
 					.toPath(), new File(outputDirectory.getOutputFilename(TRAVEL_TIMES_FILE_NAME, compressionType)).toPath());
