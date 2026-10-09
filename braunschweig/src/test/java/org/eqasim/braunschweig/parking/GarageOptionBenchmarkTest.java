@@ -130,7 +130,8 @@ public class GarageOptionBenchmarkTest {
 		long sum = 0;
 		for (Stay stay : stays) {
 			sum += GarageParkingCostCalculator.cents(zone, stay.arrival_s(), stay.departure_s(), stay.purpose(), false, false,
-					false, model.decayMeters(), () -> model.optionsWithin(stay.x_m(), stay.y_m()), counters).cents();
+					false, model.decayMeters(), model.commuteDecayMeters(), () -> model.optionsWithin(stay.x_m(), stay.y_m()),
+					counters).cents();
 		}
 		return sum;
 	}
@@ -166,8 +167,8 @@ public class GarageOptionBenchmarkTest {
 		List<Stay> regional = stays(random, garages, false);
 		List<Stay> dense = stays(random, garages, true);
 		ZoneTariff zone = streetZone();
-		GarageOptionModel off = new GarageOptionModel(garages, 0.0, 1000.0);
-		GarageOptionModel on = new GarageOptionModel(garages, 400.0, 1000.0);
+		GarageOptionModel off = new GarageOptionModel(garages, 0.0, 0.0, 1000.0);
+		GarageOptionModel on = new GarageOptionModel(garages, 400.0, 400.0, 1000.0);
 
 		assertEquals(schemaTwoPass(zone, regional), garagePass(zone, regional, off, null));
 		assertEquals(schemaTwoPass(zone, dense), garagePass(zone, dense, off, null));

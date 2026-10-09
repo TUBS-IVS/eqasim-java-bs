@@ -58,8 +58,11 @@ import com.google.inject.Inject;
  * end of its activity has a stay of length 0, which the tariff rules alone price as free. The minimum is applied before
  * every tariff rule and changes the price only: the plan and the simulated timing stay as they are.
  *
- * <p>Garage options (spec Amendment E of parking cost zones v2): with a tariff model of schema 3 whose
- * {@code garage_decay_m} is above 0, a stay in a street or resident zone that passes the early rules is priced by
+ * <p>Garage options (spec Amendments E and H of parking cost zones v2): with a tariff model of schema 3 or 4 whose
+ * {@code garage_decay_m} or {@code garage_decay_commute_m} is above 0 (the latter governs the purposes work and education,
+ * the former every other purpose, {@link GarageParkingCostCalculator#decayMetersForPurpose}; a schema-3 model has one decay
+ * for every purpose), a stay with a purpose whose decay is above 0 in a street or resident zone that passes the early rules
+ * is priced by
  * {@link GarageParkingCostCalculator} as the probability-weighted mean over the street and the priced garages within the
  * maximum distance of the activity coordinate (EPSG:25832; no new plan attribute, outcome PAID_EXPECTED); every other stay,
  * and every stay of a model with the options off, is priced by {@link ParkingCostCalculator} as before. The garages are found
@@ -169,7 +172,7 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 				minimumStay_s);
 		boolean extendedByMinimumStay = pricedDeparture_s > stay.departure_s();
 		if (!garageOptions.isActive()) {
-			// Garage options off (schema 1 or 2 model, or garage_decay_m 0): the zone products price the stay, no option code
+			// Garage options off (schema 1 or 2 model, or both decays 0): the zone products price the stay, no option code
 			// runs.
 			ParkingCostCalculator.Result result = ParkingCostCalculator.cents(tariff, stay.arrival_s(), pricedDeparture_s,
 					destination.getType(), parkingFree, residentOfZone, residentOfDistrict);
@@ -177,7 +180,8 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		}
 		GarageParkingCostCalculator.Result priced = GarageParkingCostCalculator.cents(tariff, stay.arrival_s(),
 				pricedDeparture_s, destination.getType(), parkingFree, residentOfZone, residentOfDistrict,
-				garageOptions.decayMeters(), () -> garageOptionsOf(person, destination), counter.garageOptionCounters());
+				garageOptions.decayMeters(), garageOptions.commuteDecayMeters(), () -> garageOptionsOf(person, destination),
+				counter.garageOptionCounters());
 		return new ParkingPrice(new ParkingCostCalculator.Result(priced.cents(), priced.outcome()), zoneId,
 				extendedByMinimumStay, priced.garageProbability(), priced.garagesInRange());
 	}
@@ -193,8 +197,10 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		if (coord == null) {
 			throw new IllegalStateException("person " + person.getId() + ": activity " + destination.getType()
 					+ " has no coordinate, which the garage options of the tariff model " + tariffsPath
-					+ " (garage_decay_m " + garageOptions.decayMeters() + " m) need to find the garages within "
-					+ garageOptions.maximumDistanceMeters() + " m; set garage_decay_m to 0 to switch the garage options off");
+					+ " (garage_decay_m " + garageOptions.decayMeters() + " m, garage_decay_commute_m "
+					+ garageOptions.commuteDecayMeters() + " m) need to find the garages within "
+					+ garageOptions.maximumDistanceMeters() + " m; set garage_decay_m and garage_decay_commute_m to 0 to switch"
+					+ " the garage options off");
 		}
 		return garageOptions.optionsWithin(coord.getX(), coord.getY());
 	}

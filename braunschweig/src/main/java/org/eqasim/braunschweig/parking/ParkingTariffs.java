@@ -28,11 +28,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Immutable parking tariff model read from the JSON contract of design "parking cost zones", section 5.4, written by the
- * eqasim-bs preparation stage: schema 3 (spec Amendment E of parking cost zones v2, eqasim-bs issue #436: the top-level
- * list {@code garages} with their tariffs, the decay length {@code garage_decay_m} and the maximum distance
- * {@code garage_max_distance_m} of the distance-weighted garage options), schema 2 (garage and commuter products of a zone,
- * the parking search time, the resident permit flag and the list of resident districts) and, unchanged, schema 1 of
- * version 1. Schema 3 adds only the three document keys; its zone entries are those of schema 2. Money in euro cents,
+ * eqasim-bs preparation stage: schema 4 (spec Amendment H of parking cost zones v2, eqasim-bs issue #436: schema 3 plus the
+ * document key {@code garage_decay_commute_m}, the decay length lambda_c of the commuter purposes work and education),
+ * schema 3 (spec Amendment E: the top-level list {@code garages} with their tariffs, the decay length
+ * {@code garage_decay_m} and the maximum distance {@code garage_max_distance_m} of the distance-weighted garage options),
+ * schema 2 (garage and commuter products of a zone, the parking search time, the resident permit flag and the list of
+ * resident districts) and, unchanged, schema 1 of version 1. Schema 3 adds only the three document keys to schema 2 and
+ * schema 4 only the commuter decay to schema 3; the zone entries are those of schema 2 throughout. Money in euro cents,
  * durations in minutes, fee windows in seconds after midnight of the simulated weekday; the class holds no tariff constants
  * of its own.
  *
@@ -44,10 +46,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * that would be truncated, never a string); an unknown zone type or a zone that violates the rules of {@link ZoneTariff}
  * (aligned with the Python reference that writes the model) fails. Error messages name the zone id and the field.
  *
- * <p>A schema-3 model with {@code garage_decay_m} above 0 and no garage fails at read time (the garage options would be on
- * and have nothing to offer); {@code garage_decay_m} 0 switches the garage options off and the model prices as schema 2
- * ({@link #garageOptions()} is then inactive). A schema-1 or schema-2 model lists no garage, has the decay 0 and prices
- * exactly as before.
+ * <p>A schema-3 or schema-4 model with {@code garage_decay_m} or {@code garage_decay_commute_m} above 0 and no garage fails at
+ * read time (the garage options would be on and have nothing to offer); both decays 0 switch the garage options off and the
+ * model prices as schema 2 ({@link #garageOptions()} is then inactive). The options act for a purpose iff the decay that
+ * governs it is above 0: {@code garage_decay_commute_m} for work and education, {@code garage_decay_m} for every other
+ * purpose (spec Amendment H1). A schema-3 file has no commuter decay and always priced one decay length for every purpose, so
+ * the reader sets {@link #garageCommuteDecayMeters()} of a schema-3 model to its {@code garage_decay_m} (spec Amendment H4,
+ * the Python reference {@code garage_decays_from_model}); a schema-4 file without {@code garage_decay_commute_m} is refused,
+ * the commuter decay is never defaulted. A schema-1 or schema-2 model lists no garage, has both decays 0 and prices exactly
+ * as before.
  *
  * <p>A schema-1 model prices exactly as under version 1: its zones have no garage, no commuter product and no search
  * time, and carry the default of their zone type for the permit flag (ASSUMPTION R2-a: true for a street or resident
@@ -58,13 +65,16 @@ public final class ParkingTariffs {
 	private static final Logger LOG = LogManager.getLogger(ParkingTariffs.class);
 
 	/** The newest JSON contract version this reader accepts: the one the current preparation stage writes. */
-	public static final int SCHEMA_VERSION = 3;
+	public static final int SCHEMA_VERSION = 4;
 
 	/**
 	 * Every JSON contract version this reader accepts: schema 2 is schema 1 plus optional fields and the district list,
-	 * schema 3 is schema 2 plus the garages and the two garage parameters.
+	 * schema 3 is schema 2 plus the garages and the two garage parameters, schema 4 is schema 3 plus the commuter decay.
 	 */
-	public static final List<Integer> SUPPORTED_SCHEMA_VERSIONS = List.of(1, 2, 3);
+	public static final List<Integer> SUPPORTED_SCHEMA_VERSIONS = List.of(1, 2, 3, 4);
+
+	/** The first schema version whose document carries {@code garage_decay_commute_m}. */
+	private static final int COMMUTER_DECAY_SCHEMA_VERSION = 4;
 
 	/** D_max of a model without the key (schema 1 and 2): irrelevant there, the garage options are off; ASSUMPTION G2. */
 	public static final double DEFAULT_GARAGE_MAX_DISTANCE_M = 1000.0;
@@ -106,6 +116,10 @@ public final class ParkingTariffs {
 	/** Schema 3 adds the garages and the two parameters of the garage options (spec Amendment E6) to the document. */
 	private static final List<String> SCHEMA_3_DOCUMENT_FIELDS = concat(SCHEMA_2_DOCUMENT_FIELDS,
 			List.of("garages", "garage_decay_m", "garage_max_distance_m"));
+
+	/** Schema 4 adds the decay length of the commuter purposes (spec Amendment H4) to the document. */
+	private static final List<String> SCHEMA_4_DOCUMENT_FIELDS = concat(SCHEMA_3_DOCUMENT_FIELDS,
+			List.of("garage_decay_commute_m"));
 
 	/** The exact keys of one entry of {@code garages}: braunschweig.parking.cost.GARAGE_FIELDS_JSON. */
 	private static final List<String> GARAGE_FIELDS = List.of("garage_id", "x_m", "y_m", "hourly_rate_cents",
@@ -181,8 +195,8 @@ public final class ParkingTariffs {
 		}
 		residentDistrictsById = Collections.unmodifiableSortedMap(districtsById);
 		zonesById = zones(root.get("zones"), schemaVersion);
-		garageOptions = schemaVersion == 3 ? readGarageOptions(root)
-				: new GarageOptionModel(List.of(), 0.0, DEFAULT_GARAGE_MAX_DISTANCE_M);
+		garageOptions = schemaVersion >= 3 ? readGarageOptions(root, schemaVersion)
+				: new GarageOptionModel(List.of(), 0.0, 0.0, DEFAULT_GARAGE_MAX_DISTANCE_M);
 		warnAboutSupersededZoneGarages();
 	}
 
@@ -190,7 +204,8 @@ public final class ParkingTariffs {
 		return switch (schemaVersion) {
 		case 1 -> SCHEMA_1_DOCUMENT_FIELDS;
 		case 2 -> SCHEMA_2_DOCUMENT_FIELDS;
-		default -> SCHEMA_3_DOCUMENT_FIELDS;
+		case 3 -> SCHEMA_3_DOCUMENT_FIELDS;
+		default -> SCHEMA_4_DOCUMENT_FIELDS;
 		};
 	}
 
@@ -328,8 +343,9 @@ public final class ParkingTariffs {
 	}
 
 	/**
-	 * The garages of a schema-3 model with the decay length lambda and the maximum distance D_max (spec Amendment E): the
-	 * model of the distance-weighted garage options, inactive for a schema-1 or schema-2 model and for a decay of 0.
+	 * The garages of a schema-3 or schema-4 model with the decay lengths lambda and lambda_c and the maximum distance D_max
+	 * (spec Amendments E and H): the model of the distance-weighted garage options, inactive for a schema-1 or schema-2 model
+	 * and for both decays 0.
 	 */
 	public GarageOptionModel garageOptions() {
 		return garageOptions;
@@ -340,9 +356,21 @@ public final class ParkingTariffs {
 		return garageOptions.garages();
 	}
 
-	/** The decay length lambda {@code garage_decay_m} in metres; 0 for a model without garage options. */
+	/**
+	 * The decay length lambda {@code garage_decay_m} in metres of every purpose but work and education; 0 for a model without
+	 * garage options.
+	 */
 	public double garageDecayMeters() {
 		return garageOptions.decayMeters();
+	}
+
+	/**
+	 * The decay length lambda_c {@code garage_decay_commute_m} in metres of the commuter purposes work and education; 0 for a
+	 * model without garage options. For a schema-3 model, which has no such key, it equals {@link #garageDecayMeters()}: schema
+	 * 3 always priced one decay length for every purpose (spec Amendment H4).
+	 */
+	public double garageCommuteDecayMeters() {
+		return garageOptions.commuteDecayMeters();
 	}
 
 	/** The maximum garage distance D_max {@code garage_max_distance_m} in metres. */
@@ -350,15 +378,31 @@ public final class ParkingTariffs {
 		return garageOptions.maximumDistanceMeters();
 	}
 
-	/** One line that says whether the garage options act, with the garage count, lambda and D_max. */
+	/**
+	 * One line that says whether the garage options act, with the garage count, both decay lengths (lambda for every purpose
+	 * but work and education, lambda_c for work and education) and D_max; it says which purposes have no garage options when
+	 * one decay is 0, and that a schema-3 model has one decay for every purpose.
+	 */
 	String garageOptionsSetting() {
+		String decays = "garage_decay_m " + garageOptions.decayMeters() + " m (every purpose but work and education),"
+				+ " garage_decay_commute_m " + garageOptions.commuteDecayMeters() + " m (work and education)";
 		if (garageOptions.isActive()) {
-			return "ON, " + garageOptions.garages().size() + " garage(s), garage_decay_m " + garageOptions.decayMeters()
-					+ " m, garage_max_distance_m " + garageOptions.maximumDistanceMeters() + " m (schema " + schemaVersion
-					+ ")";
+			String setting = "ON, " + garageOptions.garages().size() + " garage(s), " + decays + ", garage_max_distance_m "
+					+ garageOptions.maximumDistanceMeters() + " m (schema " + schemaVersion;
+			if (schemaVersion < COMMUTER_DECAY_SCHEMA_VERSION) {
+				setting += ": no commuter decay in this schema, garage_decay_m governs every purpose";
+			}
+			setting += ")";
+			if (garageOptions.decayMeters() == 0.0) {
+				setting += "; NO garage options for every purpose but work and education";
+			}
+			if (garageOptions.commuteDecayMeters() == 0.0) {
+				setting += "; NO garage options for work and education";
+			}
+			return setting;
 		}
-		return "OFF, " + garageOptions.garages().size() + " garage(s) listed, garage_decay_m " + garageOptions.decayMeters()
-				+ " m (schema " + schemaVersion + "); stays are priced by the zone products only";
+		return "OFF, " + garageOptions.garages().size() + " garage(s) listed, " + decays + " (schema " + schemaVersion
+				+ "); stays are priced by the zone products only";
 	}
 
 	/**
@@ -372,10 +416,10 @@ public final class ParkingTariffs {
 		List<String> zonesWithGarageFamily = zonesById.values().stream().filter(ZoneTariff::hasGarage)
 				.map(ZoneTariff::zoneId).toList();
 		if (!zonesWithGarageFamily.isEmpty()) {
-			LOG.warn("[parking] {} of {} zone(s) carry zone-level garage columns ({}) while garage_decay_m is {}: with garage"
-					+ " options the zone-level garage family is superseded (spec Amendment E8) and priced by the garage options"
-					+ " only", zonesWithGarageFamily.size(), zonesById.size(), zonesWithGarageFamily,
-					garageOptions.decayMeters());
+			LOG.warn("[parking] {} of {} zone(s) carry zone-level garage columns ({}) while garage_decay_m is {} and"
+					+ " garage_decay_commute_m {}: with garage options the zone-level garage family is superseded (spec Amendment"
+					+ " E8) and priced by the garage options only", zonesWithGarageFamily.size(), zonesById.size(),
+					zonesWithGarageFamily, garageOptions.decayMeters(), garageOptions.commuteDecayMeters());
 		}
 	}
 
@@ -398,8 +442,12 @@ public final class ParkingTariffs {
 		return Collections.unmodifiableSortedMap(zones);
 	}
 
-	/** The garages, the decay length and D_max of a schema-3 document (spec Amendment E6), as one validated model. */
-	private static GarageOptionModel readGarageOptions(JsonNode root) {
+	/**
+	 * The garages, the decay lengths and D_max of a schema-3 or schema-4 document (spec Amendments E6 and H4), as one validated
+	 * model. A schema-3 document has no {@code garage_decay_commute_m} (the key set was checked before): its commuter decay is
+	 * {@code garage_decay_m}, as schema 3 always priced.
+	 */
+	private static GarageOptionModel readGarageOptions(JsonNode root, int schemaVersion) {
 		JsonNode garagesNode = root.get("garages");
 		if (!garagesNode.isArray()) {
 			throw fail("garages must be an array of garages, got " + garagesNode);
@@ -409,9 +457,12 @@ public final class ParkingTariffs {
 			garages.add(parseGarage(entry));
 		}
 		double decayMeters = finiteNumber(root.get("garage_decay_m"), "garage_decay_m");
+		double commuteDecayMeters = schemaVersion >= COMMUTER_DECAY_SCHEMA_VERSION
+				? finiteNumber(root.get("garage_decay_commute_m"), "garage_decay_commute_m")
+				: decayMeters;
 		double maximumDistanceMeters = finiteNumber(root.get("garage_max_distance_m"), "garage_max_distance_m");
 		try {
-			return new GarageOptionModel(garages, decayMeters, maximumDistanceMeters);
+			return new GarageOptionModel(garages, decayMeters, commuteDecayMeters, maximumDistanceMeters);
 		} catch (IllegalArgumentException error) {
 			throw fail(error.getMessage());
 		}

@@ -32,9 +32,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Reading the parking tariff model JSON (design section 5.4; schema 1 of version 1, schema 2 of the v2 levers and the
- * resident districts, schema 3 of the garage options of spec Amendment E). The rejection cases mutate the parsed fixture
+ * resident districts, schema 3 of the garage options of spec Amendment E, schema 4 of the separate commuter decay length of
+ * spec Amendment H). The rejection cases mutate the parsed fixture
  * tree, so they hold for any formatting of {@code parking/parking_tariffs_fixture.json}, a byte-for-byte copy of the
- * schema-3 model
+ * schema-4 model
  * scripts/export_parking_golden_cases.py writes (eqasim-bs tests/fixtures/parking), and of
  * {@code parking/parking_tariffs_fixture_schema1.json}, the schema-1 model of version 1, which the reader must keep
  * accepting. Only facts of the fixture tariff table are pinned, not the exporter's metadata (assumption texts, sources).
@@ -96,7 +97,7 @@ public class ParkingTariffsTest {
 	@Test
 	public void readsTheFixtureTariffModel() throws Exception {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
-		assertEquals(3, tariffs.schemaVersion());
+		assertEquals(4, tariffs.schemaVersion());
 		assertEquals(Set.of("fx_bs_ia", "fx_bs_ib", "fx_sz", "fx_wob", "fx_pe", "fx_res_a", "fx_campus", "fx_frac",
 				"fx_bs_ia_v2", "fx_bs_ib_v2", "fx_wob_v2", "fx_campus_v2", "fx_garage_window_v2", "fx_capped_street_v2",
 				"fx_campus_tie_v2", "fx_res_garage_v2", "fx_bga_v2", "fx_res_nopermit_v2"), tariffs.zones());
@@ -248,12 +249,12 @@ public class ParkingTariffsTest {
 		assertThrows(UnsupportedOperationException.class, () -> tariffs.sources().clear());
 	}
 
-	/** Schema 1 and schema 2 are accepted; any other version, and any non-integral one, fails with the version. */
+	/** Schema 1 to 4 are accepted; any other version, and any non-integral one, fails with the version. */
 	@Test
 	public void rejectsAnotherSchemaVersion() throws Exception {
-		assertRejected(root -> root.put("schema_version", 4), "schema_version must be one of [1, 2, 3], got 4");
-		assertRejected(root -> root.put("schema_version", 0), "schema_version must be one of [1, 2, 3], got 0");
-		assertRejected(root -> root.put("schema_version", -1), "schema_version must be one of [1, 2, 3], got -1");
+		assertRejected(root -> root.put("schema_version", 5), "schema_version must be one of [1, 2, 3, 4], got 5");
+		assertRejected(root -> root.put("schema_version", 0), "schema_version must be one of [1, 2, 3, 4], got 0");
+		assertRejected(root -> root.put("schema_version", -1), "schema_version must be one of [1, 2, 3, 4], got -1");
 		assertRejected(root -> root.put("schema_version", 1.5), "schema_version", "integral");
 		assertRejected(root -> root.put("schema_version", "2"), "schema_version", "integral");
 		assertRejected(root -> root.putNull("schema_version"), "schema_version", "integral");
@@ -265,14 +266,14 @@ public class ParkingTariffsTest {
 	 */
 	@Test
 	public void checksTheSchemaVersionBeforeTheDocumentFields() throws Exception {
-		ObjectNode schema4 = fixtureTree();
-		schema4.put("schema_version", 4);
-		schema4.remove("weekday_only");
-		schema4.remove("resident_districts");
-		schema4.put("service_days", "weekday");
-		zone(schema4, "fx_sz").remove("garage_daily_cap_cents");
-		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(schema4));
-		assertEquals("parking_tariffs: schema_version must be one of [1, 2, 3], got 4", error.getMessage());
+		ObjectNode schema5 = fixtureTree();
+		schema5.put("schema_version", 5);
+		schema5.remove("weekday_only");
+		schema5.remove("resident_districts");
+		schema5.put("service_days", "weekday");
+		zone(schema5, "fx_sz").remove("garage_daily_cap_cents");
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(schema5));
+		assertEquals("parking_tariffs: schema_version must be one of [1, 2, 3, 4], got 5", error.getMessage());
 
 		ObjectNode unversioned = fixtureTree();
 		unversioned.remove("schema_version");
@@ -283,26 +284,34 @@ public class ParkingTariffsTest {
 	/** After the version, the key set of THAT version is checked: schema 1 has no district list and no schema-2 zone keys. */
 	@Test
 	public void checksTheKeySetOfTheVersionTheDocumentDeclares() throws Exception {
-		// A schema-3 document declaring schema 1 has the keys of schemas 2 and 3 too many.
+		// A schema-4 document declaring schema 1 has the keys of schemas 2 to 4 too many.
 		assertRejected(root -> root.put("schema_version", 1), "must have exactly the schema-1 fields",
-				"unknown [garage_decay_m, garage_max_distance_m, garages, resident_districts]");
-		// A schema-3 document declaring schema 2 has the three garage keys too many.
+				"unknown [garage_decay_commute_m, garage_decay_m, garage_max_distance_m, garages, resident_districts]");
+		// A schema-4 document declaring schema 2 has the four garage keys too many.
 		assertRejected(root -> root.put("schema_version", 2), "must have exactly the schema-2 fields",
-				"unknown [garage_decay_m, garage_max_distance_m, garages]");
-		// A schema-2 document (the schema-3 fixture without the garage keys) declaring schema 3 lacks them.
+				"unknown [garage_decay_commute_m, garage_decay_m, garage_max_distance_m, garages]");
+		// A schema-4 document declaring schema 3 has the commuter decay too many (a schema-3 file has none, spec H4).
+		assertRejected(root -> root.put("schema_version", 3), "must have exactly the schema-3 fields",
+				"unknown [garage_decay_commute_m]");
+		// A schema-2 document (the schema-4 fixture without the garage keys) declaring schema 3 lacks them.
 		assertRejected(root -> {
 			removeGarageKeys(root);
 			root.put("schema_version", 3);
 		}, "must have exactly the schema-3 fields", "missing [garage_decay_m, garage_max_distance_m, garages]");
+		// A schema-3 document declaring schema 4 lacks the commuter decay, which is never defaulted.
+		assertRejected(root -> {
+			root.remove("garage_decay_commute_m");
+			root.put("schema_version", 4);
+		}, "must have exactly the schema-4 fields", "missing [garage_decay_commute_m]");
 		// A schema-1 document declaring schema 2 lacks the district list.
 		ObjectNode schemaOne = schemaOneTree();
 		assertRejected(schemaOne, root -> root.put("schema_version", 2), "must have exactly the schema-2 fields",
 				"missing [resident_districts]");
-		// A schema-1 zone has none of the ten schema-2 keys; a schema-2 or schema-3 zone has all of them.
+		// A schema-1 zone has none of the ten schema-2 keys; a zone of schema 2 to 4 has all of them.
 		assertRejected(schemaOneTree(), root -> zone(root, "fx_sz").put("search_time_min", 5), "zone fx_sz",
 				"must have exactly the schema-1 fields", "unknown [search_time_min]");
 		assertRejected(root -> zone(root, "fx_sz").remove("search_time_min"), "zone fx_sz",
-				"must have exactly the schema-3 fields", "missing [search_time_min]");
+				"must have exactly the schema-4 fields", "missing [search_time_min]");
 		assertRejected(root -> zone(root, "fx_sz").remove("resident_permits_valid"), "zone fx_sz",
 				"missing [resident_permits_valid]");
 		assertRejected(root -> root.remove("resident_districts"), "missing [resident_districts]");
@@ -744,12 +753,12 @@ public class ParkingTariffsTest {
 	@Test
 	public void readNamesTheFileOfAnInvalidModel() throws Exception {
 		ObjectNode root = fixtureTree();
-		root.put("schema_version", 4);
-		Path file = temporary.newFile("parking_tariffs_schema_4.json").toPath();
+		root.put("schema_version", 5);
+		Path file = temporary.newFile("parking_tariffs_schema_5.json").toPath();
 		MAPPER.writeValue(file.toFile(), root);
 		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.read(file));
-		assertTrue(error.getMessage(), error.getMessage().contains("parking_tariffs_schema_4.json"));
-		assertTrue(error.getMessage(), error.getMessage().contains("schema_version must be one of [1, 2, 3], got 4"));
+		assertTrue(error.getMessage(), error.getMessage().contains("parking_tariffs_schema_5.json"));
+		assertTrue(error.getMessage(), error.getMessage().contains("schema_version must be one of [1, 2, 3, 4], got 5"));
 	}
 
 	/**
@@ -770,7 +779,7 @@ public class ParkingTariffsTest {
 		assertTrue(tariffs.zone("fx_wob_v2").orElseThrow().hasSearchTime());
 		assertFalse(tariffs.zone("fx_sz").orElseThrow().hasSearchTime());
 		List<String> info = ParkingLogCapture.messages(events, Level.INFO);
-		// One line for the model and one for the garage options of schema 3.
+		// One line for the model and one for the garage options.
 		assertEquals(info.toString(), 2, info.size());
 		assertTrue(info.get(0), info.get(0).contains("3 zone(s) with a search time"));
 		assertTrue(info.get(1), info.get(1).contains("garage options"));
@@ -786,6 +795,7 @@ public class ParkingTariffsTest {
 	private static void removeGarageKeys(ObjectNode root) {
 		root.remove("garages");
 		root.remove("garage_decay_m");
+		root.remove("garage_decay_commute_m");
 		root.remove("garage_max_distance_m");
 	}
 
@@ -798,14 +808,19 @@ public class ParkingTariffsTest {
 		throw new AssertionError("fixture garage " + garageId + " is missing");
 	}
 
-	// ------------------------------------------------------------------------------------------ schema 3: garages
+	// ------------------------------------------------------------------------------------ schema 3 and 4: garages
 
-	/** The 19 fixture garages, the decay length lambda and D_max, field by field for one garage of every structure. */
+	/**
+	 * The 19 fixture garages, the two decay lengths lambda and lambda_c and D_max, field by field for one garage of every
+	 * structure.
+	 */
 	@Test
-	public void readsTheGaragesOfTheSchemaThreeFixture() throws Exception {
+	public void readsTheGaragesOfTheSchemaFourFixture() throws Exception {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
-		assertEquals(3, tariffs.schemaVersion());
+		assertEquals(4, tariffs.schemaVersion());
 		assertEquals(400.0, tariffs.garageDecayMeters(), 0.0);
+		assertEquals(250.0, tariffs.garageCommuteDecayMeters(), 0.0);
+		assertEquals(250.0, tariffs.garageOptions().commuteDecayMeters(), 0.0);
 		assertEquals(1000.0, tariffs.garageMaximumDistanceMeters(), 0.0);
 		assertTrue(tariffs.garageOptions().isActive());
 		assertEquals(19, tariffs.garages().size());
@@ -866,7 +881,7 @@ public class ParkingTariffsTest {
 				.orElseThrow(() -> new AssertionError("fixture garage " + garageId + " is missing"));
 	}
 
-	/** Schema 2 is the schema-3 fixture without the garage keys: no garage, decay 0, the garage options off. */
+	/** Schema 2 is the schema-4 fixture without the garage keys: no garage, both decays 0, the garage options off. */
 	@Test
 	public void aSchemaTwoModelHasNoGarageOptionsAndPricesAsBefore() throws Exception {
 		ObjectNode root = fixtureTree();
@@ -876,35 +891,122 @@ public class ParkingTariffsTest {
 		assertEquals(2, schemaTwo.schemaVersion());
 		assertTrue(schemaTwo.garages().isEmpty());
 		assertEquals(0.0, schemaTwo.garageDecayMeters(), 0.0);
+		assertEquals(0.0, schemaTwo.garageCommuteDecayMeters(), 0.0);
 		assertFalse(schemaTwo.garageOptions().isActive());
-		ParkingTariffs schemaThree = ParkingTariffs.read(fixturePath());
-		assertEquals(schemaThree.zones(), schemaTwo.zones());
+		ParkingTariffs schemaFour = ParkingTariffs.read(fixturePath());
+		assertEquals(schemaFour.zones(), schemaTwo.zones());
 		for (String zoneId : schemaTwo.zones()) {
-			assertEquals(zoneId, schemaThree.zone(zoneId).orElseThrow(), schemaTwo.zone(zoneId).orElseThrow());
+			assertEquals(zoneId, schemaFour.zone(zoneId).orElseThrow(), schemaTwo.zone(zoneId).orElseThrow());
 		}
 		ParkingTariffs schemaOne = ParkingTariffs.read(resourcePath(SCHEMA_1_RESOURCE));
 		assertTrue(schemaOne.garages().isEmpty());
+		assertEquals(0.0, schemaOne.garageCommuteDecayMeters(), 0.0);
 		assertFalse(schemaOne.garageOptions().isActive());
 	}
 
-	/** Decay 0 switches the garage options off (the sensitivity arm): garages listed or not, no option code runs. */
+	/** Both decays 0 switch the garage options off (the sensitivity arm): garages listed or not, no option code runs. */
 	@Test
-	public void aDecayOfZeroSwitchesTheGarageOptionsOff() throws Exception {
-		ParkingTariffs withGarages = assertAccepted(root -> root.put("garage_decay_m", 0.0));
+	public void bothDecaysOfZeroSwitchTheGarageOptionsOff() throws Exception {
+		ParkingTariffs withGarages = assertAccepted(root -> {
+			root.put("garage_decay_m", 0.0);
+			root.put("garage_decay_commute_m", 0.0);
+		});
 		assertEquals(19, withGarages.garages().size());
 		assertFalse(withGarages.garageOptions().isActive());
 		assertTrue(withGarages.garageOptionsSetting(), withGarages.garageOptionsSetting().startsWith("OFF"));
+		assertTrue(withGarages.garageOptionsSetting(), withGarages.garageOptionsSetting().contains("garage_decay_m 0.0 m"));
+		assertTrue(withGarages.garageOptionsSetting(),
+				withGarages.garageOptionsSetting().contains("garage_decay_commute_m 0.0 m"));
 		ParkingTariffs withoutGarages = assertAccepted(root -> {
 			root.put("garage_decay_m", 0);
+			root.put("garage_decay_commute_m", 0);
 			root.putArray("garages");
 		});
 		assertTrue(withoutGarages.garages().isEmpty());
 		assertFalse(withoutGarages.garageOptions().isActive());
 	}
 
+	/** Spec Amendment H1: the options act for a purpose iff its decay is above 0, so ONE decay above 0 keeps the model on. */
+	@Test
+	public void aModelIsOnWhenEitherDecayIsAboveZero() throws Exception {
+		ParkingTariffs commuterOff = assertAccepted(root -> root.put("garage_decay_commute_m", 0.0));
+		assertTrue(commuterOff.garageOptions().isActive());
+		assertEquals(400.0, commuterOff.garageDecayMeters(), 0.0);
+		assertEquals(0.0, commuterOff.garageCommuteDecayMeters(), 0.0);
+		assertTrue(commuterOff.garageOptionsSetting(), commuterOff.garageOptionsSetting().startsWith("ON"));
+		ParkingTariffs visitorsOff = assertAccepted(root -> root.put("garage_decay_m", 0.0));
+		assertTrue(visitorsOff.garageOptions().isActive());
+		assertEquals(0.0, visitorsOff.garageDecayMeters(), 0.0);
+		assertEquals(250.0, visitorsOff.garageCommuteDecayMeters(), 0.0);
+		assertTrue(visitorsOff.garageOptionsSetting(), visitorsOff.garageOptionsSetting().startsWith("ON"));
+	}
+
+	/** The startup line names both decay lengths, in the ON and in the OFF state. */
+	@Test
+	public void theGarageOptionsSettingNamesBothDecayLengths() throws Exception {
+		String on = ParkingTariffs.read(fixturePath()).garageOptionsSetting();
+		assertTrue(on, on.startsWith("ON, 19 garage(s)"));
+		assertTrue(on, on.contains("garage_decay_m 400.0 m"));
+		assertTrue(on, on.contains("garage_decay_commute_m 250.0 m"));
+		assertTrue(on, on.contains("garage_max_distance_m 1000.0 m"));
+		assertTrue(on, on.contains("schema 4"));
+	}
+
+	/**
+	 * Spec Amendment H4: a schema-3 file has no commuter decay and prices as schema 3 always did, one decay length for every
+	 * purpose: the reader sets the commuter decay to garage_decay_m, and the startup line says so.
+	 */
+	@Test
+	public void aSchemaThreeModelPricesEveryPurposeWithTheDecayOfTheFile() throws Exception {
+		ParkingTariffs schemaThree = assertAccepted(root -> {
+			root.remove("garage_decay_commute_m");
+			root.put("schema_version", 3);
+		});
+		assertEquals(3, schemaThree.schemaVersion());
+		assertEquals(400.0, schemaThree.garageDecayMeters(), 0.0);
+		assertEquals(400.0, schemaThree.garageCommuteDecayMeters(), 0.0);
+		assertEquals(19, schemaThree.garages().size());
+		assertTrue(schemaThree.garageOptions().isActive());
+		String setting = schemaThree.garageOptionsSetting();
+		assertTrue(setting, setting.contains("garage_decay_commute_m 400.0 m"));
+		assertTrue(setting, setting.contains("schema 3"));
+		assertTrue(setting, setting.contains("no commuter decay"));
+		ParkingTariffs off = assertAccepted(root -> {
+			root.remove("garage_decay_commute_m");
+			root.put("schema_version", 3);
+			root.put("garage_decay_m", 0.0);
+		});
+		assertFalse(off.garageOptions().isActive());
+		assertEquals(0.0, off.garageCommuteDecayMeters(), 0.0);
+		// The schema-3 zones are those of schema 4.
+		assertEquals(ParkingTariffs.read(fixturePath()).zones(), schemaThree.zones());
+	}
+
+	/** A schema-3 file with the schema-4 key, and a schema-4 file without it, are refused (exact key sets per schema). */
+	@Test
+	public void theCommuterDecayKeyIsExactlyTheKeyOfSchemaFour() throws Exception {
+		assertRejected(root -> {
+			root.remove("garage_decay_commute_m");
+			root.put("schema_version", 3);
+			root.put("garage_decay_commute_m", 250.0);
+		}, "must have exactly the schema-3 fields", "unknown [garage_decay_commute_m]");
+		assertRejected(root -> root.remove("garage_decay_commute_m"), "must have exactly the schema-4 fields",
+				"missing [garage_decay_commute_m]");
+	}
+
 	@Test
 	public void rejectsGarageOptionsThatAreOnWithoutAnyGarage() throws Exception {
-		assertRejected(root -> root.putArray("garages"), "garage_decay_m is 400.0", "lists no priced garage");
+		assertRejected(root -> root.putArray("garages"), "garage_decay_m is 400.0", "garage_decay_commute_m is 250.0",
+				"lists no priced garage");
+		// Either decay above 0 turns the options on, so either one is refused without a garage.
+		assertRejected(root -> {
+			root.put("garage_decay_m", 0.0);
+			root.putArray("garages");
+		}, "garage_decay_m is 0.0", "garage_decay_commute_m is 250.0", "lists no priced garage");
+		assertRejected(root -> {
+			root.put("garage_decay_commute_m", 0.0);
+			root.putArray("garages");
+		}, "garage_decay_m is 400.0", "garage_decay_commute_m is 0.0", "lists no priced garage");
 	}
 
 	@Test
@@ -912,6 +1014,12 @@ public class ParkingTariffsTest {
 		assertRejected(root -> root.put("garage_decay_m", -1.0), "garage_decay_m must be a finite number of metres >= 0");
 		assertRejected(root -> root.put("garage_decay_m", "400"), "garage_decay_m must be a finite number");
 		assertRejected(root -> root.putNull("garage_decay_m"), "garage_decay_m must be a finite number");
+		assertRejected(root -> root.put("garage_decay_commute_m", -1.0),
+				"garage_decay_commute_m must be a finite number of metres >= 0");
+		assertRejected(root -> root.put("garage_decay_commute_m", "250"), "garage_decay_commute_m must be a finite number");
+		assertRejected(root -> root.putNull("garage_decay_commute_m"), "garage_decay_commute_m must be a finite number");
+		assertRejected(root -> root.put("garage_decay_commute_m", Double.POSITIVE_INFINITY),
+				"garage_decay_commute_m must be a finite number");
 		assertRejected(root -> root.put("garage_max_distance_m", 0.0),
 				"garage_max_distance_m must be a finite number of metres > 0");
 		assertRejected(root -> root.put("garage_max_distance_m", -5),

@@ -706,7 +706,7 @@ public class ZoneParkingCarCostModelTest {
 		assertFalse(calls.toString(), calls.containsKey("getPlans"));
 	}
 
-	// ----------------------------------------------------------------------------------------- garage options (schema 3)
+	// ----------------------------------------------------------------------------------------- garage options (schema 4)
 
 	/** A destination activity at a coordinate in EPSG:25832, ending at {@code end_s}. */
 	private static Activity activityAt(String type, double end_s, double x_m, double y_m) {
@@ -715,10 +715,12 @@ public class ZoneParkingCarCostModelTest {
 		return activity;
 	}
 
-	/** The model of the fixture tariff model with the given decay (garage_decay_m) and its counter. */
-	private static ZoneParkingCarCostModel modelWithDecay(double decayMeters, ParkingOutcomeCounter counter) throws Exception {
+	/** The model of the fixture tariff model with the given decay lengths and its counter. */
+	private static ZoneParkingCarCostModel modelWithDecays(double decayMeters, double commuteDecayMeters,
+			ParkingOutcomeCounter counter) throws Exception {
 		ObjectNode tree = (ObjectNode) new ObjectMapper().readTree(fixturePath().toFile());
 		tree.put("garage_decay_m", decayMeters);
+		tree.put("garage_decay_commute_m", commuteDecayMeters);
 		BraunschweigCostParameters costParameters = new BraunschweigCostParameters();
 		costParameters.carCost_EUR_km = CAR_COST_EUR_KM;
 		ParkingConfigGroup parking = new ParkingConfigGroup();
@@ -786,7 +788,7 @@ public class ZoneParkingCarCostModelTest {
 	@Test
 	public void aDecayOfZeroPricesWithTheZoneProductsOnly() throws Exception {
 		ParkingOutcomeCounter offCounter = new ParkingOutcomeCounter();
-		ZoneParkingCarCostModel off = modelWithDecay(0.0, offCounter);
+		ZoneParkingCarCostModel off = modelWithDecays(0.0, 0.0, offCounter);
 		Activity shop = inZone(activityAt("shop", 39600.0, 580000.0, 5750000.0), "fx_bs_ib");
 		CarTrip carTrip = tripTo(shop, 34200, false);
 
@@ -796,6 +798,41 @@ public class ZoneParkingCarCostModelTest {
 		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), ParkingOutcomeCounter.countsByOutcome(offCounter.snapshotAndReset()));
 		// No option code ran: not even the stay was counted by the garage counters.
 		assertEquals(0L, offCounter.garageOptionCounters().snapshot().stays());
+	}
+
+	/**
+	 * Spec Amendment H through the cost model, golden cases E33, E34 and E36 of the fixture model (garage_decay_m 400,
+	 * garage_decay_commute_m 250) at the same destination 580000/5750000 in zone fx_bs_ib, the same stay 08:00-16:00: a work
+	 * stay is weighted with lambda_c and pays 761 ct, a shopping stay with lambda and pays 1125 ct; with lambda_c 0 the work
+	 * stay is priced by the street product (900 ct, PAID_METERED) while the shopping stay keeps its expectation.
+	 */
+	@Test
+	public void aWorkStayAndAShoppingStayAtTheSameDestinationAreWeightedWithTheirOwnDecay() throws Exception {
+		Activity work = inZone(activityAt("work", 57600.0, 580000.0, 5750000.0), "fx_bs_ib");
+		Activity shop = inZone(activityAt("shop", 57600.0, 580000.0, 5750000.0), "fx_bs_ib");
+
+		assertEquals(DRIVING_COST_EUR + 7.61, cost_EUR(tripTo(work, 27000, false)), EUR_TOLERANCE);
+		assertEquals(DRIVING_COST_EUR + 11.25, cost_EUR(tripTo(shop, 27000, false)), EUR_TOLERANCE);
+		var cells = counter.snapshotAndResetTotals();
+		assertEquals(2, cells.size());
+		assertEquals(0.2314752165, cells.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "work"))
+				.garageProbabilitySum(), 1e-9);
+		assertEquals(0.3208213008, cells.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop"))
+				.garageProbabilitySum(), 1e-9);
+
+		ParkingOutcomeCounter commuterOffCounter = new ParkingOutcomeCounter();
+		ZoneParkingCarCostModel commuterOff = modelWithDecays(400.0, 0.0, commuterOffCounter);
+		CarTrip workTrip = tripTo(work, 27000, false);
+		assertEquals(DRIVING_COST_EUR + 9.00, commuterOff.calculateCost_MU(workTrip.person(), workTrip.trip(),
+				workTrip.elements()), EUR_TOLERANCE);
+		CarTrip shopTrip = tripTo(shop, 27000, false);
+		assertEquals(DRIVING_COST_EUR + 11.25, commuterOff.calculateCost_MU(shopTrip.person(), shopTrip.trip(),
+				shopTrip.elements()), EUR_TOLERANCE);
+		var commuterOffCells = commuterOffCounter.snapshotAndResetTotals();
+		assertEquals(1L, commuterOffCells.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work"))
+				.count());
+		assertEquals(1L, commuterOffCells.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop"))
+				.count());
 	}
 
 	/**
@@ -812,6 +849,7 @@ public class ZoneParkingCarCostModelTest {
 		assertTrue(error.getMessage(), error.getMessage().contains("person driver"));
 		assertTrue(error.getMessage(), error.getMessage().contains("activity shop has no coordinate"));
 		assertTrue(error.getMessage(), error.getMessage().contains("garage_decay_m"));
+		assertTrue(error.getMessage(), error.getMessage().contains("garage_decay_commute_m"));
 		// A failing call records nothing.
 		assertTrue(counter.snapshotAndReset().isEmpty());
 

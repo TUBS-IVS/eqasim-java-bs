@@ -138,8 +138,8 @@ public class ParkingPopulationCheckTest {
 		Activity noCoordinate = PopulationUtils.createActivityFromLinkId("work", Id.createLinkId("link"));
 		noCoordinate.getAttributes().putAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE, "fx_bs_ib");
 		plan(person("p1"), activity("home"), noCoordinate, activity("home"));
-		assertStartupFails("person p1, plan 0, activity 1 (work)", "has no coordinate", "garage_decay_m",
-				"set garage_decay_m to 0", TARIFFS_PATH);
+		assertStartupFails("person p1, plan 0, activity 1 (work)", "has no coordinate", "garage_decay_m 400.0 m",
+				"garage_decay_commute_m 250.0 m", "set garage_decay_m and garage_decay_commute_m to 0", TARIFFS_PATH);
 
 		// Outside every zone no coordinate is needed.
 		population.removePerson(Id.createPersonId("p1"));
@@ -156,6 +156,7 @@ public class ParkingPopulationCheckTest {
 				new com.fasterxml.jackson.databind.ObjectMapper().readTree(Path.of(
 						ParkingPopulationCheckTest.class.getResource(FIXTURE_RESOURCE).toURI()).toFile());
 		tree.put("garage_decay_m", 0.0);
+		tree.put("garage_decay_commute_m", 0.0);
 		ParkingConfigGroup parking = new ParkingConfigGroup();
 		parking.setEnabled("true");
 		parking.setTariffsPath(TARIFFS_PATH);

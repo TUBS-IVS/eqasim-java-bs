@@ -11,15 +11,20 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The garage options of a destination (spec Amendment E2 of parking cost zones v2, eqasim-bs issue #436): the priced
- * garages of the tariff model, the decay length lambda ({@code garage_decay_m}, ASSUMPTION G1) and the maximum distance
- * D_max ({@code garage_max_distance_m}, ASSUMPTION G2), with a grid index so that the options of one destination are found
+ * The garage options of a destination (spec Amendments E2 and H of parking cost zones v2, eqasim-bs issue #436): the priced
+ * garages of the tariff model, the decay length lambda ({@code garage_decay_m}, ASSUMPTION G1) of every purpose but work and
+ * education, the decay length lambda_c ({@code garage_decay_commute_m}, ASSUMPTION G1-c) of the commuter purposes work and
+ * education, and the maximum distance D_max ({@code garage_max_distance_m}, ASSUMPTION G2), with a grid index so that the
+ * options of one destination are found
  * without scanning every garage of the region. Immutable and thread-safe: mode choice prices car alternatives in parallel
  * replanning threads and shares one instance (built once by {@link ParkingTariffs}).
  *
- * <p>The model is <em>active</em> when lambda is above 0 and the model lists at least one garage. Lambda 0 switches the
- * garage options off (the sensitivity arm of spec E6): {@link #isActive()} is false and no option code runs. A model with
- * lambda above 0 and no garage is refused ({@link ParkingTariffs} fails at read time), never silently inactive.
+ * <p>The model is <em>active</em> when lambda or lambda_c is above 0 and the model lists at least one garage. The options act
+ * for a purpose iff the decay that governs it is above 0 ({@link GarageParkingCostCalculator#decayMetersForPurpose}); both
+ * decays 0 switch the garage options off (the sensitivity arm of spec E6): {@link #isActive()} is false and no option code
+ * runs. A model with a decay above 0 and no garage is refused ({@link ParkingTariffs} fails at read time), never silently
+ * inactive. The commuter decay is a required argument and is never defaulted to lambda here: the reader of a schema-3 file,
+ * which has none, passes lambda for it explicitly (spec Amendment H4).
  *
  * <p>Distances are straight lines in the network CRS (EPSG:25832) computed as {@code Math.sqrt(dx * dx + dy * dy)}, never
  * {@code Math.hypot}, exactly as the Python reference {@code garage_options_in_range}, so both implementations compute the
@@ -42,6 +47,7 @@ public final class GarageOptionModel {
 
 	private final List<GarageTariff> garages;
 	private final double decayMeters;
+	private final double commuteDecayMeters;
 	private final double maximumDistanceMeters;
 	/** Margin in metres added around the search square, far above the rounding of a UTM coordinate and far below any tariff. */
 	private static final double SEARCH_MARGIN_M = 1e-6;
@@ -55,15 +61,23 @@ public final class GarageOptionModel {
 
 	/**
 	 * @param garages the priced garages; copied and ordered by ascending id
-	 * @param decayMeters decay length lambda in metres, finite and at least 0 (0: garage options off)
+	 * @param decayMeters decay length lambda in metres of every purpose but work and education, finite and at least 0
+	 *        (0: the garage options are off for those purposes)
+	 * @param commuteDecayMeters decay length lambda_c in metres of work and education, finite and at least 0 (0: the garage
+	 *        options are off for those purposes)
 	 * @param maximumDistanceMeters D_max in metres, finite and above 0 (inclusive)
-	 * @throws IllegalArgumentException for an invalid parameter, a duplicate garage id, or lambda above 0 without a garage
+	 * @throws IllegalArgumentException for an invalid parameter, a duplicate garage id, or a decay above 0 without a garage
 	 */
-	public GarageOptionModel(List<GarageTariff> garages, double decayMeters, double maximumDistanceMeters) {
+	public GarageOptionModel(List<GarageTariff> garages, double decayMeters, double commuteDecayMeters,
+			double maximumDistanceMeters) {
 		Objects.requireNonNull(garages, "garages");
 		if (!Double.isFinite(decayMeters) || decayMeters < 0.0) {
 			throw new IllegalArgumentException("garage_decay_m must be a finite number of metres >= 0 (0 switches the garage"
-					+ " options off), got " + decayMeters);
+					+ " options off for every purpose but work and education), got " + decayMeters);
+		}
+		if (!Double.isFinite(commuteDecayMeters) || commuteDecayMeters < 0.0) {
+			throw new IllegalArgumentException("garage_decay_commute_m must be a finite number of metres >= 0 (0 switches the"
+					+ " garage options off for work and education), got " + commuteDecayMeters);
 		}
 		if (!Double.isFinite(maximumDistanceMeters) || maximumDistanceMeters <= 0.0) {
 			throw new IllegalArgumentException("garage_max_distance_m must be a finite number of metres > 0, got "
@@ -77,12 +91,14 @@ public final class GarageOptionModel {
 				throw new IllegalArgumentException("duplicate garage_id " + garage.garageId() + " among the garages");
 			}
 		}
-		if (decayMeters > 0.0 && ordered.isEmpty()) {
-			throw new IllegalArgumentException("garage_decay_m is " + decayMeters + " (the garage options are on) but the"
-					+ " model lists no priced garage: set garage_decay_m to 0 or give the garage dataset");
+		if ((decayMeters > 0.0 || commuteDecayMeters > 0.0) && ordered.isEmpty()) {
+			throw new IllegalArgumentException("garage_decay_m is " + decayMeters + " and garage_decay_commute_m is "
+					+ commuteDecayMeters + " (the garage options are on) but the model lists no priced garage: set both to 0 or"
+					+ " give the garage dataset");
 		}
 		this.garages = List.copyOf(ordered);
 		this.decayMeters = decayMeters;
+		this.commuteDecayMeters = commuteDecayMeters;
 		this.maximumDistanceMeters = maximumDistanceMeters;
 		this.cellSizeMeters = 2.0 * maximumDistanceMeters;
 		TreeMap<Long, List<Integer>> byCell = new TreeMap<>();
@@ -101,9 +117,12 @@ public final class GarageOptionModel {
 		}
 	}
 
-	/** Whether garage options act: lambda above 0 (and then at least one garage, which the constructor guarantees). */
+	/**
+	 * Whether garage options act for at least one purpose: lambda or lambda_c above 0 (and then at least one garage, which the
+	 * constructor guarantees).
+	 */
 	public boolean isActive() {
-		return decayMeters > 0.0;
+		return decayMeters > 0.0 || commuteDecayMeters > 0.0;
 	}
 
 	/** The priced garages, ordered by ascending id; unmodifiable. */
@@ -111,9 +130,20 @@ public final class GarageOptionModel {
 		return garages;
 	}
 
-	/** The decay length lambda in metres (ASSUMPTION G1); 0 means the garage options are off. */
+	/**
+	 * The decay length lambda in metres (ASSUMPTION G1) of every purpose but work and education; 0 means the garage options are
+	 * off for those purposes.
+	 */
 	public double decayMeters() {
 		return decayMeters;
+	}
+
+	/**
+	 * The decay length lambda_c in metres (ASSUMPTION G1-c) of the commuter purposes work and education; 0 means the garage
+	 * options are off for those purposes.
+	 */
+	public double commuteDecayMeters() {
+		return commuteDecayMeters;
 	}
 
 	/** The maximum straight-line distance D_max in metres, inclusive (ASSUMPTION G2). */

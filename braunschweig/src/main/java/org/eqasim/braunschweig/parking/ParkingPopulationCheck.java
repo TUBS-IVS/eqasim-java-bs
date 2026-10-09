@@ -47,10 +47,11 @@ import com.google.inject.Singleton;
  * <li>a person or an activity carries {@code isParis}, of any value: the plans were written for the legacy 8 km ring
  * parking (Python flag enable_urban_parking), which is mutually exclusive with the zones (Python flag
  * parking_zones_enabled);</li>
- * <li>the garage options are on (schema 3 model, {@code garage_decay_m} above 0) and an activity with a
+ * <li>the garage options are on (schema 3 or 4 model, {@code garage_decay_m} or {@code garage_decay_commute_m} above 0) and
+ * an activity with a
  * {@value ZoneParkingCarCostModel#ZONE_ATTRIBUTE} has no coordinate: the garages within the maximum distance are found from
  * the activity coordinate (spec Amendment E6), so the run stops here, at the start, instead of at the first car stay that
- * reaches the garage options; the message names the way out, {@code garage_decay_m} 0;</li>
+ * reaches the garage options; the message names the way out, both decays 0;</li>
  * <li>one of the five parking attributes has another type than the plans writer writes (String zone and district ids,
  * Boolean parkingFree), which ZoneParkingCarCostModel would otherwise reject only when it first prices a car trip
  * there.</li>
@@ -278,9 +279,9 @@ public final class ParkingPopulationCheck implements StartupListener {
 							.getAttribute(ZoneParkingCarCostModel.ZONE_ATTRIBUTE)
 					+ " but has no coordinate, which the garage options of the parking tariff model " + tariffsPath + " ("
 					+ ParkingConfigGroup.GROUP_NAME + ".tariffsPath, garage_decay_m " + tariffs.garageDecayMeters()
-					+ " m) need to find the garages within " + tariffs.garageMaximumDistanceMeters()
-					+ " m; write the plans with activity coordinates (EPSG:25832) or set garage_decay_m to 0 to switch the"
-					+ " garage options off");
+					+ " m, garage_decay_commute_m " + tariffs.garageCommuteDecayMeters() + " m) need to find the garages within "
+					+ tariffs.garageMaximumDistanceMeters() + " m; write the plans with activity coordinates (EPSG:25832) or set"
+					+ " garage_decay_m and garage_decay_commute_m to 0 to switch the garage options off");
 		}
 	}
 

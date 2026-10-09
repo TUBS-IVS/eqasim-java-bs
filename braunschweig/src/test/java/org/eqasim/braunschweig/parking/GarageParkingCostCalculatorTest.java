@@ -25,24 +25,25 @@ import org.junit.Test;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * The garage options of a stay (spec Amendment E of parking cost zones v2, eqasim-bs issue #436) against the golden file
- * {@code parking/parking_golden_cases.json} of schema 4, a byte-for-byte copy of the file the Python reference writes
+ * The garage options of a stay (spec Amendments E and H of parking cost zones v2, eqasim-bs issue #436) against the golden
+ * file {@code parking/parking_golden_cases.json} of schema 5, a byte-for-byte copy of the file the Python reference writes
  * (eqasim-bs tests/fixtures/parking; the SHA-256 of the LF text is pinned below, so a changed copy fails here).
- * Every case of {@code cases} (the 90 cases of the earlier families G, L, LZ, V and R, and E01..E32: the expected cost over
- * the street and the garage options) is priced as braunschweig.parking.golden_cases.evaluate_case_detail prices it, to the
+ * Every case of {@code cases} (the 90 cases of the earlier families G, L, LZ, V and R, and E01..E38: the expected cost over
+ * the street and the garage options, E33..E38 with a separate decay length for the commuter purposes work and education,
+ * spec Amendment H) is priced as braunschweig.parking.golden_cases.evaluate_case_detail prices it, to the
  * cent, with the same outcome and the garage probability within 1e-9; every case of {@code garage_option_cases} (O01..O69)
  * pins the price of one garage option under the three tariff structures. A failing test lists every mismatching case id.
  */
 public class GarageParkingCostCalculatorTest {
 	/** SHA-256 of the golden file with LF line endings, as the Python reference's blob. */
-	private static final String GOLDEN_SHA256 = "62cb9bc3c6bae7401c8130f54dee1349afaf6f39ec6f0db7c8371777e2e9d14b";
+	private static final String GOLDEN_SHA256 = "342bc4bcb5593e3601584ad2bfcc6c68db2b866867d97621a75200e41fae3b06";
 
-	/** SHA-256 of the schema-3 tariff model fixture with LF line endings. */
-	private static final String FIXTURE_SHA256 = "c7d30141a04ef6c1652c5451d7e3e478bba463a73668ed1cb3bb4994d4472718";
+	/** SHA-256 of the schema-4 tariff model fixture with LF line endings. */
+	private static final String FIXTURE_SHA256 = "9f7298bafe0d5f7feb6f2825ee07887e680134163a0ce63599d7fe18fd82f283";
 
 	private static final String FIXTURE_RESOURCE = "/parking/parking_tariffs_fixture.json";
 
-	private static final int GOLDEN_SCHEMA_VERSION = 4;
+	private static final int GOLDEN_SCHEMA_VERSION = 5;
 	private static final double PROBABILITY_TOLERANCE = 1e-9;
 
 	/**
@@ -51,12 +52,17 @@ public class GarageParkingCostCalculatorTest {
 	 */
 	private static final double ROUNDING_MARGIN_CENTS = 1e-6;
 
-	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13, "E", 32);
+	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13, "E",
+			38);
 
 	private static final Set<String> CASE_FIELDS = Set.of("id", "zone_id", "arrival_s", "departure_s", "purpose",
 			"parking_free", "resident_of_zone", "resident_of_district", "terminal", "minimum_stay_min", "destination_x_m",
-			"destination_y_m", "garage_decay_m", "expected_cents", "expected_outcome", "expected_garage_probability",
-			"expected_error");
+			"destination_y_m", "garage_decay_m", "garage_decay_commute_m", "expected_cents", "expected_outcome",
+			"expected_garage_probability", "expected_error");
+
+	/** The two decay lengths of one golden case: lambda of every purpose but work and education, lambda_c of those two. */
+	private record Decays(double decayMeters, double commuteDecayMeters) {
+	}
 
 	private static final Set<String> OPTION_CASE_FIELDS = Set.of("id", "garage_id", "arrival_s", "departure_s", "purpose",
 			"expected_cents");
@@ -83,12 +89,14 @@ public class GarageParkingCostCalculatorTest {
 	}
 
 	@Test
-	public void theGoldenGaragesAreTheGaragesOfTheSchemaThreeFixtureModel() throws Exception {
+	public void theGoldenGaragesAreTheGaragesOfTheSchemaFourFixtureModel() throws Exception {
 		JsonNode golden = ParkingCostCalculatorTest.readResource(ParkingCostCalculatorTest.GOLDEN_CASES_RESOURCE);
 		JsonNode fixture = ParkingCostCalculatorTest.readResource(FIXTURE_RESOURCE);
 		assertEquals(fixture.get("garages"), golden.get("garages"));
 		assertEquals(fixture.get("garage_max_distance_m"), golden.get("garage_max_distance_m"));
-		assertEquals(3, fixture.get("schema_version").intValue());
+		assertEquals(4, fixture.get("schema_version").intValue());
+		assertEquals(400.0, fixture.get("garage_decay_m").doubleValue(), 0.0);
+		assertEquals(250.0, fixture.get("garage_decay_commute_m").doubleValue(), 0.0);
 		assertEquals(19, golden.get("garages").size());
 	}
 
@@ -102,7 +110,7 @@ public class GarageParkingCostCalculatorTest {
 			garages.add(ParkingTariffs.parseGarage(garage));
 		}
 		double maximumDistanceMeters = golden.get("garage_max_distance_m").doubleValue();
-		Map<Double, GarageOptionModel> modelByDecay = new HashMap<>();
+		Map<Decays, GarageOptionModel> modelByDecay = new HashMap<>();
 		GarageOptionCounters counters = new GarageOptionCounters();
 		JsonNode cases = golden.get("cases");
 		assertEquals(CASES_PER_FAMILY.values().stream().mapToInt(Integer::intValue).sum(), cases.size());
@@ -119,9 +127,10 @@ public class GarageParkingCostCalculatorTest {
 			assertEquals(id + ": keys of the golden case", CASE_FIELDS, fieldNames(goldenCase));
 			ZoneTariff tariff = tariffs.get(goldenCase.get("zone_id").asText());
 			assertNotNull(id + ": unknown zone " + goldenCase.get("zone_id"), tariff);
-			double decayMeters = goldenCase.get("garage_decay_m").doubleValue();
-			GarageOptionModel model = modelByDecay.computeIfAbsent(decayMeters,
-					decay -> new GarageOptionModel(garages, decay, maximumDistanceMeters));
+			Decays decays = new Decays(goldenCase.get("garage_decay_m").doubleValue(),
+					goldenCase.get("garage_decay_commute_m").doubleValue());
+			GarageOptionModel model = modelByDecay.computeIfAbsent(decays, key -> new GarageOptionModel(garages,
+					key.decayMeters(), key.commuteDecayMeters(), maximumDistanceMeters));
 			if (goldenCase.get("expected_error").booleanValue()) {
 				errorCases++;
 				try {
@@ -209,7 +218,7 @@ public class GarageParkingCostCalculatorTest {
 		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib");
 		AtomicInteger lookups = new AtomicInteger();
 		GarageOptionCounters counters = new GarageOptionCounters();
-		Result result = GarageParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false, 0.0, () -> {
+		Result result = GarageParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false, 0.0, 0.0, () -> {
 			lookups.incrementAndGet();
 			return new GarageOptionModel.Option[0];
 		}, counters);
@@ -232,14 +241,14 @@ public class GarageParkingCostCalculatorTest {
 		};
 		ZoneTariff street = tariffs.get("fx_bs_ib_v2");
 		assertEquals(ParkingOutcome.HOME, GarageParkingCostCalculator
-				.cents(street, 36000, 39600, "home", false, false, false, 400.0, counting, null).outcome());
+				.cents(street, 36000, 39600, "home", false, false, false, 400.0, 400.0, counting, null).outcome());
 		assertEquals(ParkingOutcome.EMPLOYER_FREE, GarageParkingCostCalculator
-				.cents(street, 36000, 39600, "work", true, false, false, 400.0, counting, null).outcome());
+				.cents(street, 36000, 39600, "work", true, false, false, 400.0, 400.0, counting, null).outcome());
 		assertEquals(ParkingOutcome.OUTSIDE_FEE_HOURS, GarageParkingCostCalculator
-				.cents(street, 0, 3600, "shop", false, false, false, 400.0, counting, null).outcome());
+				.cents(street, 0, 3600, "shop", false, false, false, 400.0, 400.0, counting, null).outcome());
 		ZoneTariff campus = tariffs.get("fx_campus");
 		assertEquals(ParkingOutcome.PAID_CAMPUS_GUEST, GarageParkingCostCalculator
-				.cents(campus, 36000, 39600, "shop", false, false, false, 400.0, counting, null).outcome());
+				.cents(campus, 36000, 39600, "shop", false, false, false, 400.0, 400.0, counting, null).outcome());
 		assertEquals(0, lookups.get());
 	}
 
@@ -247,7 +256,7 @@ public class GarageParkingCostCalculatorTest {
 	public void aStayWithoutAGarageInRangeIsPricedAsBeforeAndCounted() throws Exception {
 		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib_v2");
 		GarageOptionCounters counters = new GarageOptionCounters();
-		Result result = GarageParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false, 400.0,
+		Result result = GarageParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false, 400.0, 400.0,
 				() -> new GarageOptionModel.Option[0], counters);
 		ParkingCostCalculator.Result plain = ParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false);
 		assertEquals(plain.cents(), result.cents());
@@ -264,9 +273,127 @@ public class GarageParkingCostCalculatorTest {
 	public void rejectsAnInvalidDecay() throws Exception {
 		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib_v2");
 		for (double decay : new double[] { -1.0, Double.NaN, Double.POSITIVE_INFINITY }) {
-			assertThrows("decay " + decay, IllegalArgumentException.class, () -> GarageParkingCostCalculator.cents(zone, 36000,
-					39600, "shop", false, false, false, decay, () -> new GarageOptionModel.Option[0], null));
+			IllegalArgumentException error = assertThrows("decay " + decay, IllegalArgumentException.class,
+					() -> GarageParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false, decay, 250.0,
+							() -> new GarageOptionModel.Option[0], null));
+			assertTrue(error.getMessage(), error.getMessage().contains("decayMeters must be a finite number"));
 		}
+	}
+
+	/** The commuter decay is validated like the other one, for every purpose (a stay of another purpose fails too). */
+	@Test
+	public void rejectsAnInvalidCommuteDecayForEveryPurpose() throws Exception {
+		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib_v2");
+		for (String purpose : new String[] { "work", "shop" }) {
+			for (double commuteDecay : new double[] { -1.0, Double.NaN, Double.NEGATIVE_INFINITY }) {
+				IllegalArgumentException error = assertThrows(purpose + " " + commuteDecay, IllegalArgumentException.class,
+						() -> GarageParkingCostCalculator.cents(zone, 36000, 39600, purpose, false, false, false, 400.0,
+								commuteDecay, () -> new GarageOptionModel.Option[0], null));
+				assertTrue(error.getMessage(), error.getMessage().contains("commuteDecayMeters must be a finite number"));
+			}
+		}
+	}
+
+	/**
+	 * One helper decides which decay governs a stay (spec Amendment H1, the Python reference
+	 * garage_decay_m_for_purpose): the commuter decay for work and education, lambda for every other purpose; the purpose is
+	 * the MATSim activity type, matched exactly.
+	 */
+	@Test
+	public void theDecayOfAStayDependsOnItsPurposeExactlyLikeThePythonHelper() {
+		assertEquals(250.0, GarageParkingCostCalculator.decayMetersForPurpose("work", 400.0, 250.0), 0.0);
+		assertEquals(250.0, GarageParkingCostCalculator.decayMetersForPurpose("education", 400.0, 250.0), 0.0);
+		for (String purpose : new String[] { "shop", "leisure", "other", "home", "Work", "WORK", "work ", "" }) {
+			assertEquals("purpose '" + purpose + "'", 400.0,
+					GarageParkingCostCalculator.decayMetersForPurpose(purpose, 400.0, 250.0), 0.0);
+		}
+		assertEquals(0.0, GarageParkingCostCalculator.decayMetersForPurpose("work", 400.0, 0.0), 0.0);
+		assertEquals(0.0, GarageParkingCostCalculator.decayMetersForPurpose("shop", 0.0, 250.0), 0.0);
+		assertEquals(ParkingCostCalculator.COMMUTER_PURPOSES, Set.of("work", "education"));
+	}
+
+	/**
+	 * Spec Amendment H1, hand-derived: the same destination, one garage 300 m away, the street open and not free. A shopping
+	 * stay weighs the garage with exp(-300 / 400) (lambda 400 m), a work stay with exp(-300 / 250) (lambda_c 250 m), so the
+	 * garage probability of the work stay is lower, exactly w / (1 + w) with the weight of its own decay.
+	 */
+	@Test
+	public void aWorkStayAndAShoppingStayAtTheSameDestinationUseTheirOwnDecay() throws Exception {
+		JsonNode golden = ParkingCostCalculatorTest.readResource(ParkingCostCalculatorTest.GOLDEN_CASES_RESOURCE);
+		GarageTariff garage = ParkingTariffs.parseGarage(golden.get("garages").get(0));
+		GarageOptionModel.Option[] options = { new GarageOptionModel.Option(garage, 300.0) };
+		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib");
+		Result shopping = GarageParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false, 400.0, 250.0,
+				() -> options, null);
+		Result work = GarageParkingCostCalculator.cents(zone, 36000, 39600, "work", false, false, false, 400.0, 250.0,
+				() -> options, null);
+		Result education = GarageParkingCostCalculator.cents(zone, 36000, 39600, "education", false, false, false, 400.0,
+				250.0, () -> options, null);
+		double visitorWeight = StrictMath.exp(-300.0 / 400.0);
+		double commuterWeight = StrictMath.exp(-300.0 / 250.0);
+		assertEquals(visitorWeight / (1.0 + visitorWeight), shopping.garageProbability(), 0.0);
+		assertEquals(commuterWeight / (1.0 + commuterWeight), work.garageProbability(), 0.0);
+		assertEquals(work.garageProbability(), education.garageProbability(), 0.0);
+		assertTrue(work.garageProbability() < shopping.garageProbability());
+		assertEquals(ParkingOutcome.PAID_EXPECTED, shopping.outcome());
+		assertEquals(ParkingOutcome.PAID_EXPECTED, work.outcome());
+	}
+
+	/**
+	 * Spec Amendment H1: the options act for a purpose iff the decay that governs it is above 0. With lambda_c 0 a work stay is
+	 * priced as before (street product, no lookup of the options, not eligible) while a shopping stay at the same destination
+	 * is still priced as an expectation; with lambda 0 and lambda_c above 0 it is the other way round.
+	 */
+	@Test
+	public void theOptionsActForAPurposeOnlyWhenItsOwnDecayIsAboveZero() throws Exception {
+		JsonNode golden = ParkingCostCalculatorTest.readResource(ParkingCostCalculatorTest.GOLDEN_CASES_RESOURCE);
+		GarageTariff garage = ParkingTariffs.parseGarage(golden.get("garages").get(0));
+		GarageOptionModel.Option[] options = { new GarageOptionModel.Option(garage, 300.0) };
+		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib");
+		for (boolean commuterOff : new boolean[] { true, false }) {
+			double decay = commuterOff ? 400.0 : 0.0;
+			double commuteDecay = commuterOff ? 0.0 : 250.0;
+			String switchedOff = commuterOff ? "work" : "shop";
+			String acting = commuterOff ? "shop" : "work";
+			AtomicInteger lookups = new AtomicInteger();
+			GarageParkingCostCalculator.OptionSource counting = () -> {
+				lookups.incrementAndGet();
+				return options;
+			};
+			GarageOptionCounters counters = new GarageOptionCounters();
+			Result off = GarageParkingCostCalculator.cents(zone, 36000, 39600, switchedOff, false, false, false, decay,
+					commuteDecay, counting, counters);
+			ParkingCostCalculator.Result plain = ParkingCostCalculator.cents(zone, 36000, 39600, switchedOff, false, false,
+					false);
+			assertEquals(switchedOff, plain.cents(), off.cents());
+			assertEquals(switchedOff, plain.outcome(), off.outcome());
+			assertEquals(0.0, off.garageProbability(), 0.0);
+			assertEquals(0, lookups.get());
+			assertEquals(0, counters.snapshot().eligible());
+			Result on = GarageParkingCostCalculator.cents(zone, 36000, 39600, acting, false, false, false, decay, commuteDecay,
+					counting, counters);
+			assertEquals(acting, ParkingOutcome.PAID_EXPECTED, on.outcome());
+			assertTrue(acting, on.garageProbability() > 0.0);
+			assertEquals(1, lookups.get());
+			assertEquals(2, counters.snapshot().stays());
+			assertEquals(1, counters.snapshot().eligible());
+		}
+	}
+
+	/** Both decays 0 switches the options off for every purpose. */
+	@Test
+	public void bothDecaysAtZeroSwitchTheOptionsOffForEveryPurpose() throws Exception {
+		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib");
+		AtomicInteger lookups = new AtomicInteger();
+		for (String purpose : new String[] { "work", "education", "shop" }) {
+			Result result = GarageParkingCostCalculator.cents(zone, 36000, 39600, purpose, false, false, false, 0.0, 0.0, () -> {
+				lookups.incrementAndGet();
+				return new GarageOptionModel.Option[0];
+			}, null);
+			assertEquals(purpose, ParkingCostCalculator.cents(zone, 36000, 39600, purpose, false, false, false).cents(),
+					result.cents());
+		}
+		assertEquals(0, lookups.get());
 	}
 
 	/**
@@ -285,13 +412,13 @@ public class GarageParkingCostCalculatorTest {
 
 		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
 				() -> GarageParkingCostCalculator.cents(tariffs.get("fx_bs_ia_v2"), 32400, 46800, "shop", false, false, false,
-						1.0, () -> farGarage, null));
+						1.0, 1.0, () -> farGarage, null));
 		assertTrue(error.getMessage(), error.getMessage().contains("decay 1.0 m"));
 		assertTrue(error.getMessage(), error.getMessage().contains("1000.0"));
 		assertTrue(error.getMessage(), error.getMessage().contains(garage.garageId()));
 
 		Result priced = GarageParkingCostCalculator.cents(tariffs.get("fx_bs_ib"), 36000, 39600, "shop", false, false, false,
-				1.0, () -> farGarage, null);
+				1.0, 1.0, () -> farGarage, null);
 		assertEquals(ParkingOutcome.PAID_EXPECTED, priced.outcome());
 		assertEquals(180, priced.cents());
 		assertEquals(0.0, priced.garageProbability(), 0.0);
@@ -307,7 +434,7 @@ public class GarageParkingCostCalculatorTest {
 		GarageTariff garage = ParkingTariffs.parseGarage(golden.get("garages").get(0));
 		GarageOptionModel.Option[] options = { new GarageOptionModel.Option(garage, 300.0) };
 		Result result = GarageParkingCostCalculator.cents(ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib"), 36000,
-				39600, "shop", false, false, false, 400.0, () -> options, null);
+				39600, "shop", false, false, false, 400.0, 400.0, () -> options, null);
 		double weight = StrictMath.exp(-300.0 / 400.0);
 		assertEquals(weight / (1.0 + weight), result.garageProbability(), 0.0);
 	}
@@ -329,7 +456,8 @@ public class GarageParkingCostCalculatorTest {
 				: () -> model.optionsWithin(destinationX.doubleValue(), goldenCase.get("destination_y_m").doubleValue());
 		return GarageParkingCostCalculator.cents(tariff, arrival_s, pricedDeparture_s, goldenCase.get("purpose").asText(),
 				goldenCase.get("parking_free").booleanValue(), goldenCase.get("resident_of_zone").booleanValue(),
-				goldenCase.get("resident_of_district").booleanValue(), model.decayMeters(), options, counters);
+				goldenCase.get("resident_of_district").booleanValue(), model.decayMeters(), model.commuteDecayMeters(),
+				options, counters);
 	}
 
 	private static String family(String id) {

@@ -40,12 +40,15 @@ public class ParkingOutcomeReportListenerTest {
 			+ "stays_with_garages_in_range";
 
 	/**
-	 * The fixture tariff model with the garage options OFF (garage_decay_m 0): three zones carry a search time (fx_bs_ia_v2,
-	 * fx_bs_ib_v2, fx_wob_v2), and the report has no garage option line.
+	 * The fixture tariff model with the garage options OFF (garage_decay_m and garage_decay_commute_m 0): three zones carry a
+	 * search time (fx_bs_ia_v2, fx_bs_ib_v2, fx_wob_v2), and the report has no garage option line.
 	 */
 	private static ParkingTariffs tariffsWithSearchTimes;
 
-	/** The fixture tariff model as written, with the garage options ON (garage_decay_m 400, the 19 fixture garages). */
+	/**
+	 * The fixture tariff model as written, with the garage options ON (garage_decay_m 400, garage_decay_commute_m 250, the 19
+	 * fixture garages).
+	 */
 	private static ParkingTariffs tariffsWithGarageOptions;
 
 	/** The schema-1 fixture tariff model of version 1: no zone carries a search time. */
@@ -60,6 +63,7 @@ public class ParkingOutcomeReportListenerTest {
 		ObjectNode optionsOff = (ObjectNode) new ObjectMapper().readTree(Path.of(ParkingOutcomeReportListenerTest.class
 				.getResource("/parking/parking_tariffs_fixture.json").toURI()).toFile());
 		optionsOff.put("garage_decay_m", 0.0);
+		optionsOff.put("garage_decay_commute_m", 0.0);
 		tariffsWithSearchTimes = ParkingTariffs.parse(optionsOff);
 		tariffsWithoutSearchTimes = read(ParkingCostCalculatorTest.SCHEMA_1_TARIFFS_RESOURCE);
 	}
@@ -294,7 +298,8 @@ public class ParkingOutcomeReportListenerTest {
 				"[parking] it 4: garage options: stays 4; eligible 4; garages in range 3/4 (75.0 %); street free (E4) 1/3 (33.3 %);"
 						+ " street unavailable 0/3 (0.0 %); priced as expectation 2; garage options priced 3, closed schedule"
 						+ " repeated (P9) 0/3 (0.0 %); expected garage share 0.1875 of 4 priced stays (sum of garage"
-						+ " probabilities 0.750)"),
+						+ " probabilities 0.750); garage_decay_m 400.0 m (every purpose but work and education),"
+						+ " garage_decay_commute_m 250.0 m (work and education)"),
 				messages);
 		// The rates restart from zero with the next iteration.
 		assertEquals(0L, counter.garageOptionCounters().snapshot().stays());

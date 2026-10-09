@@ -43,17 +43,17 @@ public class ParkingCostCalculatorTest {
 	/**
 	 * Version of the golden file: 3 since every case carries minimum_stay_min and resident_of_district, 4 since the garage
 	 * options (spec Amendment E: destination, decay and expected garage probability per case, the garages and the option
-	 * cases).
+	 * cases), 5 since the separate commuter decay length (spec Amendment H: garage_decay_commute_m per case).
 	 */
-	private static final int GOLDEN_SCHEMA_VERSION = 4;
+	private static final int GOLDEN_SCHEMA_VERSION = 5;
 
 	/**
 	 * G01..G38 (the pricing before the minimum parked duration), L01..L08 at L = 15 and their twins L01Z..L08Z at L = 0,
-	 * V01..V23 (schema 2: the cheapest of the street, garage and commuter product), R01..R13 (rule R2) and E01..E32
+	 * V01..V23 (schema 2: the cheapest of the street, garage and commuter product), R01..R13 (rule R2) and E01..E38
 	 * (garage options, priced by GarageParkingCostCalculatorTest, not here); a truncated or replaced fixture must not pass
 	 * by asserting fewer cases.
 	 */
-	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13, "E", 32);
+	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13, "E", 38);
 
 	/**
 	 * The keys of one golden case, as the Python generator writes them (braunschweig.parking.golden_cases.CASE_FIELDS):
@@ -61,8 +61,8 @@ public class ParkingCostCalculatorTest {
 	 */
 	private static final Set<String> CASE_FIELDS = Set.of("id", "zone_id", "arrival_s", "departure_s", "purpose",
 			"parking_free", "resident_of_zone", "resident_of_district", "terminal", "minimum_stay_min", "destination_x_m",
-			"destination_y_m", "garage_decay_m", "expected_cents", "expected_outcome", "expected_garage_probability",
-			"expected_error");
+			"destination_y_m", "garage_decay_m", "garage_decay_commute_m", "expected_cents", "expected_outcome",
+			"expected_garage_probability", "expected_error");
 
 	private static final int SECONDS_PER_DAY = 86400;
 

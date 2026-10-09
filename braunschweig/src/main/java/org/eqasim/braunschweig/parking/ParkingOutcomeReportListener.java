@@ -30,9 +30,10 @@ import com.google.inject.Singleton;
  * {@code [parking] it N: NO_ZONE a (x.x %), PAID_METERED b (y.y %), ...} with every outcome that occurred, in
  * declaration order, or {@code [parking] it N: no car stay priced} when none did, followed by the line
  * {@code [parking] it N: minimum stay L min extended e of p priced stays (z.z %)} of assumption L1 and, with the garage
- * options on (schema 3 model, {@code garage_decay_m} above 0), the line {@code [parking] it N: garage options: ...} with the
- * rates of {@link GarageOptionCounters.Snapshot} (stays, eligible, garages in range, street free, street unavailable,
- * expected, option evaluations, repeated closed schedules) and the expected garage share of the priced stays; a WARN is
+ * options on (schema 3 or 4 model, {@code garage_decay_m} or {@code garage_decay_commute_m} above 0), the line
+ * {@code [parking] it N: garage options: ...} with the rates of {@link GarageOptionCounters.Snapshot} (stays, eligible,
+ * garages in range, street free, street unavailable, expected, option evaluations, repeated closed schedules), the expected
+ * garage share of the priced stays and, at its end, both decay lengths (lambda and lambda_c, spec Amendment H5); a WARN is
  * logged when no eligible stay of the iteration had a garage in range (a wrong CRS or garage file looks like that). At the
  * controller start it logs the active minimum parked duration and the active search time factor once.
  *
@@ -90,6 +91,7 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	private final String searchTimeFactorText;
 	private final long zonesWithSearchTime;
 	private final boolean garageOptionsActive;
+	private final String garageDecaySetting;
 
 	@Inject
 	public ParkingOutcomeReportListener(ParkingOutcomeCounter counter, OutputDirectoryHierarchy output,
@@ -102,6 +104,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		this.searchTimeFactorText = parking.getSearchTimeFactor();
 		this.zonesWithSearchTime = tariffs.zonesWithSearchTime();
 		this.garageOptionsActive = tariffs.garageOptions().isActive();
+		this.garageDecaySetting = "garage_decay_m " + tariffs.garageDecayMeters() + " m (every purpose but work and"
+				+ " education), garage_decay_commute_m " + tariffs.garageCommuteDecayMeters() + " m (work and education)";
 	}
 
 	/**
@@ -131,7 +135,7 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		LOG.info(summary(iteration, counts));
 		LOG.info(minimumStaySummary(iteration, minimumStayMinutes, extendedStays, pricedStays(counts)));
 		if (garageOptionsActive) {
-			LOG.info(garageOptionsSummary(iteration, garageRates, cells, pricedStays(counts)));
+			LOG.info(garageOptionsSummary(iteration, garageRates, cells, pricedStays(counts), garageDecaySetting));
 			if (garageRates.eligible() > 0 && garageRates.withGaragesInRange() == 0) {
 				// Fallback transparency: every eligible stay was priced without a garage, which is the pre-garage price. A
 				// run in which no priced stay has a garage in range is far more likely a wrong CRS or a wrong garage file than
@@ -154,7 +158,7 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	 * expected garage share of all priced stays (the sum of their garage probabilities divided by their number).
 	 */
 	private static String garageOptionsSummary(int iteration, GarageOptionCounters.Snapshot rates, Map<Cell, CellTotals> cells,
-			long pricedStays) {
+			long pricedStays, String garageDecaySetting) {
 		double garageProbabilitySum = 0.0;
 		for (Map.Entry<Cell, CellTotals> entry : cells.entrySet()) {
 			if (entry.getKey().outcome() != ParkingOutcome.NO_ZONE) {
@@ -162,8 +166,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 			}
 		}
 		return String.format(Locale.ROOT, "[parking] it %d: garage options: %s; expected garage share %.4f of %d priced stays"
-				+ " (sum of garage probabilities %.3f)", iteration, rates.summary(), share(garageProbabilitySum, pricedStays),
-				pricedStays, garageProbabilitySum);
+				+ " (sum of garage probabilities %.3f); %s", iteration, rates.summary(), share(garageProbabilitySum, pricedStays),
+				pricedStays, garageProbabilitySum, garageDecaySetting);
 	}
 
 	/** The startup line of the minimum parked duration; a minimum of 0 is the version 1 pricing. */

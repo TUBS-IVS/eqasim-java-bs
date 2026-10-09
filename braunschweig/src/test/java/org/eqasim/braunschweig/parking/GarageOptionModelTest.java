@@ -47,7 +47,7 @@ public class GarageOptionModelTest {
 	@Test
 	public void aGarageAtExactlyTheMaximumDistanceIsAnOptionAndOneMeterMoreIsNot() {
 		GarageOptionModel model = new GarageOptionModel(
-				List.of(garage("in", 580000 + 1000.0, 5750000.0), garage("out", 580000 + 1001.0, 5750000.0)), 400.0,
+				List.of(garage("in", 580000 + 1000.0, 5750000.0), garage("out", 580000 + 1001.0, 5750000.0)), 400.0, 400.0,
 				MAXIMUM_DISTANCE_M);
 		Option[] options = model.optionsWithin(580000.0, 5750000.0);
 		assertEquals(1, options.length);
@@ -57,7 +57,8 @@ public class GarageOptionModelTest {
 
 	@Test
 	public void theDistanceIsThePythagoreanSquareRootOfTheSquaredDifferences() {
-		GarageOptionModel model = new GarageOptionModel(List.of(garage("g", 580300.0, 5750400.0)), 400.0, MAXIMUM_DISTANCE_M);
+		GarageOptionModel model = new GarageOptionModel(List.of(garage("g", 580300.0, 5750400.0)), 400.0, 400.0,
+				MAXIMUM_DISTANCE_M);
 		assertEquals(Math.sqrt(300.0 * 300.0 + 400.0 * 400.0), model.optionsWithin(580000.0, 5750000.0)[0].distanceMeters(),
 				0.0);
 		assertEquals(500.0, model.optionsWithin(580000.0, 5750000.0)[0].distanceMeters(), 0.0);
@@ -72,7 +73,7 @@ public class GarageOptionModelTest {
 	public void theOptionsAreOrderedByAscendingGarageIdWhateverTheCellsAndTheInputOrder() {
 		List<GarageTariff> garages = List.of(garage("g4", 581700.0, 5750400.0), garage("g3", 582300.0, 5749800.0),
 				garage("g2", 581600.0, 5749700.0), garage("g1", 582400.0, 5750300.0));
-		GarageOptionModel model = new GarageOptionModel(garages, 400.0, MAXIMUM_DISTANCE_M);
+		GarageOptionModel model = new GarageOptionModel(garages, 400.0, 400.0, MAXIMUM_DISTANCE_M);
 		Option[] options = model.optionsWithin(582000.0, 5750000.0);
 		List<String> ids = new ArrayList<>();
 		for (Option option : options) {
@@ -88,7 +89,7 @@ public class GarageOptionModelTest {
 	public void negativeCoordinatesAreIndexedLikeThePositiveOnes() {
 		List<GarageTariff> garages = List.of(garage("n1", -100.0, 100.0), garage("n2", 100.0, -100.0),
 				garage("n3", -1900.0, -1900.0), garage("n4", -2100.0, -2100.0), garage("n5", 2500.0, 2500.0));
-		GarageOptionModel model = new GarageOptionModel(garages, 400.0, MAXIMUM_DISTANCE_M);
+		GarageOptionModel model = new GarageOptionModel(garages, 400.0, 400.0, MAXIMUM_DISTANCE_M);
 		for (double[] destination : new double[][] { { 0.0, 0.0 }, { -2000.0, -2000.0 }, { -1000.0, -1000.0 },
 				{ 1800.0, 1800.0 }, { -2000.5, -1999.5 } }) {
 			assertEquals("destination " + destination[0] + ", " + destination[1],
@@ -104,7 +105,8 @@ public class GarageOptionModelTest {
 	/** A huge finite coordinate must neither loop over overflowing cell indices nor be silently priced: it is refused fast. */
 	@Test(timeout = 10_000)
 	public void aHugeCoordinateIsRefusedInsteadOfOverflowingTheCellIndex() {
-		GarageOptionModel model = new GarageOptionModel(List.of(garage("g", 580000.0, 5750000.0)), 400.0, MAXIMUM_DISTANCE_M);
+		GarageOptionModel model = new GarageOptionModel(List.of(garage("g", 580000.0, 5750000.0)), 400.0, 400.0,
+				MAXIMUM_DISTANCE_M);
 		for (double huge : new double[] { 1e30, -1e30, Double.MAX_VALUE, 1e19 }) {
 			IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> model.optionsWithin(huge, 0.0));
 			assertTrue(error.getMessage(), error.getMessage().contains("EPSG:25832"));
@@ -112,14 +114,15 @@ public class GarageOptionModelTest {
 		}
 		// A garage at an implausible coordinate is refused when the model is built.
 		assertThrows(IllegalArgumentException.class,
-				() -> new GarageOptionModel(List.of(garage("far", 1e30, 0.0)), 400.0, MAXIMUM_DISTANCE_M));
+				() -> new GarageOptionModel(List.of(garage("far", 1e30, 0.0)), 400.0, 400.0, MAXIMUM_DISTANCE_M));
 		// A plausible coordinate is still answered.
 		assertEquals(1, model.optionsWithin(580000.0, 5750000.0).length);
 	}
 
 	@Test
 	public void noGarageInRangeIsTheSharedEmptyArray() {
-		GarageOptionModel model = new GarageOptionModel(List.of(garage("g", 600000.0, 5750000.0)), 400.0, MAXIMUM_DISTANCE_M);
+		GarageOptionModel model = new GarageOptionModel(List.of(garage("g", 600000.0, 5750000.0)), 400.0, 400.0,
+				MAXIMUM_DISTANCE_M);
 		assertEquals(0, model.optionsWithin(580000.0, 5750000.0).length);
 		assertSame(model.optionsWithin(580000.0, 5750000.0), model.optionsWithin(0.0, 0.0));
 	}
@@ -135,7 +138,7 @@ public class GarageOptionModelTest {
 		}
 		garages.add(garage("g_boundary", 580000.0, 5750000.0));
 		for (double maximumDistance : new double[] { 250.0, 1000.0, 2500.0 }) {
-			GarageOptionModel model = new GarageOptionModel(garages, 400.0, maximumDistance);
+			GarageOptionModel model = new GarageOptionModel(garages, 400.0, 400.0, maximumDistance);
 			for (int query = 0; query < 2000; query++) {
 				double x_m = 578500.0 + random.nextDouble() * 7000.0;
 				double y_m = 5747500.0 + random.nextDouble() * 7000.0;
@@ -152,25 +155,65 @@ public class GarageOptionModelTest {
 	@Test
 	public void aDecayOfZeroIsInactiveAndAPositiveDecayIsActive() {
 		List<GarageTariff> garages = List.of(garage("g", 580000.0, 5750000.0));
-		assertFalse(new GarageOptionModel(garages, 0.0, MAXIMUM_DISTANCE_M).isActive());
-		assertTrue(new GarageOptionModel(garages, 0.01, MAXIMUM_DISTANCE_M).isActive());
-		assertFalse(new GarageOptionModel(List.of(), 0.0, MAXIMUM_DISTANCE_M).isActive());
+		assertFalse(new GarageOptionModel(garages, 0.0, 0.0, MAXIMUM_DISTANCE_M).isActive());
+		assertTrue(new GarageOptionModel(garages, 0.01, 0.01, MAXIMUM_DISTANCE_M).isActive());
+		assertFalse(new GarageOptionModel(List.of(), 0.0, 0.0, MAXIMUM_DISTANCE_M).isActive());
+	}
+
+	/** Spec Amendment H1: the model is active when either decay is above 0; both 0 switches it off. */
+	@Test
+	public void theModelIsActiveWhenEitherDecayIsAboveZero() {
+		List<GarageTariff> garages = List.of(garage("g", 580000.0, 5750000.0));
+		GarageOptionModel commuterOnly = new GarageOptionModel(garages, 0.0, 250.0, MAXIMUM_DISTANCE_M);
+		assertTrue(commuterOnly.isActive());
+		assertEquals(0.0, commuterOnly.decayMeters(), 0.0);
+		assertEquals(250.0, commuterOnly.commuteDecayMeters(), 0.0);
+		GarageOptionModel visitorOnly = new GarageOptionModel(garages, 400.0, 0.0, MAXIMUM_DISTANCE_M);
+		assertTrue(visitorOnly.isActive());
+		assertEquals(400.0, visitorOnly.decayMeters(), 0.0);
+		assertEquals(0.0, visitorOnly.commuteDecayMeters(), 0.0);
+		assertFalse(new GarageOptionModel(garages, 0.0, 0.0, MAXIMUM_DISTANCE_M).isActive());
+	}
+
+	/** A decay above 0 for either purpose group without a priced garage is refused, whichever one it is. */
+	@Test
+	public void eitherDecayAboveZeroWithoutAGarageIsRefusedAndNamesBothDecays() {
+		for (double[] decays : new double[][] { { 0.0, 250.0 }, { 400.0, 0.0 }, { 400.0, 250.0 } }) {
+			IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+					() -> new GarageOptionModel(List.of(), decays[0], decays[1], MAXIMUM_DISTANCE_M));
+			String message = error.getMessage();
+			assertTrue(message, message.contains("garage_decay_m is " + decays[0]));
+			assertTrue(message, message.contains("garage_decay_commute_m is " + decays[1]));
+			assertTrue(message, message.contains("lists no priced garage"));
+		}
+	}
+
+	@Test
+	public void rejectsAnInvalidCommuteDecay() {
+		List<GarageTariff> garages = List.of(garage("g", 580000.0, 5750000.0));
+		for (double commuteDecay : new double[] { -1.0, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY }) {
+			IllegalArgumentException error = assertThrows("commute decay " + commuteDecay, IllegalArgumentException.class,
+					() -> new GarageOptionModel(garages, 400.0, commuteDecay, MAXIMUM_DISTANCE_M));
+			assertTrue(error.getMessage(),
+					error.getMessage().contains("garage_decay_commute_m must be a finite number of metres >= 0"));
+		}
 	}
 
 	@Test
 	public void rejectsInvalidParametersDuplicatesAndOptionsWithoutGarages() {
 		List<GarageTariff> garages = List.of(garage("g", 580000.0, 5750000.0));
-		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, -1.0, MAXIMUM_DISTANCE_M));
-		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, Double.NaN, MAXIMUM_DISTANCE_M));
-		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, 400.0, 0.0));
-		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, 400.0, Double.POSITIVE_INFINITY));
+		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, -1.0, 400.0, MAXIMUM_DISTANCE_M));
+		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, Double.NaN, 400.0, MAXIMUM_DISTANCE_M));
+		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, 400.0, 400.0, 0.0));
+		assertThrows(IllegalArgumentException.class, () -> new GarageOptionModel(garages, 400.0, 400.0, Double.POSITIVE_INFINITY));
 		IllegalArgumentException duplicate = assertThrows(IllegalArgumentException.class,
-				() -> new GarageOptionModel(List.of(garage("g", 1.0, 1.0), garage("g", 2.0, 2.0)), 400.0, MAXIMUM_DISTANCE_M));
+				() -> new GarageOptionModel(List.of(garage("g", 1.0, 1.0), garage("g", 2.0, 2.0)), 400.0, 400.0,
+						MAXIMUM_DISTANCE_M));
 		assertTrue(duplicate.getMessage(), duplicate.getMessage().contains("duplicate garage_id g"));
 		IllegalArgumentException empty = assertThrows(IllegalArgumentException.class,
-				() -> new GarageOptionModel(List.of(), 400.0, MAXIMUM_DISTANCE_M));
+				() -> new GarageOptionModel(List.of(), 400.0, 400.0, MAXIMUM_DISTANCE_M));
 		assertTrue(empty.getMessage(), empty.getMessage().contains("lists no priced garage"));
-		GarageOptionModel model = new GarageOptionModel(garages, 400.0, MAXIMUM_DISTANCE_M);
+		GarageOptionModel model = new GarageOptionModel(garages, 400.0, 400.0, MAXIMUM_DISTANCE_M);
 		assertThrows(IllegalArgumentException.class, () -> model.optionsWithin(Double.NaN, 5750000.0));
 		assertThrows(IllegalArgumentException.class, () -> model.optionsWithin(580000.0, Double.POSITIVE_INFINITY));
 		assertThrows(UnsupportedOperationException.class, () -> model.garages().clear());

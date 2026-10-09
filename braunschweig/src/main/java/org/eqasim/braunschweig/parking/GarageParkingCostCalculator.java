@@ -6,18 +6,22 @@ import java.util.OptionalDouble;
 import java.util.Set;
 
 /**
- * Parking cost of one car stay with garage options (spec Amendment E of parking cost zones v2, eqasim-bs issue #436): a pure
- * port of {@code braunschweig.parking.cost.parking_cost_with_garages_detail}, the Python reference, pinned to it by the golden
- * cases E01..E32. The price of a stay that can reach garages is the probability-weighted mean of the option costs (an expected
- * cost, no random draw, so the car utility stays stable across mode-choice evaluations), rounded half up to the cent once.
+ * Parking cost of one car stay with garage options (spec Amendments E and H of parking cost zones v2, eqasim-bs issue #436): a
+ * pure port of {@code braunschweig.parking.cost.parking_cost_with_garages_detail}, the Python reference, pinned to it by the
+ * golden cases E01..E38. The price of a stay that can reach garages is the probability-weighted mean of the option costs (an
+ * expected cost, no random draw, so the car utility stays stable across mode-choice evaluations), rounded half up to the cent
+ * once.
  *
  * <p>Order of the rules (R-4d-2: the early rules are decided by the schema-2 calculator, called here and not copied):
  * <ol>
  * <li>{@link ParkingCostCalculator#cents} decides first. A stay it prices before any product (home, employer-free, resident,
- * outside the street fee window), a campus stay, a garage decay of 0 and a stay with no garage in range keep that result:
+ * outside the street fee window), a campus stay, a garage decay of 0 for the purpose of the stay and a stay with no garage
+ * in range keep that result:
  * same cents, same outcome, probability 0;</li>
  * <li>otherwise the options are the street (weight 1) and every garage within the maximum distance (weight
- * {@code StrictMath.exp(-distance / decay)}, ASSUMPTION G1, spec E3), in this order, the garages by ascending id. The street
+ * {@code StrictMath.exp(-distance / decay)}, ASSUMPTION G1, spec E3, where {@code decay} is the decay length of the purpose of
+ * the stay: lambda_c for work and education, lambda for every other purpose, {@link #decayMetersForPurpose}, spec Amendment
+ * H1; a purpose whose decay is 0 has no garage options), in this order, the garages by ascending id. The street
  * option costs the cheaper of the street or long-stay product and the zone's commuter product (the zone-level garage family
  * is superseded, spec E8), or is unavailable above the maximum stay without a long-stay product; a garage option costs
  * {@link GarageOptionPricing#optionCents};</li>
@@ -80,6 +84,17 @@ public final class GarageParkingCostCalculator {
 	}
 
 	/**
+	 * The decay length of the garage weights that governs a stay (ASSUMPTION G1-c, spec Amendment H1), as the Python reference
+	 * {@code garage_decay_m_for_purpose}: {@code commuteDecayMeters} (lambda_c) for a purpose in
+	 * {@link ParkingCostCalculator#COMMUTER_PURPOSES} (work, education), {@code decayMeters} (lambda) for every other
+	 * purpose. The single place that decides it. The purpose is the MATSim activity type, matched exactly (case-sensitive).
+	 * Pure, no validation (the calculator validates both lengths).
+	 */
+	public static double decayMetersForPurpose(String purpose, double decayMeters, double commuteDecayMeters) {
+		return ParkingCostCalculator.COMMUTER_PURPOSES.contains(purpose) ? commuteDecayMeters : decayMeters;
+	}
+
+	/**
 	 * Parking cost of one car stay with garage options, as the Python reference {@code parking_cost_with_garages_detail}.
 	 *
 	 * @param tariff tariff of the zone the activity lies in
@@ -90,16 +105,19 @@ public final class GarageParkingCostCalculator {
 	 * @param parkingFree value of the activity attribute parkingFree
 	 * @param residentOfZone the person is a resident of this zone (rule R1)
 	 * @param residentOfDistrict the activity lies in the resident parking district of the person's home (rule R2)
-	 * @param decayMeters decay length lambda in metres (ASSUMPTION G1); 0 switches the garage options off
+	 * @param decayMeters decay length lambda in metres (ASSUMPTION G1) of every purpose but work and education; 0 switches the
+	 *        garage options off for those purposes
+	 * @param commuteDecayMeters decay length lambda_c in metres (ASSUMPTION G1-c) of work and education; 0 switches the garage
+	 *        options off for those purposes; required, never defaulted to lambda
 	 * @param options the garage options of the destination (looked up only when they can act)
 	 * @param counters optional; counts the stays, the garage option rates and the repeated closed schedules
-	 * @throws IllegalArgumentException for a negative or non-finite decay, a non-finite or negative time or a departure
-	 *         before the arrival
+	 * @throws IllegalArgumentException for a negative or non-finite decay or commuter decay (checked for every purpose), a
+	 *         non-finite or negative time or a departure before the arrival
 	 * @throws ArithmeticException when a price leaves the long range (an implausible tariff) instead of wrapping around
 	 */
 	public static Result cents(ZoneTariff tariff, double arrival_s, double departure_s, String purpose, boolean parkingFree,
-			boolean residentOfZone, boolean residentOfDistrict, double decayMeters, OptionSource options,
-			GarageOptionCounters counters) {
+			boolean residentOfZone, boolean residentOfDistrict, double decayMeters, double commuteDecayMeters,
+			OptionSource options, GarageOptionCounters counters) {
 		Objects.requireNonNull(options, "options");
 		ParkingCostCalculator.Result base = ParkingCostCalculator.cents(tariff, arrival_s, departure_s, purpose, parkingFree,
 				residentOfZone, residentOfDistrict);
@@ -108,10 +126,16 @@ public final class GarageParkingCostCalculator {
 		}
 		if (!Double.isFinite(decayMeters) || decayMeters < 0.0) {
 			throw new IllegalArgumentException("decayMeters must be a finite number of metres >= 0 (0 switches the garage"
-					+ " options off), got " + decayMeters);
+					+ " options off for every purpose but work and education), got " + decayMeters);
 		}
+		if (!Double.isFinite(commuteDecayMeters) || commuteDecayMeters < 0.0) {
+			throw new IllegalArgumentException("commuteDecayMeters must be a finite number of metres >= 0 (0 switches the garage"
+					+ " options off for work and education), got " + commuteDecayMeters);
+		}
+		double decayOfStayMeters = decayMetersForPurpose(purpose, decayMeters, commuteDecayMeters);
 		Result unchanged = new Result(base.cents(), base.outcome(), 0.0, 0, OptionalDouble.empty());
-		if (EARLY_OUTCOMES.contains(base.outcome()) || tariff.zoneType() == ZoneTariff.ZoneType.CAMPUS || decayMeters == 0.0) {
+		if (EARLY_OUTCOMES.contains(base.outcome()) || tariff.zoneType() == ZoneTariff.ZoneType.CAMPUS
+				|| decayOfStayMeters == 0.0) {
 			return unchanged;
 		}
 		if (counters != null) {
@@ -151,7 +175,7 @@ public final class GarageParkingCostCalculator {
 		}
 		for (int index = 0; index < garageOptions.length; index++) {
 			GarageOptionModel.Option option = garageOptions[index];
-			weights[firstGarage + index] = StrictMath.exp(-option.distanceMeters() / decayMeters);
+			weights[firstGarage + index] = StrictMath.exp(-option.distanceMeters() / decayOfStayMeters);
 			costs[firstGarage + index] = GarageOptionPricing.optionCents(option.garage(), arrival_s, departure_s, purpose,
 					counters);
 		}
@@ -168,8 +192,10 @@ public final class GarageParkingCostCalculator {
 						.append(option.distanceMeters()).append(" m");
 			}
 			throw new IllegalArgumentException("every option weight underflowed to 0 (street option unavailable, decay "
-					+ decayMeters + " m, garage distances " + distances + "), so the garage probabilities are undefined;"
-					+ " garage_decay_m must be of the order of the garage distances, not far below them");
+					+ decayOfStayMeters + " m for the purpose " + purpose + ", garage distances " + distances + "), so the"
+					+ " garage probabilities are undefined; the decay length of the purpose (garage_decay_m, or"
+					+ " garage_decay_commute_m for work and education) must be of the order of the garage distances, not far"
+					+ " below them");
 		}
 		double expected = 0.0;
 		double garageProbability = 0.0;
