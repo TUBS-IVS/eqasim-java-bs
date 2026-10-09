@@ -37,7 +37,16 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 
 	private final static Logger log = LogManager.getLogger(AnalysisOutputListener.class);
 
-	private static final String TRIPS_FILE_NAME = "eqasim_trips.csv";
+	/** File name of the eqasim trips table in the output root (consumed by downstream tools). */
+	public static final String TRIPS_FILE_NAME = "eqasim_trips.csv";
+	/**
+	 * File name of the eqasim trips table inside each ITERS/it.N directory. It deliberately does NOT end with
+	 * "trips.csv": MATSim's SimWrapper TripAnalysis looks up MATSim's own iteration trips via
+	 * ApplicationUtils.matchInput("trips.csv", ITERS/it.0), whose suffix-match fallback otherwise may return
+	 * "0.eqasim_trips.csv.gz" (directory-order dependent) and then fails to parse the eqasim schema. The copy in the
+	 * output root keeps the name TRIPS_FILE_NAME.
+	 */
+	public static final String ITERATION_TRIPS_FILE_NAME = "eqasim_trips_iteration.csv";
 	private static final String LEGS_FILE_NAME = "eqasim_legs.csv";
 	private static final String PT_FILE_NAME = "eqasim_pt.csv";
 	private static final String ACTIVITIES_FILE_NAME = "eqasim_activities.csv";
@@ -117,7 +126,7 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 				event.getServices().getEvents().removeHandler(ptAnalysisListener);
 
 				new TripWriter(tripAnalysisListener.getTripItems(), scenarioDistanceUnit, analysisDistanceUnit, delimiter)
-						.write(outputDirectory.getIterationFilename(event.getIteration(), TRIPS_FILE_NAME, compressionType));
+						.write(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_TRIPS_FILE_NAME, compressionType));
 
 				new LegWriter(legAnalysisListener.getLegItems(), scenarioDistanceUnit, analysisDistanceUnit, delimiter)
 						.write(outputDirectory.getIterationFilename(event.getIteration(), LEGS_FILE_NAME, compressionType));
@@ -144,7 +153,7 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 	@Override
 	public void notifyShutdown(ShutdownEvent event) {
 		try {
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), TRIPS_FILE_NAME, compressionType)).toPath(),
+			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_TRIPS_FILE_NAME, compressionType)).toPath(),
 					new File(outputDirectory.getOutputFilename(TRIPS_FILE_NAME, compressionType)).toPath());
 			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), LEGS_FILE_NAME, compressionType)).toPath(),
 					new File(outputDirectory.getOutputFilename(LEGS_FILE_NAME, compressionType)).toPath());
