@@ -10,7 +10,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import org.eqasim.core.simulation.analysis.AnalysisOutputListener;
+import org.eqasim.core.simulation.modes.drt.analysis.DrtAnalysisListener;
 import org.eqasim.core.simulation.modes.feeder_drt.analysis.FeederDrtAnalysisListener;
+import org.eqasim.core.simulation.modes.transit_with_abstract_access.analysis.AbstractAccessAnalysisOutputListener;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -154,11 +156,53 @@ public class AnalysisOutputFileNamesTest {
 				CompressionType.none);
 	}
 
+	// The DRT vehicle activities and abstract access legs files are written without compression.
+
+	@Test
+	public void matsimActivitiesLookupIgnoresDrtVehicleActivities_matsimFileCreatedFirst() throws IOException {
+		assertMatsimFileWins("activities.csv", "activities.csv",
+				DrtAnalysisListener.ITERATION_VEHICLE_ACTIVITIES_FILE_NAME, CompressionType.none, true);
+	}
+
+	@Test
+	public void matsimActivitiesLookupIgnoresDrtVehicleActivities_drtFileCreatedFirst() throws IOException {
+		assertMatsimFileWins("activities.csv", "activities.csv",
+				DrtAnalysisListener.ITERATION_VEHICLE_ACTIVITIES_FILE_NAME, CompressionType.none, false);
+	}
+
+	@Test
+	public void matsimActivitiesLookupFindsNothingFromDrtVehicleActivitiesAlone() throws IOException {
+		assertEqasimFileNotMatched("activities.csv", DrtAnalysisListener.ITERATION_VEHICLE_ACTIVITIES_FILE_NAME,
+				CompressionType.none);
+	}
+
+	@Test
+	public void matsimLegsLookupIgnoresAbstractAccessLegs_matsimFileCreatedFirst() throws IOException {
+		assertMatsimFileWins("legs.csv", "legs.csv",
+				AbstractAccessAnalysisOutputListener.ITERATION_ABSTRACT_ACCESS_LEGS_FILE_NAME, CompressionType.none,
+				true);
+	}
+
+	@Test
+	public void matsimLegsLookupIgnoresAbstractAccessLegs_abstractAccessFileCreatedFirst() throws IOException {
+		assertMatsimFileWins("legs.csv", "legs.csv",
+				AbstractAccessAnalysisOutputListener.ITERATION_ABSTRACT_ACCESS_LEGS_FILE_NAME, CompressionType.none,
+				false);
+	}
+
+	@Test
+	public void matsimLegsLookupFindsNothingFromAbstractAccessLegsAlone() throws IOException {
+		assertEqasimFileNotMatched("legs.csv",
+				AbstractAccessAnalysisOutputListener.ITERATION_ABSTRACT_ACCESS_LEGS_FILE_NAME, CompressionType.none);
+	}
+
 	@Test
 	public void iterationNamesDoNotEndWithMatsimTableNames() {
 		for (String name : new String[] { AnalysisOutputListener.ITERATION_TRIPS_FILE_NAME,
 				AnalysisOutputListener.ITERATION_LEGS_FILE_NAME, AnalysisOutputListener.ITERATION_ACTIVITIES_FILE_NAME,
-				FeederDrtAnalysisListener.ITERATION_FEEDER_TRIPS_FILE_NAME }) {
+				FeederDrtAnalysisListener.ITERATION_FEEDER_TRIPS_FILE_NAME,
+				DrtAnalysisListener.ITERATION_VEHICLE_ACTIVITIES_FILE_NAME,
+				AbstractAccessAnalysisOutputListener.ITERATION_ABSTRACT_ACCESS_LEGS_FILE_NAME }) {
 			assertFalse(name, name.endsWith("trips.csv"));
 			assertFalse(name, name.endsWith("legs.csv"));
 			assertFalse(name, name.endsWith("activities.csv"));
@@ -171,6 +215,9 @@ public class AnalysisOutputFileNamesTest {
 		assertEquals("eqasim_legs.csv", AnalysisOutputListener.LEGS_FILE_NAME);
 		assertEquals("eqasim_activities.csv", AnalysisOutputListener.ACTIVITIES_FILE_NAME);
 		assertEquals("eqasim_feeder_drt_trips.csv", FeederDrtAnalysisListener.FEEDER_TRIPS_FILE_NAME);
+		assertEquals("eqasim_drt_vehicle_activities.csv", DrtAnalysisListener.VEHICLE_ACTIVITIES_FILE_NAME);
+		assertEquals("eqasim_abstract_access_legs.csv",
+				AbstractAccessAnalysisOutputListener.ABSTRACT_ACCESS_LEGS_FILE_NAME);
 
 		OutputDirectoryHierarchy hierarchy = createHierarchy();
 		String rootFile = hierarchy.getOutputFilename(AnalysisOutputListener.TRIPS_FILE_NAME, CompressionType.gzip);

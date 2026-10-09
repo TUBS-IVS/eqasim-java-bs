@@ -94,6 +94,25 @@ public class AnalysisOutputListenerShutdownTest {
 	}
 
 	@Test
+	public void existingOutputRootFilesAreReplacedByTheNewContent() throws IOException {
+		AnalysisOutputListener listener = createListener(1, 1);
+		writeAllIterationFiles();
+		// Stale files of a previous run in the same output directory.
+		for (String name : new String[] { "eqasim_trips.csv", "eqasim_legs.csv", "eqasim_pt.csv",
+				"eqasim_activities.csv", "eqasim_travel_times.bin" }) {
+			Files.write(rootFile(name).toPath(), "stale".getBytes(StandardCharsets.UTF_8));
+		}
+
+		listener.notifyShutdown(regularShutdown());
+
+		assertEquals("trips", Files.readString(rootFile("eqasim_trips.csv").toPath()));
+		assertEquals("legs", Files.readString(rootFile("eqasim_legs.csv").toPath()));
+		assertEquals("pt", Files.readString(rootFile("eqasim_pt.csv").toPath()));
+		assertEquals("activities", Files.readString(rootFile("eqasim_activities.csv").toPath()));
+		assertEquals("travel_times", Files.readString(rootFile("eqasim_travel_times.bin").toPath()));
+	}
+
+	@Test
 	public void missingIterationTripsFileFailsLoudlyAndNamesTheFilePair() throws IOException {
 		AnalysisOutputListener listener = createListener(1, 0);
 		// Everything except the trips table exists.

@@ -2,7 +2,6 @@ package org.eqasim.core.simulation.analysis;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 
 import org.apache.logging.log4j.LogManager;
@@ -188,19 +187,11 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 	}
 
 	/**
-	 * Copies a file of the last iteration (ITERS/it.N) to the output root. A failure is logged with the file pair
-	 * and rethrown, because downstream analyses read the output-root files.
+	 * Copies a file of the last iteration (ITERS/it.N) to the output root, replacing a file of a previous run.
 	 */
 	private void copyIterationFileToOutputRoot(int iteration, String iterationFileName, String outputFileName) {
-		File iterationFile = new File(outputDirectory.getIterationFilename(iteration, iterationFileName, compressionType));
-		File outputFile = new File(outputDirectory.getOutputFilename(outputFileName, compressionType));
-
-		try {
-			Files.copy(iterationFile.toPath(), outputFile.toPath());
-		} catch (IOException e) {
-			String message = "Could not copy eqasim analysis file " + iterationFile + " to " + outputFile + ": " + e;
-			log.error(message);
-			throw new UncheckedIOException(message, e);
-		}
+		AnalysisOutputFileCopier.copyToOutputRoot(
+				new File(outputDirectory.getIterationFilename(iteration, iterationFileName, compressionType)),
+				new File(outputDirectory.getOutputFilename(outputFileName, compressionType)));
 	}
 }
