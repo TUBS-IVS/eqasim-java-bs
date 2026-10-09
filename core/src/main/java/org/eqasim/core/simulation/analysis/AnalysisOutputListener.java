@@ -2,6 +2,7 @@ package org.eqasim.core.simulation.analysis;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 
 import org.apache.logging.log4j.LogManager;
@@ -51,12 +52,12 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 	public static final String LEGS_FILE_NAME = "eqasim_legs.csv";
 	/** Per-iteration legs file; must not end with "legs.csv" (MATSim matchInput suffix collision, see ITERATION_TRIPS_FILE_NAME). */
 	public static final String ITERATION_LEGS_FILE_NAME = "eqasim_legs_iteration.csv";
-	private static final String PT_FILE_NAME = "eqasim_pt.csv";
+	public static final String PT_FILE_NAME = "eqasim_pt.csv";
 	/** File name of the eqasim activities table in the output root. */
 	public static final String ACTIVITIES_FILE_NAME = "eqasim_activities.csv";
 	/** Per-iteration activities file; must not end with "activities.csv" (MATSim matchInput suffix collision, see ITERATION_TRIPS_FILE_NAME). */
 	public static final String ITERATION_ACTIVITIES_FILE_NAME = "eqasim_activities_iteration.csv";
-	private static final String TRAVEL_TIMES_FILE_NAME = "eqasim_travel_times.bin";
+	public static final String TRAVEL_TIMES_FILE_NAME = "eqasim_travel_times.bin";
 
 	private final OutputDirectoryHierarchy outputDirectory;
 	
@@ -158,19 +159,48 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 
 	@Override
 	public void notifyShutdown(ShutdownEvent event) {
+		if (event.isUnexpected()) {
+			// The run aborted; the last iteration's tables may not exist. Do not add a second failure that would
+			// hide the original exception.
+			log.warn("Run terminated unexpectedly, skipping the copy of the eqasim analysis tables to the output root");
+			return;
+		}
+
+		int iteration = event.getIteration();
+
+		if (analysisInterval > 0) {
+			// The last iteration is always analysed when the interval is positive, so every table must exist.
+			copyIterationFileToOutputRoot(iteration, ITERATION_TRIPS_FILE_NAME, TRIPS_FILE_NAME);
+			copyIterationFileToOutputRoot(iteration, ITERATION_LEGS_FILE_NAME, LEGS_FILE_NAME);
+			copyIterationFileToOutputRoot(iteration, PT_FILE_NAME, PT_FILE_NAME);
+			copyIterationFileToOutputRoot(iteration, ITERATION_ACTIVITIES_FILE_NAME, ACTIVITIES_FILE_NAME);
+		} else {
+			log.info("analysisInterval is " + analysisInterval + ", no eqasim analysis tables were written; "
+					+ "not copying trips, legs, pt and activities to the output root");
+		}
+
+		if (travelTimeInterval > 0) {
+			copyIterationFileToOutputRoot(iteration, TRAVEL_TIMES_FILE_NAME, TRAVEL_TIMES_FILE_NAME);
+		} else {
+			log.info("travelTimeRecordingInterval is " + travelTimeInterval + ", no eqasim travel times were "
+					+ "recorded; not copying " + TRAVEL_TIMES_FILE_NAME + " to the output root");
+		}
+	}
+
+	/**
+	 * Copies a file of the last iteration (ITERS/it.N) to the output root. A failure is logged with the file pair
+	 * and rethrown, because downstream analyses read the output-root files.
+	 */
+	private void copyIterationFileToOutputRoot(int iteration, String iterationFileName, String outputFileName) {
+		File iterationFile = new File(outputDirectory.getIterationFilename(iteration, iterationFileName, compressionType));
+		File outputFile = new File(outputDirectory.getOutputFilename(outputFileName, compressionType));
+
 		try {
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_TRIPS_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(TRIPS_FILE_NAME, compressionType)).toPath());
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_LEGS_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(LEGS_FILE_NAME, compressionType)).toPath());
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), PT_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(PT_FILE_NAME, compressionType)).toPath());
-			Files.copy(
-					new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_ACTIVITIES_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(ACTIVITIES_FILE_NAME, compressionType)).toPath());
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), TRAVEL_TIMES_FILE_NAME, compressionType))
-					.toPath(), new File(outputDirectory.getOutputFilename(TRAVEL_TIMES_FILE_NAME, compressionType)).toPath());
+			Files.copy(iterationFile.toPath(), outputFile.toPath());
 		} catch (IOException e) {
+			String message = "Could not copy eqasim analysis file " + iterationFile + " to " + outputFile + ": " + e;
+			log.error(message);
+			throw new UncheckedIOException(message, e);
 		}
 	}
 }
