@@ -146,7 +146,7 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 				"true switches the car cost model to zone-based parking costs (eqasim-bs issue #436); absent/false keeps the"
 						+ " existing car cost model");
 		comments.put("tariffsPath",
-				"parking tariff model JSON, schema 1, 2 or 3 (the Python pipeline writes 3), written by the preparation stage"
+				"parking tariff model JSON, schema 1 to 4 (the Python pipeline writes 4), written by the preparation stage"
 						+ " (relative to the config file)");
 		comments.put("terminalStayRule",
 				"parking duration at the last activity of a plan; only until_fee_end: the car pays until the fee window of"
