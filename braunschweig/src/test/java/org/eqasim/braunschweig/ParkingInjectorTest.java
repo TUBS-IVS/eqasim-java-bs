@@ -269,7 +269,7 @@ public class ParkingInjectorTest {
 	 */
 	@Test
 	public void anInvalidTariffModelFailsWhenTheControllerStarts() throws Exception {
-		Controler controller = controller(true, tariffModel -> tariffModel.put("schema_version", 4));
+		Controler controller = controller(true, tariffModel -> tariffModel.put("schema_version", 5));
 
 		RuntimeException error = assertThrows(RuntimeException.class, controller::run);
 		IllegalArgumentException readerError = null;
@@ -280,7 +280,8 @@ public class ParkingInjectorTest {
 		}
 		assertNotNull("no IllegalArgumentException of the tariff reader in " + error, readerError);
 		assertTrue(readerError.getMessage(), readerError.getMessage().contains(TARIFFS_FILE));
-		assertTrue(readerError.getMessage(), readerError.getMessage().contains("schema_version must be one of [1, 2, 3], got 4"));
+		assertTrue(readerError.getMessage(),
+				readerError.getMessage().contains("schema_version must be one of [1, 2, 3, 4], got 5"));
 		// No iteration has begun.
 		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
 	}
