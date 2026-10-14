@@ -53,7 +53,7 @@ public class GarageOptionBenchmarkTest {
 	private static GarageTariff singleWindow(String id, double x_m, double y_m, int ratePerHourCents) {
 		return new GarageTariff(id, x_m, y_m, OptionalLong.of(ratePerHourCents), OptionalInt.of(30), OptionalInt.of(0),
 				OptionalInt.of(86400), OptionalInt.empty(), OptionalLong.empty(), OptionalInt.empty(), OptionalInt.empty(),
-				OptionalLong.of(1200), List.of(), List.of(), OptionalLong.of(6300));
+				OptionalLong.of(1200), List.of(), List.of(), OptionalLong.of(6300), OptionalInt.empty());
 	}
 
 	private static GarageTariff tiered(String id, double x_m, double y_m) {
@@ -61,7 +61,7 @@ public class GarageOptionBenchmarkTest {
 				OptionalInt.empty(), OptionalInt.empty(), OptionalLong.empty(), OptionalInt.empty(), OptionalInt.empty(),
 				OptionalLong.of(900), List.of(new GarageTariff.Tier(28800, 64800, 30, 60),
 						new GarageTariff.Tier(64800, 28800, 30, 20)),
-				List.of(), OptionalLong.empty());
+				List.of(), OptionalLong.empty(), OptionalInt.empty());
 	}
 
 	private static GarageTariff banded(String id, double x_m, double y_m) {
@@ -72,7 +72,7 @@ public class GarageOptionBenchmarkTest {
 						new GarageTariff.Band(20, OptionalInt.of(120), GarageTariff.BandKind.TOTAL, 100, OptionalInt.empty()),
 						new GarageTariff.Band(120, OptionalInt.empty(), GarageTariff.BandKind.INCREMENT, 50,
 								OptionalInt.of(60))),
-				OptionalLong.empty());
+				OptionalLong.empty(), OptionalInt.empty());
 	}
 
 	private static List<GarageTariff> garages(Random random) {
@@ -130,8 +130,8 @@ public class GarageOptionBenchmarkTest {
 		long sum = 0;
 		for (Stay stay : stays) {
 			sum += GarageParkingCostCalculator.cents(zone, stay.arrival_s(), stay.departure_s(), stay.purpose(), false, false,
-					false, model.decayMeters(), model.commuteDecayMeters(), () -> model.optionsWithin(stay.x_m(), stay.y_m()),
-					counters).cents();
+					false, false, model.decayMeters(), model.commuteDecayMeters(), 0.0,
+					() -> model.optionsWithin(stay.x_m(), stay.y_m()), counters).cents();
 		}
 		return sum;
 	}

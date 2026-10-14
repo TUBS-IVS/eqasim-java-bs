@@ -60,5 +60,20 @@ public enum ParkingOutcome {
 	 * order is not a contract: it differs from the Python reference's OUTCOMES (NO_ZONE comes first here), and readers of
 	 * the outcome report key its rows by the outcome name (eqasim-bs ADR-0140).
 	 */
-	PAID_EXPECTED
+	PAID_EXPECTED,
+	/**
+	 * Tariff schema 5 (spec v3 A1, ASSUMPTION M3): the stay exceeds the maximum stay of the street (which sells no long-stay
+	 * product) and of every garage option within reach, so no option can serve it. It is priced as the street at its metered
+	 * price with the maximum ignored, so that the cost stays finite, and counted under this name: it is the signal that the
+	 * option set is incomplete, never a silent fallback. Appended at the end, so the row order of every earlier outcome in the
+	 * outcome report is unchanged.
+	 */
+	NO_FEASIBLE_OPTION,
+	/**
+	 * Tariff schema 5 (spec v3 A5, ASSUMPTIONS E1 and E2): the person owns an electric car (BEV or PHEV, person attribute
+	 * parkingEvExempt), the zone states {@code ev_free_minutes}, and the chargeable stay lies within it and within the maximum
+	 * stay of the zone: the street fee is 0 by the town's ordinance, also where garages are within reach. Free by its own rule,
+	 * like RESIDENT_FREE. Appended at the end, like NO_FEASIBLE_OPTION.
+	 */
+	EV_EXEMPT
 }

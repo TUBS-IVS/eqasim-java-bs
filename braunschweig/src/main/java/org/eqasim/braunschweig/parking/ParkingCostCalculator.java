@@ -7,8 +7,9 @@ import java.util.Set;
 
 /**
  * Parking cost of one car stay in one zone: a pure port of design "parking cost zones", section 3.2, and of the v2
- * product minimum (eqasim-bs issue #436). The Python reference braunschweig.parking.cost implements the same rules; the
- * 90 golden cases of {@code parking_golden_cases.json} pin both implementations to identical cents and outcomes.
+ * product minimum and of the v3 mechanics (maximum-stay feasibility, EV exemption; eqasim-bs issue #436). The Python reference
+ * braunschweig.parking.cost implements the same rules; the golden cases of {@code parking_golden_cases.json} pin both
+ * implementations to identical cents and outcomes.
  *
  * <p>Units: money in integer euro cents, times in whole simulation seconds (seconds after midnight of the first
  * simulated day, possibly beyond 24 h), tariff durations in minutes. MATSim passes times as doubles; they are floored to
@@ -205,6 +206,32 @@ public final class ParkingCostCalculator {
 	 */
 	public static Result cents(ZoneTariff tariff, double arrival_s, double departure_s, String purpose, boolean parkingFree,
 			boolean residentOfZone, boolean residentOfDistrict) {
+		return cents(tariff, arrival_s, departure_s, purpose, parkingFree, residentOfZone, residentOfDistrict, false);
+	}
+
+	/**
+	 * {@link #cents(ZoneTariff, double, double, String, boolean, boolean, boolean)} with the electric car exemption (parking
+	 * cost zones v3, spec A5, ASSUMPTIONS E1 and E2) and the maximum-stay feasibility (spec A1, ASSUMPTION M3). Two rules are
+	 * added to the order above, and the product minimum of rule 6 gains one outcome:
+	 * <ul>
+	 * <li>rule 5a, after the campus branch and before the street product: the person owns an electric car
+	 * ({@code evExempt}), the zone states {@code ev_free_minutes}, and the chargeable minutes ({@code ceil(chargeable_s / 60)},
+	 * STREET fee window) are within it AND within the zone's maximum stay (E2: the exemption never extends a stay beyond the
+	 * maximum): 0, EV_EXEMPT, before the free-stay threshold too. A longer stay pays the full schedule of rule 6, never a
+	 * deduction. The validity date of the rule is applied by the export, which leaves {@code ev_free_minutes} empty for an
+	 * expired rule, so this method sees rules in force only;</li>
+	 * <li>rule 6, no product: a street zone whose maximum stay the stay exceeds and which sells no long-stay product, no
+	 * zone-level garage and, for the purpose, no commuter product has nothing to sell: the stay is priced as the street at its
+	 * metered price, the maximum and the free-stay threshold ignored so that the cost stays finite, with outcome
+	 * NO_FEASIBLE_OPTION (ASSUMPTION M3). The method has no counter: the garage-option path counts it
+	 * ({@link GarageOptionCounters}), and the outcome report counts it by name.</li>
+	 * </ul>
+	 *
+	 * @param evExempt the person owns an electric car that the town's ordinance exempts from the street fee (person attribute
+	 *        parkingEvExempt); false changes nothing relative to the overload without it
+	 */
+	public static Result cents(ZoneTariff tariff, double arrival_s, double departure_s, String purpose, boolean parkingFree,
+			boolean residentOfZone, boolean residentOfDistrict, boolean evExempt) {
 		Objects.requireNonNull(tariff, "tariff");
 		Objects.requireNonNull(purpose, "purpose");
 		long chargeable_s = chargeableSeconds(arrival_s, departure_s, tariff.feeStart_s(), tariff.feeEnd_s());
@@ -227,8 +254,61 @@ public final class ParkingCostCalculator {
 			}
 			return new Result(tariff.guestDayCents().getAsLong(), ParkingOutcome.PAID_CAMPUS_GUEST);
 		}
-		return cheapest(streetProduct(tariff, chargeable_s), garageProduct(tariff, arrival_s, departure_s),
-				commuterProduct(tariff, purpose));
+		Result evStreet = evExemptStreet(tariff, chargeable_s, evExempt);
+		if (evStreet != null) {
+			return evStreet;
+		}
+		Result street = streetProduct(tariff, chargeable_s);
+		Result garage = garageProduct(tariff, arrival_s, departure_s);
+		Result commuter = commuterProduct(tariff, purpose);
+		if (street == null && garage == null && commuter == null) {
+			// Spec v3 A1 (ASSUMPTION M3): nothing to sell above the maximum stay; the street at its metered price, named.
+			return new Result(streetMeteredCents(tariff, chargeable_s), ParkingOutcome.NO_FEASIBLE_OPTION);
+		}
+		return cheapest(street, garage, commuter);
+	}
+
+	/**
+	 * The EV exemption (spec v3 A5) as a street product: (0, EV_EXEMPT) for an exempt person whose chargeable stay (STREET fee
+	 * window, seconds rounded up to minutes) is within the zone's {@code ev_free_minutes} AND within its maximum stay (ASSUMPTION
+	 * E2), else null. Null also where the person is not exempt or the zone has no exemption. A longer stay is not deducted from:
+	 * it prices as everybody's stay. {@code chargeable_s} (above 0) are the seconds in the STREET fee window.
+	 */
+	static Result evExemptStreet(ZoneTariff tariff, long chargeable_s, boolean evExempt) {
+		if (!evExempt || tariff.evFreeMinutes().isEmpty()) {
+			return null;
+		}
+		long chargeable_min = Math.ceilDiv(chargeable_s, SECONDS_PER_MINUTE);
+		if (chargeable_min > tariff.evFreeMinutes().getAsInt()) {
+			return null;
+		}
+		if (tariff.maxStayMinutes().isPresent() && chargeable_min > tariff.maxStayMinutes().getAsInt()) {
+			return null;
+		}
+		return new Result(0, ParkingOutcome.EV_EXEMPT);
+	}
+
+	/**
+	 * The metered price of the street columns for {@code chargeable_s} chargeable seconds, the maximum stay and the free-stay
+	 * threshold ignored: the price of a stay without a feasible option (NO_FEASIBLE_OPTION, spec v3 A1, ASSUMPTION M3).
+	 * ZoneTariff guarantees the hourly rate and the billing unit of every zone type that reaches the product minimum.
+	 */
+	static long streetMeteredCents(ZoneTariff tariff, long chargeable_s) {
+		return meteredCents(chargeable_s, tariff.hourlyRateCents().getAsLong(), tariff.billingUnitMinutes().getAsInt(),
+				tariff.firstPeriodMinutes(), tariff.firstPeriodCents(), tariff.dailyCapCents());
+	}
+
+	/**
+	 * Whether the street side of a stay is an option (spec v3 A1, as the Python reference {@code GarageStayPrice.street_feasible}):
+	 * the EV exemption, the street or long-stay product or the zone commuter product can serve it. False only where the
+	 * maximum stay removed all of them. It is not the question whether the stay can be priced: the zone-level garage product
+	 * of schema 2 does not count here, because it is not part of the street option of the garage options (spec Amendment E8).
+	 * {@code chargeable_s} (above 0) are the seconds in the STREET fee window. Must be called for a stay that reaches the
+	 * product minimum of a street or resident zone (not for an early outcome and not for a campus stay).
+	 */
+	static boolean streetSideFeasible(ZoneTariff tariff, long chargeable_s, String purpose, boolean evExempt) {
+		return evExemptStreet(tariff, chargeable_s, evExempt) != null || streetProduct(tariff, chargeable_s) != null
+				|| commuterProduct(tariff, purpose) != null;
 	}
 
 	/**
@@ -284,7 +364,7 @@ public final class ParkingCostCalculator {
 	/**
 	 * The cheapest of the available (non-null) products (assumption P1); a tie goes to the product listed first, i.e. the
 	 * street, then the garage, then the commuter product (on a campus the member day product, then the commuter product).
-	 * ZoneTariff guarantees at least one available product for every stay that reaches the product minimum.
+	 * The caller has handled the stay without any product (NO_FEASIBLE_OPTION, spec v3 A1), so at least one is available.
 	 */
 	private static Result cheapest(Result... products) {
 		Result cheapest = null;

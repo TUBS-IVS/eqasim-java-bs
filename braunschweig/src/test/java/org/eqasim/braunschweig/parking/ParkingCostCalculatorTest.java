@@ -25,14 +25,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Parking cost of one stay (design section 3.2 and the v2 lever 2). The 90 golden cases in
- * {@code parking/parking_golden_cases.json} are the cross-language contract: the Python reference
+ * Parking cost of one stay (design section 3.2, the v2 lever 2 and the v3 maximum-stay feasibility and EV exemption). The
+ * golden cases in {@code parking/parking_golden_cases.json} are the cross-language contract: the Python reference
  * braunschweig.parking.cost (eqasim-bs) evaluates the same file to the same cents and outcomes. The fixture tariffs pin
  * the arithmetic, not real tariffs. The file is a byte-for-byte copy of the one scripts/export_parking_golden_cases.py
  * writes (eqasim-bs tests/fixtures/parking); regenerate it there and copy it, never edit it here. Every case is
  * evaluated as the Python reference evaluates it (braunschweig.parking.golden_cases.evaluate_case): the terminal-stay
  * rule T1 for a terminal case, then the minimum parked duration L1 of the case, then the pricing with the resident
- * district flag of the case (rule R2) and the tariff of the file (its resident_permits_valid included).
+ * district flag and the EV exemption flag OF THE CASE (rule R2, spec v3 A5) and the tariff of the file (its
+ * resident_permits_valid and ev_free_minutes included). The cases that reach garage options (a destination) belong to
+ * GarageParkingCostCalculatorTest.
  */
 public class ParkingCostCalculatorTest {
 	static final String GOLDEN_CASES_RESOURCE = "/parking/parking_golden_cases.json";
@@ -43,26 +45,30 @@ public class ParkingCostCalculatorTest {
 	/**
 	 * Version of the golden file: 3 since every case carries minimum_stay_min and resident_of_district, 4 since the garage
 	 * options (spec Amendment E: destination, decay and expected garage probability per case, the garages and the option
-	 * cases), 5 since the separate commuter decay length (spec Amendment H: garage_decay_commute_m per case).
+	 * cases), 5 since the separate commuter decay length (spec Amendment H: garage_decay_commute_m per case), 6 since the v3
+	 * mechanics (spec v3: ev_exempt and option_price_beta_u_per_eur per case, max_stay_min per garage, ev_free_minutes per
+	 * zone, the families F, P and X and the option cases S).
 	 */
-	private static final int GOLDEN_SCHEMA_VERSION = 5;
+	private static final int GOLDEN_SCHEMA_VERSION = 6;
 
 	/**
 	 * G01..G38 (the pricing before the minimum parked duration), L01..L08 at L = 15 and their twins L01Z..L08Z at L = 0,
-	 * V01..V23 (schema 2: the cheapest of the street, garage and commuter product), R01..R13 (rule R2) and E01..E38
-	 * (garage options, priced by GarageParkingCostCalculatorTest, not here); a truncated or replaced fixture must not pass
-	 * by asserting fewer cases.
+	 * V01..V23 (schema 2: the cheapest of the street, garage and commuter product), R01..R13 (rule R2), E01..E38 (garage
+	 * options), F01..F08 (maximum-stay feasibility), P01..P06 (price in the option weights) and X01..X09 (EV exemption); the
+	 * cases with a destination are priced by GarageParkingCostCalculatorTest, not here; a truncated or replaced fixture must
+	 * not pass by asserting fewer cases.
 	 */
-	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13, "E", 38);
+	private static final Map<String, Integer> CASES_PER_FAMILY = Map.of("G", 38, "L", 8, "LZ", 8, "V", 23, "R", 13, "E", 38,
+			"F", 8, "P", 6, "X", 9);
 
 	/**
 	 * The keys of one golden case, as the Python generator writes them (braunschweig.parking.golden_cases.CASE_FIELDS):
 	 * a dropped or renamed key fails instead of being read as absent.
 	 */
 	private static final Set<String> CASE_FIELDS = Set.of("id", "zone_id", "arrival_s", "departure_s", "purpose",
-			"parking_free", "resident_of_zone", "resident_of_district", "terminal", "minimum_stay_min", "destination_x_m",
-			"destination_y_m", "garage_decay_m", "garage_decay_commute_m", "expected_cents", "expected_outcome",
-			"expected_garage_probability", "expected_error");
+			"parking_free", "resident_of_zone", "resident_of_district", "ev_exempt", "terminal", "minimum_stay_min",
+			"destination_x_m", "destination_y_m", "garage_decay_m", "garage_decay_commute_m", "option_price_beta_u_per_eur",
+			"expected_cents", "expected_outcome", "expected_garage_probability", "expected_error");
 
 	private static final int SECONDS_PER_DAY = 86400;
 
@@ -102,16 +108,18 @@ public class ParkingCostCalculatorTest {
 		Map<String, Integer> casesPerFamily = new TreeMap<>();
 		Set<ParkingOutcome> pinnedOutcomes = EnumSet.noneOf(ParkingOutcome.class);
 		int errorCases = 0;
+		int priced = 0;
 		List<String> failures = new ArrayList<>();
 		for (JsonNode goldenCase : cases) {
 			String id = goldenCase.get("id").asText();
 			assertTrue("duplicate golden case id " + id, ids.add(id));
 			casesPerFamily.merge(family(id), 1, Integer::sum);
 			assertEquals(id + ": keys of the golden case", CASE_FIELDS, fieldNames(goldenCase));
-			if ("E".equals(family(id))) {
-				// The garage option cases need the garages and the distance mixture: GarageParkingCostCalculatorTest.
+			if (!goldenCase.get("destination_x_m").isNull()) {
+				// The cases with a destination need the garages and the distance mixture: GarageParkingCostCalculatorTest.
 				continue;
 			}
+			priced++;
 			ZoneTariff tariff = tariffs.get(goldenCase.get("zone_id").asText());
 			assertNotNull(id + ": unknown zone " + goldenCase.get("zone_id"), tariff);
 			if (literalBoolean(goldenCase, "expected_error")) {
@@ -142,8 +150,11 @@ public class ParkingCostCalculatorTest {
 		assertTrue(String.join("; ", failures), failures.isEmpty());
 		assertEquals(new TreeMap<>(CASES_PER_FAMILY), casesPerFamily);
 		assertEquals(1, errorCases);
-		// Every outcome the calculator can return is pinned, the two schema-2 products included; NO_ZONE is decided by the
-		// car cost model, never here, and PAID_EXPECTED belongs to GarageParkingCostCalculator.
+		// The primary path is taken: every case without a destination is priced here (the garage cases are the other
+		// harness's), so a golden file that moved every case behind a destination would not pass unnoticed.
+		assertEquals("cases without a destination: G 38, L 16, V 23, R 13, F 3 and X 7", 100, priced);
+		// Every outcome the calculator can return is pinned, the two schema-2 products and the two schema-5 outcomes included;
+		// NO_ZONE is decided by the car cost model, never here, and PAID_EXPECTED belongs to GarageParkingCostCalculator.
 		assertEquals(EnumSet.complementOf(EnumSet.of(ParkingOutcome.NO_ZONE, ParkingOutcome.PAID_EXPECTED)), pinnedOutcomes);
 	}
 
@@ -194,7 +205,127 @@ public class ParkingCostCalculatorTest {
 		double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(arrival_s, departure_s, minimumStay_s);
 		return ParkingCostCalculator.cents(tariff, arrival_s, pricedDeparture_s, goldenCase.get("purpose").asText(),
 				literalBoolean(goldenCase, "parking_free"), literalBoolean(goldenCase, "resident_of_zone"),
-				literalBoolean(goldenCase, "resident_of_district"));
+				literalBoolean(goldenCase, "resident_of_district"), literalBoolean(goldenCase, "ev_exempt"));
+	}
+
+	/**
+	 * Spec v3 A5, ASSUMPTIONS E1 and E2, hand-derived on fx_ev_street_v3 (street 180 ct/h in 1-min units, 09:00-20:00, no
+	 * maximum stay, ev_free_minutes 240): an exempt person parks free up to and including 240 chargeable minutes (EV_EXEMPT,
+	 * before the street product), one second more and the stay pays the whole schedule, never a deduction (241 started
+	 * minutes = 723 ct); a person without the flag pays from the first minute; the flag changes nothing in a zone without the
+	 * rule (fx_ev_expired_v3, whose rule the export switched off, and fx_bs_ib), and a home stay stays HOME.
+	 */
+	@Test
+	public void anElectricCarParksFreeUpToTheLimitAndPaysTheFullScheduleBeyondIt() throws Exception {
+		Map<String, ZoneTariff> tariffs = goldenTariffs();
+		ZoneTariff evStreet = tariffs.get("fx_ev_street_v3");
+		assertEquals(new Result(0, ParkingOutcome.EV_EXEMPT),
+				ParkingCostCalculator.cents(evStreet, 36000, 36000 + 14400, "shop", false, false, false, true));
+		assertEquals(new Result(723, ParkingOutcome.PAID_METERED),
+				ParkingCostCalculator.cents(evStreet, 36000, 36000 + 14401, "shop", false, false, false, true));
+		assertEquals(new Result(540, ParkingOutcome.PAID_METERED),
+				ParkingCostCalculator.cents(evStreet, 36000, 36000 + 10800, "shop", false, false, false, false));
+		// A zone without the rule (the export left ev_free_minutes empty for an expired one) prices an exempt person as anybody.
+		assertEquals(new Result(540, ParkingOutcome.PAID_METERED), ParkingCostCalculator.cents(
+				tariffs.get("fx_ev_expired_v3"), 36000, 36000 + 10800, "shop", false, false, false, true));
+		assertEquals(new Result(0, ParkingOutcome.HOME),
+				ParkingCostCalculator.cents(evStreet, 36000, 36000 + 3600, "home", false, false, false, true));
+	}
+
+	/**
+	 * Ruling R-A-10 (ASSUMPTION E2): the exemption applies within the maximum stay only. fx_ev_clip_v3 states ev_free_minutes
+	 * 240 and a maximum stay of 150 minutes without a long-stay product: an exempt stay of 150 chargeable minutes is free, a
+	 * stay of 151 to 240 minutes is NOT exempt (it exceeds the maximum) and, with nothing to sell above it, is priced as the
+	 * street at its metered price with the outcome NO_FEASIBLE_OPTION (180 ct/h in 1-min units: 151 min = 453 ct).
+	 */
+	@Test
+	public void theExemptionNeverExtendsAStayBeyondTheMaximumStay() throws Exception {
+		ZoneTariff clipped = goldenTariffs().get("fx_ev_clip_v3");
+		assertEquals(new Result(0, ParkingOutcome.EV_EXEMPT),
+				ParkingCostCalculator.cents(clipped, 36000, 36000 + 9000, "shop", false, false, false, true));
+		assertEquals(new Result(453, ParkingOutcome.NO_FEASIBLE_OPTION),
+				ParkingCostCalculator.cents(clipped, 36000, 36000 + 9001, "shop", false, false, false, true));
+		assertEquals(new Result(453, ParkingOutcome.NO_FEASIBLE_OPTION),
+				ParkingCostCalculator.cents(clipped, 36000, 36000 + 9060, "shop", false, false, false, false));
+	}
+
+	/**
+	 * Spec v3 A1, ruling R-A-6 (ASSUMPTION M3), hand-derived on fx_ia_nolong_v3 (street 180 ct/h in 1-min units, 09:00-20:00,
+	 * maximum stay 180 min, NO long-stay product): within the maximum the street prices (180 chargeable min = 540 ct); one
+	 * second above it the street is no option and nothing else is for sale, so the stay is priced as the street at its metered
+	 * price, the maximum ignored (181 started min = 543 ct), with the outcome NO_FEASIBLE_OPTION, and it is not an exception.
+	 * A work stay is not helped by a zone commuter product that the zone does not have.
+	 */
+	@Test
+	public void aStayAboveTheMaximumStayWithNothingToSellIsPricedAsTheStreetAndNamed() throws Exception {
+		ZoneTariff noLongStay = goldenTariffs().get("fx_ia_nolong_v3");
+		assertEquals(new Result(540, ParkingOutcome.PAID_METERED),
+				ParkingCostCalculator.cents(noLongStay, 36000, 36000 + 10800, "shop", false, false, false));
+		assertEquals(new Result(543, ParkingOutcome.NO_FEASIBLE_OPTION),
+				ParkingCostCalculator.cents(noLongStay, 36000, 36000 + 10801, "work", false, false, false));
+		// The early rules precede the feasibility test: employer-free parking and a home stay stay free.
+		assertEquals(new Result(0, ParkingOutcome.EMPLOYER_FREE),
+				ParkingCostCalculator.cents(noLongStay, 36000, 36000 + 10801, "work", true, false, false));
+		assertEquals(new Result(0, ParkingOutcome.HOME),
+				ParkingCostCalculator.cents(noLongStay, 36000, 36000 + 10801, "home", false, false, false));
+		// The long-stay product of the zone with one keeps the stay feasible.
+		assertEquals(new Result(900, ParkingOutcome.PAID_LONG_STAY),
+				ParkingCostCalculator.cents(goldenTariffs().get("fx_bs_ia"), 36000, 36000 + 10801, "shop", false, false, false));
+	}
+
+	/**
+	 * A zone commuter product keeps the street side of a work or education stay above the maximum stay alive (P2): the stay
+	 * buys the product (PAID_COMMUTER, 300 ct here) while a shopping stay of the same length has nothing to sell above the
+	 * maximum and is NO_FEASIBLE_OPTION at the metered price (181 started min at 180 ct/h = 543 ct).
+	 */
+	@Test
+	public void aCommuterProductKeepsAWorkStayAboveTheMaximumStayPriced() throws Exception {
+		ZoneTariff withCommuter = ParkingTariffs.parseZone("zone_commuter", new ObjectMapper().readTree("""
+				{"zone_type": "street_paid", "hourly_rate_cents": 180, "billing_unit_min": 1, "free_if_stay_at_most_min": null,
+				 "first_period_min": null, "first_period_cents": null, "daily_cap_cents": null, "max_stay_min": 180,
+				 "long_stay_product_cents": null, "member_day_cents": null, "guest_day_cents": null, "fee_start_s": 32400,
+				 "fee_end_s": 72000, "resident_exempt": false, "garage_hourly_rate_cents": null, "garage_billing_unit_min": null,
+				 "garage_first_period_min": null, "garage_first_period_cents": null, "garage_daily_cap_cents": null,
+				 "garage_fee_start_s": null, "garage_fee_end_s": null, "commuter_day_cents": 300, "search_time_min": null,
+				 "resident_permits_valid": true, "ev_free_minutes": null}
+				"""), 5);
+		assertEquals(new Result(300, ParkingOutcome.PAID_COMMUTER),
+				ParkingCostCalculator.cents(withCommuter, 36000, 36000 + 10801, "work", false, false, false));
+		assertEquals(new Result(543, ParkingOutcome.NO_FEASIBLE_OPTION),
+				ParkingCostCalculator.cents(withCommuter, 36000, 36000 + 10801, "shop", false, false, false));
+		assertTrue(ParkingCostCalculator.streetSideFeasible(withCommuter, 10801, "work", false));
+		assertFalse(ParkingCostCalculator.streetSideFeasible(withCommuter, 10801, "shop", false));
+	}
+
+	/**
+	 * The street side of a stay (spec v3 A1): feasible within the maximum, below the free threshold, with a long-stay product or
+	 * the commuter product of a commuter purpose; not feasible above the maximum without any of them. A resident zone keeps the
+	 * v2 rule: a maximum stay without a long-stay product or a garage fails when the zone is constructed.
+	 */
+	@Test
+	public void theStreetSideIsFeasibleExactlyWhenAProductCanServeTheStay() throws Exception {
+		ZoneTariff noLongStay = goldenTariffs().get("fx_ia_nolong_v3");
+		assertTrue(ParkingCostCalculator.streetSideFeasible(noLongStay, 10800, "shop", false));
+		assertFalse(ParkingCostCalculator.streetSideFeasible(noLongStay, 10801, "shop", false));
+		assertFalse(ParkingCostCalculator.streetSideFeasible(noLongStay, 10801, "work", false));
+		assertTrue(ParkingCostCalculator.streetSideFeasible(goldenTariffs().get("fx_bs_ia"), 10801, "shop", false));
+		assertTrue(ParkingCostCalculator.streetSideFeasible(goldenTariffs().get("fx_bs_ib_v2"), 10801, "work", false));
+		ZoneTariff clipped = goldenTariffs().get("fx_ev_clip_v3");
+		assertFalse(ParkingCostCalculator.streetSideFeasible(clipped, 9060, "shop", false));
+		assertTrue(ParkingCostCalculator.streetSideFeasible(clipped, 9000, "shop", true));
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parseZone("res",
+				new ObjectMapper().readTree("""
+						{"zone_type": "resident_zone", "hourly_rate_cents": 0, "billing_unit_min": 60,
+						 "free_if_stay_at_most_min": null,
+						 "first_period_min": null, "first_period_cents": null, "daily_cap_cents": null, "max_stay_min": 120,
+						 "long_stay_product_cents": null, "member_day_cents": null, "guest_day_cents": null, "fee_start_s": 0,
+						 "fee_end_s": 86400, "resident_exempt": true, "garage_hourly_rate_cents": null,
+						 "garage_billing_unit_min": null, "garage_first_period_min": null, "garage_first_period_cents": null,
+						 "garage_daily_cap_cents": null, "garage_fee_start_s": null, "garage_fee_end_s": null,
+						 "commuter_day_cents": null, "search_time_min": null, "resident_permits_valid": true,
+						 "ev_free_minutes": null}
+						"""), 5));
+		assertTrue(error.getMessage(), error.getMessage().contains("neither long_stay_product_cents nor the garage"));
 	}
 
 	/** Golden times are integral JSON numbers; the calculator receives them as MATSim doubles. */
