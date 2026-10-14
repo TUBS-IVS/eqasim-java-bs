@@ -23,6 +23,7 @@ public class ParkingConfigGroupTest {
 		parking.addParam("terminalStayRule", "until_fee_end");
 		parking.addParam("minimumStayMinutes", "15");
 		parking.addParam("searchTimeFactor", "1.5");
+		parking.addParam("costFactor", "0.5");
 		Config config = ConfigUtils.createConfig();
 		config.addModule(parking);
 		assertSame(parking, ParkingConfigGroup.active(config));
@@ -36,6 +37,60 @@ public class ParkingConfigGroupTest {
 		assertEquals("15", parking.getMinimumStayMinutes());
 		assertEquals(1.5, parking.searchTimeFactor(), 0.0);
 		assertEquals("1.5", parking.getSearchTimeFactor());
+		assertEquals(0.5, parking.costFactor(), 0.0);
+		assertEquals("0.5", parking.getCostFactor());
+	}
+
+	/**
+	 * A config prepared without a cost factor (the Python preparation writes the parameter only where it differs from 1.0) has
+	 * the factor 1.0, which prices the parking cost of v2 bit for bit (spec v3 A3, ASSUMPTION CF).
+	 */
+	@Test
+	public void costFactorIsOneWhenAbsent() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		assertEquals(1.0, parking.costFactor(), 0.0);
+		assertEquals("1.0", parking.getCostFactor());
+	}
+
+	/** The range is [0, 10] (spec v3 A3, ruling R-A-15), both ends included, as plain decimals. */
+	@Test
+	public void costFactorAcceptsPlainDecimalsFromZeroToTen() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		String[] values = { "0", "0.0", "0.5", "1", "1.0", "2.0", "9.999999", "10", "10.0", "10.00", "007.5" };
+		double[] expected = { 0.0, 0.0, 0.5, 1.0, 1.0, 2.0, 9.999999, 10.0, 10.0, 10.0, 7.5 };
+		for (int index = 0; index < values.length; index++) {
+			parking.addParam("costFactor", values[index]);
+			assertEquals(values[index], expected[index], parking.costFactor(), 0.0);
+		}
+		assertEquals(10.0, ParkingConfigGroup.MAXIMUM_COST_FACTOR, 0.0);
+	}
+
+	/** Anything but a plain decimal in [0, 10] fails when the config is read, naming the parameter; the old value stays. */
+	@Test
+	public void costFactorRejectsEverythingButAPlainDecimalFromZeroToTen() {
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.addParam("costFactor", "2.0");
+		for (String value : new String[] { "-0.1", "-1", "10.1", "10.000001", "11", "100", "1e1", "1E1", "+1", " 1", "1 ", "",
+				".5", "5.", "1,5", "NaN", "Infinity", "-Infinity", "0x1p3", "1.0f", "one", "1.5.2" }) {
+			IllegalArgumentException error = assertThrows(value, IllegalArgumentException.class,
+					() -> parking.addParam("costFactor", value));
+			assertTrue(error.getMessage(), error.getMessage().contains("braunschweigParking.costFactor"));
+		}
+		assertThrows(IllegalArgumentException.class, () -> parking.setCostFactor(null));
+		assertEquals(2.0, parking.costFactor(), 0.0);
+	}
+
+	/** The text written by the getter is read back to the same value, also for a small factor (no exponent). */
+	@Test
+	public void costFactorRoundTripsThroughItsGetter() {
+		for (String value : new String[] { "0", "0.5", "1", "2", "3.14159", "10", "0.00001" }) {
+			ParkingConfigGroup written = new ParkingConfigGroup();
+			written.addParam("costFactor", value);
+			assertFalse(written.getCostFactor(), written.getCostFactor().contains("E"));
+			ParkingConfigGroup read = new ParkingConfigGroup();
+			read.addParam("costFactor", written.getCostFactor());
+			assertEquals(value, written.costFactor(), read.costFactor(), 0.0);
+		}
 	}
 
 	/** A config prepared before assumption L1 has no minimumStayMinutes: 0 minutes, which prices as version 1. */
@@ -191,7 +246,7 @@ public class ParkingConfigGroupTest {
 	public void everyParameterIsDocumentedAndPricesAreNotParameters() {
 		Map<String, String> comments = new ParkingConfigGroup().getComments();
 		for (String parameter : new String[] { "enabled", "tariffsPath", "terminalStayRule", "minimumStayMinutes",
-				"searchTimeFactor" }) {
+				"searchTimeFactor", "costFactor" }) {
 			assertTrue(parameter, comments.containsKey(parameter) && !comments.get(parameter).isBlank());
 		}
 		// Prices, fee windows and limits live only in the tariff model JSON; a config override must fail, not be ignored.

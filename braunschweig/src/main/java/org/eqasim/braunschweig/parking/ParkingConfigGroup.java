@@ -15,7 +15,8 @@ import org.matsim.core.config.ReflectiveConfigGroup;
  * limits come from the tariff model JSON only; this module carries the switch, the path, the terminal-stay rule, the
  * minimum parked duration (assumption L1), which prices every car stay in a zone as lasting at least that long without
  * changing the simulated timing, and the search time factor of lever 4, which scales the parking search minutes of the
- * zone column into the car utility (0, the default, switches the term off).
+ * zone column into the car utility (0, the default, switches the term off), and the parking cost factor of spec v3 A3, which
+ * scales the parking cost of a car trip before it joins the car cost (1.0, the default, is the v2 price).
  */
 public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 	public static final String GROUP_NAME = "braunschweigParking";
@@ -33,6 +34,12 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 	 */
 	public static final double MAXIMUM_SEARCH_TIME_FACTOR = 10.0;
 
+	/**
+	 * The largest parking cost factor (spec v3 A3, ASSUMPTION CF): ten times the parking cost in the car utility. A sanity
+	 * bound, not a calibrated value; the sensitivity arms of the v3 design use 0.5 and 2.0.
+	 */
+	public static final double MAXIMUM_COST_FACTOR = 10.0;
+
 	private static final Pattern DECIMAL_DIGITS = Pattern.compile("[0-9]+");
 
 	/** Plain decimal digits with an optional fraction: no sign, no exponent, no blanks, no unit, no NaN or Infinity. */
@@ -43,6 +50,7 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 	private String terminalStayRule = ParkingCostCalculator.TERMINAL_STAY_RULE_UNTIL_FEE_END;
 	private int minimumStayMinutes = 0;
 	private double searchTimeFactor = 0.0;
+	private double costFactor = 1.0;
 
 	public ParkingConfigGroup() {
 		super(GROUP_NAME);
@@ -139,6 +147,31 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 		return searchTimeFactor;
 	}
 
+	/** The factor as plain decimal text, never with an exponent, so that the written config reads back to the same value. */
+	@StringGetter("costFactor")
+	public String getCostFactor() {
+		return BigDecimal.valueOf(costFactor).toPlainString();
+	}
+
+	/**
+	 * Parking cost factor (spec v3 A3, ASSUMPTION CF), dimensionless, written by the eqasim-bs preparation stage as plain
+	 * decimal text only where it differs from 1.0: digits with an optional fraction in [0, {@value #MAXIMUM_COST_FACTOR}]. A
+	 * sign, an exponent, blanks, a unit, a non-finite value or a larger value fail instead of being rounded or ignored.
+	 */
+	@StringSetter("costFactor")
+	public void setCostFactor(String value) {
+		costFactor = plainDecimal("costFactor", value, MAXIMUM_COST_FACTOR);
+	}
+
+	/**
+	 * Factor the parking cost of a car trip is multiplied with before it is added to the car cost that enters the utility
+	 * (spec v3 A3): a sensitivity, never a calibrated value (no local price-response evidence exists). 1.0, the default when
+	 * absent, reproduces the prices of v2 bit for bit; the outcome report and the outcome counts see the unscaled cost.
+	 */
+	public double costFactor() {
+		return costFactor;
+	}
+
 	@Override
 	public Map<String, String> getComments() {
 		Map<String, String> comments = super.getComments();
@@ -146,7 +179,7 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 				"true switches the car cost model to zone-based parking costs (eqasim-bs issue #436); absent/false keeps the"
 						+ " existing car cost model");
 		comments.put("tariffsPath",
-				"parking tariff model JSON, schema 1 to 4 (the Python pipeline writes 4), written by the preparation stage"
+				"parking tariff model JSON, schema 1 to 5 (the Python pipeline writes 5), written by the preparation stage"
 						+ " (relative to the config file)");
 		comments.put("terminalStayRule",
 				"parking duration at the last activity of a plan; only until_fee_end: the car pays until the fee window of"
@@ -162,6 +195,10 @@ public final class ParkingConfigGroup extends ReflectiveConfigGroup {
 						+ " utility. The run stops at startup (ParkingSearchTimeCheck) when the factor is above 0 and no zone of"
 						+ " the tariff model carries a search_time_min above 0, or when car.constantParkingSearchPenalty_min is"
 						+ " not 0 (the search time would be counted twice)");
+		comments.put("costFactor",
+				"factor (plain decimal in [0, 10]) the parking cost of a car trip is multiplied with before it is added to the"
+						+ " car cost of the utility (spec v3 A3, ASSUMPTION CF): a sensitivity, never calibrated. Absent or 1.0:"
+						+ " the prices of v2 bit for bit. The outcome report sees the unscaled cost");
 		return comments;
 	}
 
