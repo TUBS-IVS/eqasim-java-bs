@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 
 import org.apache.logging.log4j.LogManager;
@@ -36,6 +37,21 @@ import com.google.inject.Singleton;
  * garage share of the priced stays and, at its end, both decay lengths (lambda and lambda_c, spec Amendment H5); a WARN is
  * logged when no eligible stay of the iteration had a garage in range (a wrong CRS or garage file looks like that). At the
  * controller start it logs the active minimum parked duration and the active search time factor once.
+ *
+ * <p>CSV v4 (spec v3 A4) appends six columns to the columns of v3 below, which keep their names and order, so that a reader of
+ * v3 reads the first seven columns of a v4 file unchanged: {@code garage_probability_sum_paid} and
+ * {@code garage_probability_sum_free}, the parts of {@code garage_probability_sum} that lie on garage options which cost more
+ * than 0 ct and exactly 0 ct for the stay (their sum is {@code garage_probability_sum}, six decimals each: the paid-only
+ * garage share of the commuters can be computed exactly); {@code street_infeasible_count}, the stays of the row whose street
+ * side was no option (the maximum stay removed the street, the long-stay product and the zone commuter product, spec v3 A1);
+ * {@code no_feasible_option_count}, the stays of the row priced NO_FEASIBLE_OPTION (the {@code count} of a NO_FEASIBLE_OPTION
+ * row, 0 in every other row); {@code expected_cost_cents_sum}, the sum over the stays of the row of the expected parking cost in
+ * euro cents (the unrounded expectation of a stay priced as an expectation, else its priced cents; six decimals) UNSCALED by
+ * the cost factor, so that the mean expected cost of a zone group and a purpose is this sum over {@code count}; and
+ * {@code ev_exempt_count}, the stays of the row priced EV_EXEMPT (the {@code count} of an EV_EXEMPT row, 0 in every other row).
+ * The two outcome counts repeat the outcome of the row, so that a reader that sums rows by zone and purpose needs no outcome
+ * filter. A run without the v3 mechanics writes 0 in the paid and free columns where no garage acted, in the infeasible and
+ * the outcome counts, and the priced cents in the cost column.
  *
  * <p>CSV v3 (spec Amendment E7 of parking cost zones v2) appends two columns to the columns of v2 below, which keep their
  * names and order: {@code garage_probability_sum}, the sum over the stays of the row of the garage probability (the
@@ -80,8 +96,10 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	/** File name inside the iteration directory; MATSim prefixes it with the iteration number. */
 	static final String FILE_NAME = "parking_outcomes.csv";
 
-	/** The columns of the report, CSV v3 (spec amendment A5 and Amendment E7): v2 plus the two garage option columns. */
-	static final String HEADER = "outcome,zone_id,purpose,count,share,garage_probability_sum,stays_with_garages_in_range";
+	/** The columns of the report, CSV v4 (spec v3 A4): v3 (v2 plus the two garage option columns) plus six columns. */
+	static final String HEADER = "outcome,zone_id,purpose,count,share,garage_probability_sum,stays_with_garages_in_range,"
+			+ "garage_probability_sum_paid,garage_probability_sum_free,street_infeasible_count,no_feasible_option_count,"
+			+ "expected_cost_cents_sum,ev_exempt_count";
 
 	private final ParkingOutcomeCounter counter;
 	private final OutputDirectoryHierarchy output;
@@ -134,6 +152,7 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		Map<ParkingOutcome, Long> counts = ParkingOutcomeCounter.countsByOutcome(countsOf(cells));
 		LOG.info(summary(iteration, counts));
 		LOG.info(minimumStaySummary(iteration, minimumStayMinutes, extendedStays, pricedStays(counts)));
+		noFeasibleOptionWarning(iteration, counts).ifPresent(LOG::warn);
 		if (garageOptionsActive) {
 			LOG.info(garageOptionsSummary(iteration, garageRates, cells, pricedStays(counts), garageDecaySetting));
 			if (garageRates.eligible() > 0 && garageRates.withGaragesInRange() == 0) {
@@ -145,6 +164,25 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 						+ " and the garage coordinates of the tariff model are both in EPSG:25832");
 			}
 		}
+	}
+
+	/**
+	 * The warning of an iteration in which stays were priced NO_FEASIBLE_OPTION (spec v3 A1, ASSUMPTION M3): such a stay exceeds
+	 * the maximum stay of the street and of every garage option within reach and is priced as the street at its metered price,
+	 * a fallback price, so the count and the rate over the priced stays are named at WARN level; empty when none occurred.
+	 */
+	static Optional<String> noFeasibleOptionWarning(int iteration, Map<ParkingOutcome, Long> counts) {
+		long noFeasibleOption = counts.getOrDefault(ParkingOutcome.NO_FEASIBLE_OPTION, 0L);
+		if (noFeasibleOption == 0) {
+			return Optional.empty();
+		}
+		long priced = pricedStays(counts);
+		return Optional.of(String.format(Locale.ROOT,
+				"[parking] it %d: %d of %d priced stays (%.1f %%) have no feasible parking option (NO_FEASIBLE_OPTION: the stay"
+						+ " exceeds the maximum stay of the street and of every garage within reach) and are priced as the street"
+						+ " at"
+						+ " its metered price; the option set of these zones is incomplete (spec v3 A1, ASSUMPTION M3)",
+				iteration, noFeasibleOption, priced, 100.0 * share(noFeasibleOption, priced)));
 	}
 
 	private static Map<Cell, Long> countsOf(Map<Cell, CellTotals> cells) {
@@ -221,7 +259,12 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 					.append(csvField(cell.purpose())).append(',').append(totals.count()).append(',')
 					.append(String.format(Locale.ROOT, "%.6f", share(totals.count(), total))).append(',')
 					.append(String.format(Locale.ROOT, "%.6f", totals.garageProbabilitySum())).append(',')
-					.append(totals.staysWithGaragesInRange()).append('\n');
+					.append(totals.staysWithGaragesInRange()).append(',')
+					.append(String.format(Locale.ROOT, "%.6f", totals.garageProbabilitySumPaid())).append(',')
+					.append(String.format(Locale.ROOT, "%.6f", totals.garageProbabilitySumFree())).append(',')
+					.append(totals.streetInfeasibleCount()).append(',').append(totals.noFeasibleOptionCount()).append(',')
+					.append(String.format(Locale.ROOT, "%.6f", totals.expectedCostCentsSum())).append(',')
+					.append(totals.evExemptCount()).append('\n');
 		}
 		if (path.getParent() != null) {
 			Files.createDirectories(path.getParent());

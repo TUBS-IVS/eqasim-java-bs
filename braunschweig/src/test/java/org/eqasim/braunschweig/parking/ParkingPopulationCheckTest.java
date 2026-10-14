@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.logging.log4j.Level;
 import org.eqasim.braunschweig.parking.ParkingLogCapture.Event;
@@ -286,13 +287,14 @@ public class ParkingPopulationCheckTest {
 		byZoneType.put(ZoneType.STREET_PAID, 2L);
 		byZoneType.put(ZoneType.RESIDENT_ZONE, 1L);
 		byZoneType.put(ZoneType.CAMPUS, 1L);
-		assertEquals(new Coverage(3, 13, byZoneType, 1, 1, 3, 2, 1, 0), coverage);
+		assertEquals(new Coverage(3, 13, byZoneType, 1, 1, 3, 2, 1, 0, 0), coverage);
 		assertEquals(4, coverage.activitiesInAZone());
 		assertFalse(coverage.noActivityInAZone());
 		assertEquals("[parking] population: 3 persons, 13 activities; 4 in a zone (30.8 %: street_paid 2, resident_zone"
 				+ " 1, campus 1), 1 parkingFree, 1 persons with residentParkingZone (33.3 %); 3 in a resident district"
 				+ " (23.1 %), 2 persons with residentParkingDistrict (66.7 %), 1 in the own district and a zone that"
-				+ " honours resident permits (7.7 %); 0 in a zone with a search time (0.0 %)",
+				+ " honours resident permits (7.7 %); 0 in a zone with a search time (0.0 %); 0 persons with parkingEvExempt"
+				+ " (0.0 %)",
 				ParkingPopulationCheck.summary(coverage));
 		// The startup event scans the same population and passes.
 		check.notifyStartup(new StartupEvent(null));
@@ -314,10 +316,16 @@ public class ParkingPopulationCheckTest {
 				.contains("2 in a zone with a search time (33.3 %)"));
 	}
 
-	/** The events the startup check of the population logs for a check with the given searchTimeFactor. */
+	/**
+	 * The events the startup check of the population logs for a check with the given searchTimeFactor, without the EV
+	 * exemption warning (the populations of the search time tests carry no exempt person while the fixture has zones with an
+	 * exemption; that warning is pinned by its own tests).
+	 */
 	private List<Event> startup(String searchTimeFactor) {
 		ParkingPopulationCheck check = check(searchTimeFactor);
-		return ParkingLogCapture.capture(ParkingPopulationCheck.class, () -> check.notifyStartup(new StartupEvent(null)));
+		return ParkingLogCapture.capture(ParkingPopulationCheck.class, () -> check.notifyStartup(new StartupEvent(null)))
+				.stream().filter(event -> !(event.level() == Level.WARN
+						&& event.message().contains(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE))).toList();
 	}
 
 	/**
@@ -456,13 +464,80 @@ public class ParkingPopulationCheckTest {
 		assertEquals("[parking] population: 1 persons, 3 activities; 0 in a zone (0.0 %: street_paid 0, resident_zone 0,"
 				+ " campus 0), 0 parkingFree, 0 persons with residentParkingZone (0.0 %); 0 in a resident district (0.0 %),"
 				+ " 0 persons with residentParkingDistrict (0.0 %), 0 in the own district and a zone that honours resident"
-				+ " permits (0.0 %); 0 in a zone with a search time (0.0 %); no activity lies in a parking zone although"
-				+ " braunschweigParking is enabled, so every car stay is priced NO_ZONE: were the plans written with"
-				+ " parking_zones_enabled?",
+				+ " permits (0.0 %); 0 in a zone with a search time (0.0 %); 0 persons with parkingEvExempt (0.0 %); no activity"
+				+ " lies in a parking zone although braunschweigParking is enabled, so every car stay is priced NO_ZONE: were"
+				+ " the plans written with parking_zones_enabled?",
 				ParkingPopulationCheck.summary(coverage));
 
 		// An empty population prices nothing and is not flagged.
 		population.removePerson(Id.createPersonId("p1"));
 		assertFalse(check().scan().noActivityInAZone());
+	}
+
+	// ---------------------------------------------------------------------------- EV exemption (spec v3 A5)
+
+	private static Person exempt(Person person) {
+		person.getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, true);
+		return person;
+	}
+
+	/** The persons with parkingEvExempt = true are counted (false and absent are not) and their rate is on the line. */
+	@Test
+	public void countsThePersonsWithTheEvExemption() {
+		plan(exempt(person("p1")), activity("home"), inZone("work", "fx_ev_street_v3"), activity("home"));
+		Person explicitFalse = person("p2");
+		explicitFalse.getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, false);
+		plan(explicitFalse, activity("home"), inZone("work", "fx_bs_ib"), activity("home"));
+		plan(person("p3"), activity("home"), inZone("work", "fx_bs_ib"), activity("home"));
+		plan(exempt(person("p4")), activity("home"), inZone("work", "fx_bs_ib"), activity("home"));
+		Coverage coverage = check().scan();
+		assertEquals(2, coverage.evExemptPersons());
+		assertTrue(ParkingPopulationCheck.summary(coverage), ParkingPopulationCheck.summary(coverage)
+				.contains("; 2 persons with parkingEvExempt (50.0 %)"));
+		// Both zones with an exemption and persons with the flag: nothing to warn about.
+		assertTrue(check().evExemptionWarning(coverage).isEmpty());
+	}
+
+	/**
+	 * Fallback transparency: zones with ev_free_minutes but no exempt person (the plans were written without the flag) cannot
+	 * act, and exempt persons without a zone that grants the exemption (here the model of schema 1) cannot either; both are
+	 * warned about at startup, and a population with both is not.
+	 */
+	@Test
+	public void warnsWhenTheEvExemptionCannotActInThisRun() throws Exception {
+		plan(person("p1"), activity("home"), inZone("work", "fx_ev_street_v3"), activity("home"));
+		Optional<String> noPersons = check().evExemptionWarning(check().scan());
+		assertTrue(noPersons.isPresent());
+		for (String fragment : new String[] { "2 zones state ev_free_minutes", "no person carries parkingEvExempt",
+				"cannot act in this run" }) {
+			assertTrue("'" + fragment + "' missing in: " + noPersons.get(), noPersons.get().contains(fragment));
+		}
+		List<String> startupWarnings = ParkingLogCapture.messages(
+				ParkingLogCapture.capture(ParkingPopulationCheck.class, () -> check().notifyStartup(new StartupEvent(null))),
+				Level.WARN);
+		assertEquals(startupWarnings.toString(), 1, startupWarnings.size());
+
+		population.removePerson(Id.createPersonId("p1"));
+		plan(exempt(person("p2")), activity("home"), inZone("work", "fx_bs_ib"), activity("home"));
+		URL schemaOneResource = ParkingPopulationCheckTest.class.getResource("/parking/parking_tariffs_fixture_schema1.json");
+		ParkingTariffs schemaOne = ParkingTariffs.read(Path.of(schemaOneResource.toURI()));
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.setEnabled("true");
+		parking.setTariffsPath("parking_tariffs_fixture_schema1.json");
+		ParkingPopulationCheck oldModel = new ParkingPopulationCheck(schemaOne, population, parking);
+		String warning = oldModel.evExemptionWarning(oldModel.scan()).orElseThrow();
+		for (String fragment : new String[] { "1 persons carry parkingEvExempt", "no zone of the tariff model",
+				"states ev_free_minutes (schema 1)" }) {
+			assertTrue("'" + fragment + "' missing in: " + warning, warning.contains(fragment));
+		}
+	}
+
+	/** A parkingEvExempt that is not a Boolean fails at the start, naming the person and the type the writer writes. */
+	@Test
+	public void aMistypedEvExemptionFlagFailsAtStartup() {
+		Person person = person("p1");
+		person.getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, "true");
+		plan(person, activity("home"), inZone("work", "fx_bs_ib"), activity("home"));
+		assertStartupFails("person p1", "parkingEvExempt must be a java.lang.Boolean", "java.lang.String true");
 	}
 }

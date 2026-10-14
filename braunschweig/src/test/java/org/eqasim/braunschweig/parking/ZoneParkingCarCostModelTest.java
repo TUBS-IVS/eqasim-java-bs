@@ -96,8 +96,18 @@ public class ZoneParkingCarCostModelTest {
 		if (minimumStayMinutes != null) {
 			parking.addParam("minimumStayMinutes", minimumStayMinutes);
 		}
-		return new ZoneParkingCarCostModel(costParameters, timeInterpretation, ParkingTariffs.read(fixturePath()), counter,
-				parking);
+		return new ZoneParkingCarCostModel(costParameters, timeInterpretation, fixtureModel(0.0), counter, parking);
+	}
+
+	/**
+	 * The fixture tariff model with the given option price coefficient. The golden cases E01..E38 that this test pins through
+	 * the cost model are priced at beta 0 (the price-independent weights of v2), while the fixture states the coefficient of the
+	 * mode choice, 0.310998: the models of this test use 0 unless a test is about the price in the weights.
+	 */
+	private static ParkingTariffs fixtureModel(double optionPriceBetaPerEuro) throws Exception {
+		ObjectNode tree = (ObjectNode) new ObjectMapper().readTree(fixturePath().toFile());
+		tree.put("option_price_beta_u_per_eur", optionPriceBetaPerEuro);
+		return ParkingTariffs.parse(tree);
 	}
 
 	private static Path fixturePath() throws Exception {
@@ -721,6 +731,7 @@ public class ZoneParkingCarCostModelTest {
 		ObjectNode tree = (ObjectNode) new ObjectMapper().readTree(fixturePath().toFile());
 		tree.put("garage_decay_m", decayMeters);
 		tree.put("garage_decay_commute_m", commuteDecayMeters);
+		tree.put("option_price_beta_u_per_eur", 0.0);
 		BraunschweigCostParameters costParameters = new BraunschweigCostParameters();
 		costParameters.carCost_EUR_km = CAR_COST_EUR_KM;
 		ParkingConfigGroup parking = new ParkingConfigGroup();
@@ -858,5 +869,143 @@ public class ZoneParkingCarCostModelTest {
 		inZone(home, "fx_bs_ib");
 		assertEquals(DRIVING_COST_EUR, cost_EUR(tripTo(home, 34200, false)), EUR_TOLERANCE);
 		assertEquals(onlyOnce(ParkingOutcome.HOME), countsByOutcome());
+	}
+
+	// ------------------------------------------------------------------------------ v3 mechanics (tariff schema 5)
+
+	/** The model of the fixture tariff model (garage options on) with the given cost factor text, or none when null. */
+	private static ZoneParkingCarCostModel modelWithFactor(String costFactor, ParkingOutcomeCounter counter) throws Exception {
+		BraunschweigCostParameters costParameters = new BraunschweigCostParameters();
+		costParameters.carCost_EUR_km = CAR_COST_EUR_KM;
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.setEnabled("true");
+		parking.setTariffsPath(TARIFFS_PATH);
+		if (costFactor != null) {
+			parking.setCostFactor(costFactor);
+		}
+		return new ZoneParkingCarCostModel(costParameters, eqasimTimeInterpretation(), fixtureModel(0.0), counter, parking);
+	}
+
+	/**
+	 * Spec v3 A3 (ASSUMPTION CF): the parking euros of the trip are multiplied by the factor, the driving cost is not, and the
+	 * report sees the UNSCALED cost. The stay is golden case E01 (shop in fx_bs_ib at a destination without a garage, 1 h,
+	 * 180 ct): factor 2.0 pays 3.60 EUR parking, 0.5 pays 0.90 EUR, 0 pays none; the cell sums 180 ct in every case. A factor
+	 * of 1.0 and the absent parameter price the same bits, and the absent parameter is 1.0.
+	 */
+	@Test
+	public void theCostFactorScalesTheParkingCostOnlyAndTheReportSeesTheUnscaledCost() throws Exception {
+		Activity shop = inZone(activityAt("shop", 39600.0, 570000.0, 5750000.0), "fx_bs_ib");
+		CarTrip carTrip = tripTo(shop, 34200, false);
+
+		ParkingOutcomeCounter factorCounter = new ParkingOutcomeCounter();
+		for (String[] factorAndParking : new String[][] { { "2.0", "3.6" }, { "0.5", "0.9" }, { "0.0", "0.0" },
+				{ "10.0", "18.0" } }) {
+			ZoneParkingCarCostModel scaled = modelWithFactor(factorAndParking[0], factorCounter);
+			assertEquals("factor " + factorAndParking[0], DRIVING_COST_EUR + Double.parseDouble(factorAndParking[1]),
+					scaled.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()), EUR_TOLERANCE);
+		}
+		var cell = factorCounter.snapshotAndResetTotals()
+				.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop"));
+		assertEquals(4L, cell.count());
+		assertEquals(4 * 180.0, cell.expectedCostCentsSum(), 0.0);
+
+		double absent = modelWithFactor(null, new ParkingOutcomeCounter()).calculateCost_MU(carTrip.person(), carTrip.trip(),
+				carTrip.elements());
+		double explicitOne = modelWithFactor("1.0", new ParkingOutcomeCounter()).calculateCost_MU(carTrip.person(),
+				carTrip.trip(), carTrip.elements());
+		assertEquals(Double.doubleToLongBits(absent), Double.doubleToLongBits(explicitOne));
+		assertEquals(DRIVING_COST_EUR + 1.80, absent, EUR_TOLERANCE);
+	}
+
+	/**
+	 * Spec v3 A5: the person attribute parkingEvExempt = true frees the street stay within ev_free_minutes of the zone
+	 * (fx_ev_street_v3: 240 min) with the outcome EV_EXEMPT, also with garage options on; without the attribute the same stay
+	 * pays 1.80 EUR; a value that is not a Boolean fails naming the attribute.
+	 */
+	@Test
+	public void anExemptPersonParksFreeWhereTheZoneGrantsItAndAMistypedFlagFails() throws Exception {
+		Activity shop = inZone(activityAt("shop", 39600.0, 570000.0, 5750000.0), "fx_ev_street_v3");
+		CarTrip exemptTrip = tripTo(shop, 34200, false);
+		exemptTrip.person().getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, true);
+		assertEquals(DRIVING_COST_EUR, cost_EUR(exemptTrip), EUR_TOLERANCE);
+		var cell = counter.snapshotAndResetTotals().get(new ParkingOutcomeCounter.Cell(ParkingOutcome.EV_EXEMPT,
+				"fx_ev_street_v3", "shop"));
+		assertEquals(1L, cell.count());
+		assertEquals(1L, cell.evExemptCount());
+		assertEquals(0.0, cell.expectedCostCentsSum(), 0.0);
+
+		CarTrip ordinaryTrip = tripTo(shop, 34200, false);
+		assertEquals(DRIVING_COST_EUR + 1.80, cost_EUR(ordinaryTrip), EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.PAID_METERED), countsByOutcome());
+
+		// Garage options off: the zone calculator prices the same exemption.
+		ParkingOutcomeCounter offCounter = new ParkingOutcomeCounter();
+		ZoneParkingCarCostModel off = modelWithDecays(0.0, 0.0, offCounter);
+		assertEquals(DRIVING_COST_EUR, off.calculateCost_MU(exemptTrip.person(), exemptTrip.trip(), exemptTrip.elements()),
+				EUR_TOLERANCE);
+		assertEquals(onlyOnce(ParkingOutcome.EV_EXEMPT), ParkingOutcomeCounter.countsByOutcome(offCounter.snapshotAndReset()));
+
+		CarTrip mistyped = tripTo(shop, 34200, false);
+		mistyped.person().getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, "true");
+		IllegalStateException error = assertThrows(IllegalStateException.class, () -> cost_EUR(mistyped));
+		assertTrue(error.getMessage(), error.getMessage().contains("person driver: parkingEvExempt must be a java.lang.Boolean"));
+		assertTrue(counter.snapshotAndReset().isEmpty());
+	}
+
+	/**
+	 * Spec v3 A1 and A4 through the cost model: a shop stay of 240 chargeable minutes in fx_ia_nolong_v3 (maximum stay 180 min,
+	 * no long-stay product, no garage in range) is priced as the street at its metered price, 7.20 EUR, with the outcome
+	 * NO_FEASIBLE_OPTION; its cell counts the infeasible street, the stay without a feasible option and the unscaled 720 ct.
+	 * The same cell with the garage options switched off (the zone calculator prices it, no option code runs).
+	 */
+	@Test
+	public void aStayWithNoFeasibleOptionIsPricedAsTheStreetAndCountedInTheReport() throws Exception {
+		Activity shop = inZone(activityAt("shop", 50400.0, 570000.0, 5750000.0), "fx_ia_nolong_v3");
+		CarTrip carTrip = tripTo(shop, 34200, false);
+		assertEquals(DRIVING_COST_EUR + 7.20, cost_EUR(carTrip), EUR_TOLERANCE);
+		ParkingOutcomeCounter.Cell cell = new ParkingOutcomeCounter.Cell(ParkingOutcome.NO_FEASIBLE_OPTION, "fx_ia_nolong_v3",
+				"shop");
+		var on = counter.snapshotAndResetTotals().get(cell);
+		assertEquals(new ParkingOutcomeCounter.CellTotals(1, 0.0, 0.0, 0, 1, 1, 720.0, 0), on);
+		assertEquals(1L, counter.garageOptionCounters().snapshotAndReset().noFeasibleOption());
+
+		ParkingOutcomeCounter offCounter = new ParkingOutcomeCounter();
+		ZoneParkingCarCostModel off = modelWithDecays(0.0, 0.0, offCounter);
+		assertEquals(DRIVING_COST_EUR + 7.20, off.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()),
+				EUR_TOLERANCE);
+		assertEquals(on, offCounter.snapshotAndResetTotals().get(cell));
+	}
+
+	/**
+	 * Spec v3 A2 through the cost model with the money coefficient of the fixture, 0.310998 per EUR (the mode choice
+	 * coefficient): golden E02 at beta 0 weighs the garage (200 ct) with exp(-0.75); at beta 0.310998 the street weighs
+	 * exp(-0.310998 * 1.80), the garage exp(-0.75 - 0.310998 * 2.00), so its probability is lower (0.3074...) and the price is
+	 * 180 + 20 * 0.3074 = 186.15, i.e. 186 ct. The report cell carries the probability as paid garage probability and the
+	 * unrounded expectation as the expected cost.
+	 */
+	@Test
+	public void theModelPricesTheOptionWeightsWithTheCoefficientOfTheTariffModel() throws Exception {
+		ParkingOutcomeCounter priced = new ParkingOutcomeCounter();
+		BraunschweigCostParameters costParameters = new BraunschweigCostParameters();
+		costParameters.carCost_EUR_km = CAR_COST_EUR_KM;
+		ParkingConfigGroup parking = new ParkingConfigGroup();
+		parking.setEnabled("true");
+		parking.setTariffsPath(TARIFFS_PATH);
+		ZoneParkingCarCostModel withPrice = new ZoneParkingCarCostModel(costParameters, eqasimTimeInterpretation(),
+				ParkingTariffs.read(fixturePath()), priced, parking);
+		Activity shop = inZone(activityAt("shop", 39600.0, 580000.0, 5750000.0), "fx_bs_ib");
+		CarTrip carTrip = tripTo(shop, 34200, false);
+		assertEquals(DRIVING_COST_EUR + 1.86,
+				withPrice.calculateCost_MU(carTrip.person(), carTrip.trip(), carTrip.elements()), EUR_TOLERANCE);
+		double beta = 0.310998;
+		double streetWeight = StrictMath.exp(-0.0 / 400.0 - beta * 180 / 100);
+		double garageWeight = StrictMath.exp(-300.0 / 400.0 - beta * 200 / 100);
+		double probability = garageWeight / (streetWeight + garageWeight);
+		var cell = priced.snapshotAndResetTotals()
+				.get(new ParkingOutcomeCounter.Cell(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop"));
+		assertEquals(0.3074219720, probability, 1e-9);
+		assertEquals(probability, cell.garageProbabilitySumPaid(), 1e-9);
+		assertEquals(0.0, cell.garageProbabilitySumFree(), 0.0);
+		assertEquals(180.0 * (1.0 - probability) + 200.0 * probability, cell.expectedCostCentsSum(), 1e-6);
 	}
 }

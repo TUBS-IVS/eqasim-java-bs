@@ -20,7 +20,9 @@ import com.google.inject.Singleton;
  * MATSim input path (the preparation stage writes the JSON next to the prepared config), and binds the outcome counter,
  * the per-iteration outcome report, the startup check of the plans ({@link ParkingPopulationCheck}), which takes the
  * tariff model and so makes it load when the controller starts, the startup check of the search time factor against the
- * tariff model and the global car parking search penalty ({@link ParkingSearchTimeCheck}) and the parking search time of
+ * tariff model and the global car parking search penalty ({@link ParkingSearchTimeCheck}), the startup check of the money
+ * coefficient of the option weights of a schema-5 tariff model against the cost coefficient of the mode choice
+ * ({@link ParkingOptionPriceBetaCheck}) and the parking search time of
  * lever 4 ({@link ParkingSearchTime}) with the tariff model and the factor of the module, which the car utility estimator takes.
  * Without the module BraunschweigModeChoiceModule binds the neutral {@link ParkingSearchTime#none()}.
  *
@@ -38,6 +40,7 @@ public final class ParkingModule extends AbstractModule {
 		addControlerListenerBinding().to(ParkingOutcomeReportListener.class);
 		addControlerListenerBinding().to(ParkingPopulationCheck.class);
 		addControlerListenerBinding().to(ParkingSearchTimeCheck.class);
+		addControlerListenerBinding().to(ParkingOptionPriceBetaCheck.class);
 	}
 
 	/**

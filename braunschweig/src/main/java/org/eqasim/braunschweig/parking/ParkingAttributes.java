@@ -13,7 +13,8 @@ import org.matsim.core.router.TripStructureUtils.StageActivityHandling;
  * Reads the parking attributes of the plans that the zone parking car cost model, the parking search time and the startup
  * check of the plans all need (eqasim-bs issue #436): the zone an activity lies in (activity attribute parkingZone), its
  * free-parking flag (parkingFree), the resident parking districts (parkingDistrict of an activity, residentParkingDistrict of
- * a person) and the resident zone of a person (residentParkingZone). One parsing and one message format serve every reader,
+ * a person), the resident zone of a person (residentParkingZone) and the electric car exemption of a person (parkingEvExempt,
+ * spec v3 A5). One parsing and one message format serve every reader,
  * so that the accepted and the rejected inputs of the readers cannot drift apart: a value that has another type than the
  * plans writer writes, or that names a zone or a district the tariff model does not list, fails with an IllegalStateException
  * that names the owner (the person, the plan and the activity, or the person alone for a person attribute), the attribute,
@@ -162,6 +163,24 @@ final class ParkingAttributes {
 					tariffsPath);
 		}
 		return districtId;
+	}
+
+	/**
+	 * Whether the person owns an electric car that the zones exempt from the street fee (person attribute
+	 * {@value ZoneParkingCarCostModel#EV_EXEMPT_ATTRIBUTE}, spec v3 A5, ASSUMPTION E1); the eqasim-bs plans writer writes it
+	 * as a Boolean only where true, so absent means false.
+	 *
+	 * @throws IllegalStateException for a value that is not a Boolean
+	 */
+	static boolean evExempt(Person person) {
+		Object value = person.getAttributes().getAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE);
+		if (value == null) {
+			return false;
+		}
+		if (value instanceof Boolean exempt) {
+			return exempt;
+		}
+		throw mistyped(describe(person), ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, Boolean.class, value);
 	}
 
 	/** The owner of a person attribute in a message: {@code person p1}. */

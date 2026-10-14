@@ -40,6 +40,9 @@ import com.google.inject.Inject;
  * {@value #RESIDENT_DISTRICT_ATTRIBUTE} ({@code String}): the resident parking district the destination lies in and the
  * one of the person's home, both absent where there is none; the stay is a stay in the person's own district when both
  * are set and equal (rule R2, spec Amendment C3), which frees it where the destination zone honours resident permits;</li>
+ * <li>person attribute {@value #EV_EXEMPT_ATTRIBUTE} ({@code Boolean}, written only where true): the person owns an electric
+ * car (BEV or PHEV) that a zone with {@code ev_free_minutes} exempts from the street fee within that limit (spec v3 A5,
+ * ASSUMPTIONS E1 and E2); absent means false;</li>
  * <li>purpose: the destination's activity type (home, work, education, shop, ...).</li>
  * </ul>
  *
@@ -70,8 +73,14 @@ import com.google.inject.Inject;
  * nothing for a stay decided by an early rule. The expected cost is deterministic: the car utility stays stable across the
  * mode-choice evaluations, and a stay is priced the same whichever thread evaluates it.
  *
+ * <p>Parking cost factor (spec v3 A3, ASSUMPTION CF, {@code braunschweigParking.costFactor}, 1.0 when absent): the parking
+ * cost of the trip in euros is multiplied by the factor before it is added to the driving cost, so only the car cost that the
+ * utility sees is scaled; the outcome, the counter and the report see the UNSCALED price. A factor of 1.0 multiplies by 1.0
+ * and reproduces the cost of v2 bit for bit.
+ *
  * <p>Every call records exactly one outcome in the {@link ParkingOutcomeCounter}, NO_ZONE included, together with the zone
- * of the destination (none for NO_ZONE) and the purpose of the stay, so the per-iteration report shows which rule priced
+ * of the destination (none for NO_ZONE), the purpose of the stay, the unscaled expected cost, the paid and the free garage
+ * probability and whether the street side was no option (spec v3 A4), so the per-iteration report shows which rule priced
  * the car trips, where and for what, and counts the priced stays the minimum extended; a failing call records nothing.
  * An unknown zone id (in either zone attribute), an unknown district id (in either district attribute) and a mistyped
  * attribute raise IllegalStateException in the one format of {@link ParkingAttributes}, which reads all five attributes for
@@ -100,8 +109,14 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 	/** Person attribute (String): id of the resident parking district of the person's home; absent: in no district. */
 	public static final String RESIDENT_DISTRICT_ATTRIBUTE = "residentParkingDistrict";
 
+	/**
+	 * Person attribute (Boolean, written only where true): the person owns an electric car that the zones exempt from the street
+	 * fee within their {@code ev_free_minutes} (spec v3 A5, ASSUMPTION E1); absent means false.
+	 */
+	public static final String EV_EXEMPT_ATTRIBUTE = "parkingEvExempt";
+
 	private static final ParkingPrice NO_ZONE = new ParkingPrice(new ParkingCostCalculator.Result(0, ParkingOutcome.NO_ZONE),
-			null, false, 0.0, 0);
+			null, false, 0.0, 0.0, 0.0, 0, false);
 	private static final double CENTS_PER_EURO = 100.0;
 
 	private final BraunschweigCostParameters costParameters;
@@ -110,7 +125,9 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 	private final ParkingOutcomeCounter counter;
 	private final String tariffsPath;
 	private final int minimumStay_s;
+	private final double costFactor;
 	private final GarageOptionModel garageOptions;
+	private final double optionPriceBetaPerEuro;
 
 	/** The simulated car stay at the destination in simulation seconds: [arrival_s, departure_s). */
 	private record Stay(double arrival_s, double departure_s) {
@@ -119,11 +136,13 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 	/**
 	 * The parking price of one car trip, the zone of the destination (null outside every zone), whether the minimum
 	 * parked duration (assumption L1) extended the priced interval beyond the simulated stay, and the garage options of the
-	 * stay: the sum of the garage probabilities (0 where no garage acted) and the number of garages within the maximum
-	 * distance.
+	 * stay: the sums of the probabilities of its paid and of its free garage options (0 where no garage acted), the number of
+	 * garages within the maximum distance and whether the street side was no option (spec v3 A1). {@code expectedCostCents} is
+	 * the unscaled expected cost: the unrounded expectation for a stay priced as an expectation, else the priced cents.
 	 */
 	private record ParkingPrice(ParkingCostCalculator.Result result, String zoneId, boolean extendedByMinimumStay,
-			double garageProbability, int garagesInRange) {
+			double expectedCostCents, double garageProbabilityPaid, double garageProbabilityFree, int garagesInRange,
+			boolean streetInfeasible) {
 	}
 
 	@Inject
@@ -136,23 +155,27 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		this.counter = counter;
 		this.tariffsPath = parking.getTariffsPath();
 		this.minimumStay_s = parking.minimumStay_s();
+		this.costFactor = parking.costFactor();
 		this.garageOptions = tariffs.garageOptions();
+		this.optionPriceBetaPerEuro = tariffs.optionPriceBetaPerEuro();
 	}
 
 	/**
-	 * Driving cost plus the parking cost at the destination, in euros; records the parking outcome and, when the minimum
-	 * parked duration extended the priced stay, the extension.
+	 * Driving cost plus the parking cost at the destination multiplied by the cost factor (spec v3 A3), in euros; records the
+	 * parking outcome with the UNSCALED cost and, when the minimum parked duration extended the priced stay, the extension.
 	 */
 	@Override
 	public double calculateCost_MU(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
 		double drivingCost_EUR = costParameters.carCost_EUR_km * getInVehicleDistance_km(elements);
 		ParkingPrice parking = parkingCost(person, trip, elements);
-		counter.record(parking.result().outcome(), parking.zoneId(), trip.getDestinationActivity().getType(),
-				parking.garageProbability(), parking.garagesInRange());
+		counter.record(new ParkingOutcomeCounter.PricedStay(parking.result().outcome(), parking.zoneId(),
+				trip.getDestinationActivity().getType(), parking.expectedCostCents(), parking.garageProbabilityPaid(),
+				parking.garageProbabilityFree(), parking.garagesInRange(), parking.streetInfeasible()));
 		if (parking.extendedByMinimumStay()) {
 			counter.recordMinimumStayExtension();
 		}
-		return drivingCost_EUR + parking.result().cents() / CENTS_PER_EURO;
+		// The factor multiplies the parking euros only, never the driving cost; 1.0 leaves the euros of v2 unchanged bit for bit.
+		return drivingCost_EUR + costFactor * (parking.result().cents() / CENTS_PER_EURO);
 	}
 
 	private ParkingPrice parkingCost(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
@@ -166,6 +189,7 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 		ZoneTariff residentZone = ParkingAttributes.residentZone(tariffs, tariffsPath, person);
 		boolean residentOfZone = residentZone != null && zoneId.equals(residentZone.zoneId());
 		boolean residentOfDistrict = residentOfDistrict(person, destination);
+		boolean evExempt = ParkingAttributes.evExempt(person);
 		Stay stay = stay(person, trip, elements, tariff);
 		// Assumption L1: priced for at least the minimum parked duration, before every tariff rule.
 		double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(stay.arrival_s(), stay.departure_s(),
@@ -175,15 +199,21 @@ public final class ZoneParkingCarCostModel extends AbstractCostModel {
 			// Garage options off (schema 1 or 2 model, or both decays 0): the zone products price the stay, no option code
 			// runs.
 			ParkingCostCalculator.Result result = ParkingCostCalculator.cents(tariff, stay.arrival_s(), pricedDeparture_s,
-					destination.getType(), parkingFree, residentOfZone, residentOfDistrict);
-			return new ParkingPrice(result, zoneId, extendedByMinimumStay, 0.0, 0);
+					destination.getType(), parkingFree, residentOfZone, residentOfDistrict, evExempt);
+			boolean streetInfeasible = !GarageParkingCostCalculator.decidedBeforeProducts(result.outcome(), tariff)
+					&& !ParkingCostCalculator.streetSideFeasible(tariff,
+							ParkingCostCalculator.chargeableSeconds(stay.arrival_s(), pricedDeparture_s, tariff.feeStart_s(),
+									tariff.feeEnd_s()),
+							destination.getType(), evExempt);
+			return new ParkingPrice(result, zoneId, extendedByMinimumStay, result.cents(), 0.0, 0.0, 0, streetInfeasible);
 		}
 		GarageParkingCostCalculator.Result priced = GarageParkingCostCalculator.cents(tariff, stay.arrival_s(),
-				pricedDeparture_s, destination.getType(), parkingFree, residentOfZone, residentOfDistrict,
-				garageOptions.decayMeters(), garageOptions.commuteDecayMeters(), () -> garageOptionsOf(person, destination),
-				counter.garageOptionCounters());
+				pricedDeparture_s, destination.getType(), parkingFree, residentOfZone, residentOfDistrict, evExempt,
+				garageOptions.decayMeters(), garageOptions.commuteDecayMeters(), optionPriceBetaPerEuro,
+				() -> garageOptionsOf(person, destination), counter.garageOptionCounters());
 		return new ParkingPrice(new ParkingCostCalculator.Result(priced.cents(), priced.outcome()), zoneId,
-				extendedByMinimumStay, priced.garageProbability(), priced.garagesInRange());
+				extendedByMinimumStay, priced.expectedCents().orElse(priced.cents()), priced.garageProbabilityPaid(),
+				priced.garageProbabilityFree(), priced.garagesInRange(), !priced.streetFeasible());
 	}
 
 	/**

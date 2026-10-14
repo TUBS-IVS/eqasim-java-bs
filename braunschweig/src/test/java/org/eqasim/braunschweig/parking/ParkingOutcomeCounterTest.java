@@ -16,6 +16,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.eqasim.braunschweig.parking.ParkingOutcomeCounter.Cell;
+import org.eqasim.braunschweig.parking.ParkingOutcomeCounter.PricedStay;
 import org.junit.Test;
 
 /**
@@ -36,13 +37,13 @@ public class ParkingOutcomeCounterTest {
 	@Test
 	public void snapshotHoldsEveryNonZeroCellInTheOrderOfTheReportAndResets() {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
-		counter.record(ParkingOutcome.NO_ZONE, null, "work");
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "leisure");
-		counter.record(ParkingOutcome.HOME, "fx_bs_ia", "home");
-		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ia", "leisure", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.HOME, "fx_bs_ia", "home", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop", 0.0));
 
 		Map<Cell, Long> snapshot = counter.snapshotAndReset();
 		// Outcome declaration order, then zone id, then purpose; cells without a stay are not listed.
@@ -60,24 +61,24 @@ public class ParkingOutcomeCounterTest {
 
 		// The next snapshot starts from zero.
 		assertTrue(counter.snapshotAndReset().isEmpty());
-		counter.record(ParkingOutcome.HOME, "fx_bs_ia", "home");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.HOME, "fx_bs_ia", "home", 0.0));
 		assertEquals(Map.of(new Cell(ParkingOutcome.HOME, "fx_bs_ia", "home"), 1L), counter.snapshotAndReset());
 	}
 
 	/**
 	 * The report lists outcomes in declaration order, so the order is part of the file format: the outcomes of version 1
-	 * keep their positions; the two schema-2 outcomes and the schema-3 outcome PAID_EXPECTED are appended at the end, in the
-	 * order of the Python reference OUTCOMES.
+	 * keep their positions; the two schema-2 outcomes, the schema-3 outcome PAID_EXPECTED and the two schema-5 outcomes
+	 * NO_FEASIBLE_OPTION and EV_EXEMPT are appended at the end, in the order of the Python reference OUTCOMES.
 	 */
 	@Test
-	public void theOutcomeDeclarationOrderKeepsVersionOneAndAppendsTheSchemaTwoAndThreeOutcomes() {
+	public void theOutcomeDeclarationOrderKeepsVersionOneAndAppendsTheLaterOutcomes() {
 		List<String> names = new ArrayList<>();
 		for (ParkingOutcome outcome : ParkingOutcome.values()) {
 			names.add(outcome.name());
 		}
 		assertEquals(List.of("NO_ZONE", "HOME", "EMPLOYER_FREE", "RESIDENT_FREE", "OUTSIDE_FEE_HOURS", "FREE_WITHIN_LIMIT",
 				"PAID_METERED", "PAID_LONG_STAY", "PAID_CAMPUS_MEMBER", "PAID_CAMPUS_GUEST", "PAID_GARAGE", "PAID_COMMUTER",
-				"PAID_EXPECTED"),
+				"PAID_EXPECTED", "NO_FEASIBLE_OPTION", "EV_EXEMPT"),
 				names);
 	}
 
@@ -96,11 +97,15 @@ public class ParkingOutcomeCounterTest {
 	@Test
 	public void recordRejectsAnInconsistentCellAndMissingValues() {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		assertThrows(NullPointerException.class, () -> counter.record(null, "fx_bs_ia", "work"));
-		assertThrows(NullPointerException.class, () -> counter.record(ParkingOutcome.NO_ZONE, null, null));
-		assertThrows(IllegalArgumentException.class, () -> counter.record(ParkingOutcome.NO_ZONE, "fx_bs_ia", "work"));
-		assertThrows(IllegalArgumentException.class, () -> counter.record(ParkingOutcome.PAID_METERED, null, "work"));
-		assertThrows(IllegalArgumentException.class, () -> counter.record(ParkingOutcome.PAID_METERED, "", "work"));
+		assertThrows(NullPointerException.class, () -> counter.record(PricedStay.withoutGarage(null, "fx_bs_ia", "work", 0.0)));
+		assertThrows(NullPointerException.class,
+			() -> counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, null, 0.0)));
+		assertThrows(IllegalArgumentException.class,
+			() -> counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, "fx_bs_ia", "work", 0.0)));
+		assertThrows(IllegalArgumentException.class,
+			() -> counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, null, "work", 0.0)));
+		assertThrows(IllegalArgumentException.class,
+			() -> counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "", "work", 0.0)));
 		// A rejected record counts nothing.
 		assertTrue(counter.snapshotAndReset().isEmpty());
 	}
@@ -109,10 +114,10 @@ public class ParkingOutcomeCounterTest {
 	@Test
 	public void countsByOutcomeSumsTheCellsOverZonesAndPurposes() {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
-		counter.record(ParkingOutcome.NO_ZONE, null, "leisure");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "leisure", 0.0));
 		Map<ParkingOutcome, Long> counts = ParkingOutcomeCounter.countsByOutcome(counter.snapshotAndReset());
 		assertEquals(List.of(ParkingOutcome.values()), new ArrayList<>(counts.keySet()));
 		assertEquals(Long.valueOf(3), counts.get(ParkingOutcome.PAID_METERED));
@@ -130,11 +135,11 @@ public class ParkingOutcomeCounterTest {
 	public void minimumStayExtensionsAreCountedAndResetApartFromTheOutcomes() {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
 		assertEquals(0L, counter.snapshotAndResetMinimumStayExtensions());
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop", 0.0));
 		counter.recordMinimumStayExtension();
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop", 0.0));
 		counter.recordMinimumStayExtension();
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop", 0.0));
 		assertEquals(Map.of(new Cell(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop"), 3L), counter.snapshotAndReset());
 		assertEquals(2L, counter.snapshotAndResetMinimumStayExtensions());
 		// The next snapshot starts from zero.
@@ -187,7 +192,8 @@ public class ParkingOutcomeCounterTest {
 					start.await();
 					for (int index = 0; index < RECORDS_PER_THREAD; index++) {
 						Cell cell = cell(outcomes[(offset + index) % outcomes.length], offset + index);
-						counter.record(cell.outcome(), cell.zoneId().isEmpty() ? null : cell.zoneId(), cell.purpose());
+						counter.record(PricedStay.withoutGarage(cell.outcome(), cell.zoneId().isEmpty() ? null : cell.zoneId(),
+							cell.purpose(), 0.0));
 					}
 					return null;
 				}));
@@ -207,27 +213,76 @@ public class ParkingOutcomeCounterTest {
 	}
 
 	/**
-	 * Spec Amendment E7: a cell sums the garage probability of its stays and counts its stays with a garage in range; the old
-	 * record without them counts a stay no garage acted on. The next snapshot starts from zero.
+	 * Spec Amendment E7: a cell sums the garage probability of its stays and counts its stays with a garage in range; a stay
+	 * recorded without garage options counts a stay no garage acted on. Spec v3 A4: the sum is split into the paid and the
+	 * free garage options, and the cell sums the expected cost, counts the infeasible streets and repeats the outcome counts
+	 * of NO_FEASIBLE_OPTION and EV_EXEMPT. The next snapshot starts from zero.
 	 */
 	@Test
 	public void aCellSumsTheGarageProbabilityAndCountsTheStaysWithGaragesInRange() {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.25, 1);
-		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.5, 3);
-		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "work", 1.0, 2);
-		counter.record(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop", 0.0, 2);
-		counter.record(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop");
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 120.5, 0.25, 0.0, 1, false));
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 200.25, 0.25, 0.25, 3, true));
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "work", 80.0, 0.0, 1.0, 2, false));
+		counter.record(new PricedStay(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop", 0.0, 0.0, 0.0, 2, false));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop", 0.0));
+		counter.record(new PricedStay(ParkingOutcome.NO_FEASIBLE_OPTION, "fx_ia", "work", 720.0, 0.0, 0.0, 0, true));
+		counter.record(new PricedStay(ParkingOutcome.NO_FEASIBLE_OPTION, "fx_ia", "work", 360.0, 0.0, 0.0, 0, true));
+		counter.record(new PricedStay(ParkingOutcome.EV_EXEMPT, "fx_ev", "shop", 0.0, 0.0, 0.0, 1, false));
 
 		Map<Cell, ParkingOutcomeCounter.CellTotals> totals = counter.snapshotAndResetTotals();
 
-		assertEquals(new ParkingOutcomeCounter.CellTotals(2, 0.75, 2),
+		assertEquals(new ParkingOutcomeCounter.CellTotals(2, 0.5, 0.25, 2, 1, 0, 320.75, 0),
 				totals.get(new Cell(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop")));
-		assertEquals(new ParkingOutcomeCounter.CellTotals(1, 1.0, 1),
+		assertEquals(0.75, totals.get(new Cell(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop")).garageProbabilitySum(), 0.0);
+		assertEquals(new ParkingOutcomeCounter.CellTotals(1, 0.0, 1.0, 1, 0, 0, 80.0, 0),
 				totals.get(new Cell(ParkingOutcome.PAID_EXPECTED, "fx_a", "work")));
-		assertEquals(new ParkingOutcomeCounter.CellTotals(2, 0.0, 1),
+		assertEquals(new ParkingOutcomeCounter.CellTotals(2, 0.0, 0.0, 1, 0, 0, 0.0, 0),
 				totals.get(new Cell(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_a", "shop")));
+		// The two outcome counts repeat the count of the row of their outcome and are 0 in every other row.
+		assertEquals(new ParkingOutcomeCounter.CellTotals(2, 0.0, 0.0, 0, 2, 2, 1080.0, 0),
+				totals.get(new Cell(ParkingOutcome.NO_FEASIBLE_OPTION, "fx_ia", "work")));
+		assertEquals(new ParkingOutcomeCounter.CellTotals(1, 0.0, 0.0, 1, 0, 0, 0.0, 1),
+				totals.get(new Cell(ParkingOutcome.EV_EXEMPT, "fx_ev", "shop")));
 		assertTrue(counter.snapshotAndResetTotals().isEmpty());
+		assertTrue(counter.snapshotAndReset().isEmpty());
+	}
+
+	/** The expected cost is summed in fixed point, so the sum does not depend on the order in which threads add their stays. */
+	@Test
+	public void theExpectedCostSumIsExactWhateverTheThreadOrder() throws Exception {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		ExecutorService executor = Executors.newFixedThreadPool(THREADS);
+		try {
+			List<Future<?>> recorders = new ArrayList<>();
+			for (int thread = 0; thread < THREADS; thread++) {
+				recorders.add(executor.submit(() -> {
+					for (int index = 0; index < RECORDS_PER_THREAD; index++) {
+						counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_a", "shop", 0.1));
+					}
+					return null;
+				}));
+			}
+			for (Future<?> recorder : recorders) {
+				recorder.get(60, TimeUnit.SECONDS);
+			}
+		} finally {
+			executor.shutdownNow();
+		}
+		long stays = (long) THREADS * RECORDS_PER_THREAD;
+		ParkingOutcomeCounter.CellTotals cell = counter.snapshotAndResetTotals()
+				.get(new Cell(ParkingOutcome.PAID_METERED, "fx_a", "shop"));
+		assertEquals(stays, cell.count());
+		assertEquals(0.1 * stays, cell.expectedCostCentsSum(), 1e-6);
+	}
+
+	@Test
+	public void recordRejectsAnImplausibleExpectedCost() {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		for (double cost : new double[] { -1.0, Double.NaN, Double.POSITIVE_INFINITY }) {
+			assertThrows("cost " + cost, IllegalArgumentException.class,
+					() -> counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_a", "shop", cost)));
+		}
 		assertTrue(counter.snapshotAndReset().isEmpty());
 	}
 
@@ -235,13 +290,13 @@ public class ParkingOutcomeCounterTest {
 	public void recordRejectsAnImplausibleGarageProbability() {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
 		assertThrows(IllegalArgumentException.class,
-				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 1.5, 1));
+				() -> counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.0, 1.5, 0.0, 1, false)));
 		assertThrows(IllegalArgumentException.class,
-				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", -0.1, 1));
+				() -> counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.0, -0.1, 0.0, 1, false)));
 		assertThrows(IllegalArgumentException.class,
-				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", Double.NaN, 1));
+				() -> counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.0, Double.NaN, 0.0, 1, false)));
 		assertThrows(IllegalArgumentException.class,
-				() -> counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.5, -1));
+				() -> counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.0, 0.5, 0.0, -1, false)));
 		// Nothing was recorded by a failing call.
 		assertTrue(counter.snapshotAndReset().isEmpty());
 	}
@@ -256,7 +311,7 @@ public class ParkingOutcomeCounterTest {
 			for (int thread = 0; thread < THREADS; thread++) {
 				recorders.add(executor.submit(() -> {
 					for (int index = 0; index < RECORDS_PER_THREAD; index++) {
-						counter.record(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.1, 1);
+						counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_a", "shop", 0.0, 0.1, 0.0, 1, false));
 					}
 					return null;
 				}));

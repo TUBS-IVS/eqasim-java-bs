@@ -269,4 +269,24 @@ public class ParkingAttributesTest {
 		assertFalse(calls.toString(), calls.containsKey("getPlans"));
 		assertFalse(calls.toString(), calls.containsKey("getSelectedPlan"));
 	}
+
+	/**
+	 * The person attribute parkingEvExempt (spec v3 A5): a Boolean written only where true, so absent is false; any other type
+	 * fails in the one message format, naming the person, the attribute and the value.
+	 */
+	@Test
+	public void theEvExemptionIsABooleanPersonAttributeThatDefaultsToFalse() {
+		Person person = person("p1");
+		assertFalse(ParkingAttributes.evExempt(person));
+		person.getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, true);
+		assertTrue(ParkingAttributes.evExempt(person));
+		person.getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, false);
+		assertFalse(ParkingAttributes.evExempt(person));
+		for (Object mistyped : new Object[] { "true", 1, 1.0 }) {
+			person.getAttributes().putAttribute(ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE, mistyped);
+			IllegalStateException error = assertThrows(IllegalStateException.class, () -> ParkingAttributes.evExempt(person));
+			assertEquals("person p1: parkingEvExempt must be a java.lang.Boolean, got " + mistyped.getClass().getName() + " "
+					+ mistyped + TYPE_HINT, error.getMessage());
+		}
+	}
 }

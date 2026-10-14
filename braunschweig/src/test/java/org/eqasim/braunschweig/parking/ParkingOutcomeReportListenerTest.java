@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -16,6 +17,7 @@ import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.eqasim.braunschweig.parking.ParkingOutcomeCounter.PricedStay;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -38,6 +40,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class ParkingOutcomeReportListenerTest {
 	private static final String V3_HEADER = "outcome,zone_id,purpose,count,share,garage_probability_sum,"
 			+ "stays_with_garages_in_range";
+
+	/** CSV v4 (spec v3 A4): the v3 columns, which keep their names and order, plus six. */
+	private static final String V4_HEADER = V3_HEADER + ",garage_probability_sum_paid,garage_probability_sum_free,"
+			+ "street_infeasible_count,no_feasible_option_count,expected_cost_cents_sum,ev_exempt_count";
 
 	/**
 	 * The fixture tariff model with the garage options OFF (garage_decay_m and garage_decay_commute_m 0): three zones carry a
@@ -112,15 +118,15 @@ public class ParkingOutcomeReportListenerTest {
 	@Test
 	public void writesOneRowPerNonZeroCellAndLogsTheOutcomeAndMinimumStayShares() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
-		counter.record(ParkingOutcome.NO_ZONE, null, "work");
-		counter.record(ParkingOutcome.NO_ZONE, null, "shop");
-		counter.record(ParkingOutcome.NO_ZONE, null, "work");
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "shop", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ia", "shop", 0.0));
 		counter.recordMinimumStayExtension();
-		counter.record(ParkingOutcome.NO_ZONE, null, "work");
-		counter.record(ParkingOutcome.EMPLOYER_FREE, "fx_bs_ib", "work");
-		counter.record(ParkingOutcome.NO_ZONE, null, "shop");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.EMPLOYER_FREE, "fx_bs_ib", "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "shop", 0.0));
 		OutputDirectoryHierarchy output = output();
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output,
 				parking("15"), tariffsWithSearchTimes);
@@ -129,12 +135,13 @@ public class ParkingOutcomeReportListenerTest {
 
 		Path report = reportOfIteration(3);
 		assertEquals(Path.of(output.getIterationFilename(3, ParkingOutcomeReportListener.FILE_NAME)), report);
-		assertEquals(List.of(V3_HEADER, //
-				"NO_ZONE,,shop,2,0.250000,0.000000,0", //
-				"NO_ZONE,,work,3,0.375000,0.000000,0", //
-				"EMPLOYER_FREE,fx_bs_ib,work,1,0.125000,0.000000,0", //
-				"PAID_METERED,fx_bs_ia,shop,1,0.125000,0.000000,0", //
-				"PAID_METERED,fx_bs_ib,work,1,0.125000,0.000000,0"), Files.readAllLines(report, StandardCharsets.UTF_8));
+		assertEquals(List.of(V4_HEADER, //
+				"NO_ZONE,,shop,2,0.250000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"NO_ZONE,,work,3,0.375000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"EMPLOYER_FREE,fx_bs_ib,work,1,0.125000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"PAID_METERED,fx_bs_ia,shop,1,0.125000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"PAID_METERED,fx_bs_ib,work,1,0.125000,0.000000,0,0.000000,0.000000,0,0,0.000000,0"),
+				Files.readAllLines(report, StandardCharsets.UTF_8));
 		assertEquals(List.of("[parking] it 3: NO_ZONE 5 (62.5 %), EMPLOYER_FREE 1 (12.5 %), PAID_METERED 2 (25.0 %)",
 				"[parking] it 3: minimum stay 15 min extended 1 of 3 priced stays (33.3 %)"), messages);
 		// The next iteration counts from zero.
@@ -146,19 +153,19 @@ public class ParkingOutcomeReportListenerTest {
 	@Test
 	public void listsTheGarageAndCommuterOutcomesAfterTheVersionOneOutcomes() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_COMMUTER, "fx_bs_ib_v2", "work");
-		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
-		counter.record(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop");
-		counter.record(ParkingOutcome.PAID_CAMPUS_GUEST, "fx_campus_v2", "shop");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_COMMUTER, "fx_bs_ib_v2", "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_GARAGE, "fx_wob_v2", "shop", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_CAMPUS_GUEST, "fx_campus_v2", "shop", 0.0));
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(),
 				parking("15"), tariffsWithSearchTimes);
 
 		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 1, false)));
 
-		assertEquals(List.of(V3_HEADER, //
-				"PAID_CAMPUS_GUEST,fx_campus_v2,shop,1,0.250000,0.000000,0", //
-				"PAID_GARAGE,fx_wob_v2,shop,2,0.500000,0.000000,0", //
-				"PAID_COMMUTER,fx_bs_ib_v2,work,1,0.250000,0.000000,0"),
+		assertEquals(List.of(V4_HEADER, //
+				"PAID_CAMPUS_GUEST,fx_campus_v2,shop,1,0.250000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"PAID_GARAGE,fx_wob_v2,shop,2,0.500000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"PAID_COMMUTER,fx_bs_ib_v2,work,1,0.250000,0.000000,0,0.000000,0.000000,0,0,0.000000,0"),
 				Files.readAllLines(reportOfIteration(1), StandardCharsets.UTF_8));
 	}
 
@@ -170,7 +177,7 @@ public class ParkingOutcomeReportListenerTest {
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 0, false)));
 
-		assertEquals(List.of(V3_HEADER),
+		assertEquals(List.of(V4_HEADER),
 				Files.readAllLines(reportOfIteration(0), StandardCharsets.UTF_8));
 		assertEquals(List.of("[parking] it 0: no car stay priced",
 				"[parking] it 0: minimum stay 15 min extended 0 of 0 priced stays (0.0 %)"), messages);
@@ -189,11 +196,11 @@ public class ParkingOutcomeReportListenerTest {
 		assertEquals("\"two\nlines\"", ParkingOutcomeReportListener.csvField("two\nlines"));
 
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_METERED, "fx,zone", "work");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx,zone", "work", 0.0));
 		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(),
 				parking("15"), tariffsWithSearchTimes);
 		logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 2, false)));
-		assertEquals(List.of(V3_HEADER, "PAID_METERED,\"fx,zone\",work,1,1.000000,0.000000,0"),
+		assertEquals(List.of(V4_HEADER, "PAID_METERED,\"fx,zone\",work,1,1.000000,0.000000,0,0.000000,0.000000,0,0,0.000000,0"),
 				Files.readAllLines(reportOfIteration(2), StandardCharsets.UTF_8));
 	}
 
@@ -263,11 +270,11 @@ public class ParkingOutcomeReportListenerTest {
 	@Test
 	public void writesTheGarageProbabilityPerRowAndLogsTheGarageOptionRatesWhenTheOptionsAreOn() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop", 0.25, 1);
-		counter.record(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop", 0.5, 2);
-		counter.record(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_bs_ib", "shop", 0.0, 1);
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop");
-		counter.record(ParkingOutcome.NO_ZONE, null, "work");
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop", 0.0, 0.25, 0.0, 1, false));
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop", 0.0, 0.5, 0.0, 2, false));
+		counter.record(new PricedStay(ParkingOutcome.FREE_WITHIN_LIMIT, "fx_bs_ib", "shop", 0.0, 0.0, 0.0, 1, false));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "work", 0.0));
 		GarageOptionCounters rates = counter.garageOptionCounters();
 		for (int stay = 0; stay < 4; stay++) {
 			rates.countStay();
@@ -285,11 +292,11 @@ public class ParkingOutcomeReportListenerTest {
 
 		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 4, false)));
 
-		assertEquals(List.of(V3_HEADER, //
-				"NO_ZONE,,work,1,0.200000,0.000000,0", //
-				"FREE_WITHIN_LIMIT,fx_bs_ib,shop,1,0.200000,0.000000,1", //
-				"PAID_METERED,fx_bs_ib,shop,1,0.200000,0.000000,0", //
-				"PAID_EXPECTED,fx_bs_ib,shop,2,0.400000,0.750000,2"),
+		assertEquals(List.of(V4_HEADER, //
+				"NO_ZONE,,work,1,0.200000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"FREE_WITHIN_LIMIT,fx_bs_ib,shop,1,0.200000,0.000000,1,0.000000,0.000000,0,0,0.000000,0", //
+				"PAID_METERED,fx_bs_ib,shop,1,0.200000,0.000000,0,0.000000,0.000000,0,0,0.000000,0", //
+				"PAID_EXPECTED,fx_bs_ib,shop,2,0.400000,0.750000,2,0.750000,0.000000,0,0,0.000000,0"),
 				Files.readAllLines(reportOfIteration(4), StandardCharsets.UTF_8));
 		assertEquals(List.of(
 				"[parking] it 4: NO_ZONE 1 (20.0 %), FREE_WITHIN_LIMIT 1 (20.0 %), PAID_METERED 1 (20.0 %),"
@@ -297,7 +304,8 @@ public class ParkingOutcomeReportListenerTest {
 				"[parking] it 4: minimum stay 15 min extended 0 of 4 priced stays (0.0 %)",
 				"[parking] it 4: garage options: stays 4; eligible 4; garages in range 3/4 (75.0 %); street free (E4) 1/3 (33.3 %);"
 						+ " street unavailable 0/3 (0.0 %); priced as expectation 2; garage options priced 3, closed schedule"
-						+ " repeated (P9) 0/3 (0.0 %); expected garage share 0.1875 of 4 priced stays (sum of garage"
+						+ " repeated (P9) 0/3 (0.0 %); garage options over their maximum stay 0/3 (0.0 %); no feasible option"
+						+ " (NO_FEASIBLE_OPTION) 0/4 (0.0 %); expected garage share 0.1875 of 4 priced stays (sum of garage"
 						+ " probabilities 0.750); garage_decay_m 400.0 m (every purpose but work and education),"
 						+ " garage_decay_commute_m 250.0 m (work and education)"),
 				messages);
@@ -312,8 +320,8 @@ public class ParkingOutcomeReportListenerTest {
 	@Test
 	public void warnsWhenNoEligibleStayHadAGarageInRange() throws Exception {
 		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop");
-		counter.record(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work");
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "shop", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.PAID_METERED, "fx_bs_ib", "work", 0.0));
 		for (int stay = 0; stay < 2; stay++) {
 			counter.garageOptionCounters().countStay();
 			counter.garageOptionCounters().countEligible();
@@ -340,7 +348,93 @@ public class ParkingOutcomeReportListenerTest {
 
 		assertEquals(3, messages.size());
 		assertTrue(messages.get(2), messages.get(2).startsWith("[parking] it 0: garage options: stays 0; eligible 0;"));
-		assertEquals(List.of(V3_HEADER), Files.readAllLines(reportOfIteration(0), StandardCharsets.UTF_8));
+		assertEquals(List.of(V4_HEADER), Files.readAllLines(reportOfIteration(0), StandardCharsets.UTF_8));
+	}
+
+	/**
+	 * CSV v4 (spec v3 A4): the columns of every row are consistent with the stays that were recorded. Eight stays: two
+	 * PAID_EXPECTED stays of one cell (garage probability paid 0.25 / free 0.25 and paid 0.5 / free 0, costs 150.5 and 200.25
+	 * ct, one of them with the street infeasible), a PAID_EXPECTED stay over a free garage only (free 1.0, cost 0 ct, street
+	 * infeasible), two NO_FEASIBLE_OPTION stays (720 and 360 ct, street infeasible), one EV_EXEMPT stay (0 ct, with garages in
+	 * range) and two stays outside every zone. The sums over the rows equal the sums over the stays, paid plus free equals
+	 * garage_probability_sum in every row, the two outcome counts equal the count of the row of their outcome, and the first
+	 * seven columns are those of v3, so that a v3 reader keeps working.
+	 */
+	@Test
+	public void v4SumsEqualThePricedStays() throws Exception {
+		ParkingOutcomeCounter counter = new ParkingOutcomeCounter();
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "work", 150.5, 0.25, 0.25, 3, false));
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "work", 200.25, 0.5, 0.0, 2, true));
+		counter.record(new PricedStay(ParkingOutcome.PAID_EXPECTED, "fx_bs_ib", "shop", 0.0, 0.0, 1.0, 1, true));
+		counter.record(new PricedStay(ParkingOutcome.NO_FEASIBLE_OPTION, "fx_ia_nolong_v3", "shop", 720.0, 0.0, 0.0, 1, true));
+		counter.record(new PricedStay(ParkingOutcome.NO_FEASIBLE_OPTION, "fx_ia_nolong_v3", "shop", 360.0, 0.0, 0.0, 0, true));
+		counter.record(new PricedStay(ParkingOutcome.EV_EXEMPT, "fx_ev_street_v3", "shop", 0.0, 0.0, 0.0, 2, false));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "work", 0.0));
+		counter.record(PricedStay.withoutGarage(ParkingOutcome.NO_ZONE, null, "shop", 0.0));
+		double recordedCostCents = 150.5 + 200.25 + 0.0 + 720.0 + 360.0;
+		ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(counter, output(), parking("0"),
+				tariffsWithGarageOptions);
+
+		List<String> messages = logDuring(() -> listener.notifyIterationEnds(new IterationEndsEvent(null, 6, false)));
+
+		List<String> lines = Files.readAllLines(reportOfIteration(6), StandardCharsets.UTF_8);
+		assertEquals(V4_HEADER, lines.get(0));
+		assertTrue(V4_HEADER.startsWith(V3_HEADER + ","));
+		long count = 0;
+		long streetInfeasible = 0;
+		long noFeasibleOption = 0;
+		long evExempt = 0;
+		long staysWithGarages = 0;
+		double paid = 0.0;
+		double free = 0.0;
+		double garageProbability = 0.0;
+		double costCents = 0.0;
+		for (String line : lines.subList(1, lines.size())) {
+			String[] columns = line.split(",", -1);
+			assertEquals(line, 13, columns.length);
+			long rowCount = Long.parseLong(columns[3]);
+			count += rowCount;
+			garageProbability += Double.parseDouble(columns[5]);
+			staysWithGarages += Long.parseLong(columns[6]);
+			paid += Double.parseDouble(columns[7]);
+			free += Double.parseDouble(columns[8]);
+			assertEquals(line, Double.parseDouble(columns[5]), Double.parseDouble(columns[7]) + Double.parseDouble(columns[8]),
+					1e-6);
+			streetInfeasible += Long.parseLong(columns[9]);
+			noFeasibleOption += Long.parseLong(columns[10]);
+			costCents += Double.parseDouble(columns[11]);
+			evExempt += Long.parseLong(columns[12]);
+			// The outcome counts repeat the count of the row of their outcome and are 0 in every other row.
+			assertEquals(line, columns[0].equals("NO_FEASIBLE_OPTION") ? rowCount : 0L, Long.parseLong(columns[10]));
+			assertEquals(line, columns[0].equals("EV_EXEMPT") ? rowCount : 0L, Long.parseLong(columns[12]));
+		}
+		assertEquals(8, count);
+		assertEquals(4, streetInfeasible);
+		assertEquals(2, noFeasibleOption);
+		assertEquals(1, evExempt);
+		assertEquals(5, staysWithGarages);
+		assertEquals(0.75, paid, 1e-9);
+		assertEquals(1.25, free, 1e-9);
+		assertEquals(2.0, garageProbability, 1e-9);
+		assertEquals(recordedCostCents, costCents, 1e-6);
+		assertTrue(lines.toString(), lines.contains("NO_FEASIBLE_OPTION,fx_ia_nolong_v3,shop,2,0.250000,0.000000,1,0.000000,"
+				+ "0.000000,2,2,1080.000000,0"));
+		assertTrue(lines.toString(), lines.contains("EV_EXEMPT,fx_ev_street_v3,shop,1,0.125000,0.000000,1,0.000000,0.000000,0,"
+				+ "0,0.000000,1"));
+		// NO_FEASIBLE_OPTION is a fallback price: its count and rate over the 6 priced stays are named as a warning.
+		assertTrue(messages.toString(), messages.stream().anyMatch(message -> message.startsWith("[parking] it 6: 2 of 6 priced"
+				+ " stays (33.3 %) have no feasible parking option (NO_FEASIBLE_OPTION")));
+	}
+
+	/** An iteration without a NO_FEASIBLE_OPTION stay logs no such warning. */
+	@Test
+	public void theNoFeasibleOptionWarningNamesNothingWhenNoStayHadNoFeasibleOption() {
+		EnumMap<ParkingOutcome, Long> counts = new EnumMap<>(ParkingOutcome.class);
+		counts.put(ParkingOutcome.PAID_METERED, 3L);
+		assertTrue(ParkingOutcomeReportListener.noFeasibleOptionWarning(1, counts).isEmpty());
+		counts.put(ParkingOutcome.NO_FEASIBLE_OPTION, 1L);
+		String warning = ParkingOutcomeReportListener.noFeasibleOptionWarning(1, counts).orElseThrow();
+		assertTrue(warning, warning.contains("1 of 4 priced stays (25.0 %)"));
 	}
 
 	/** Messages the listener logs while {@code action} runs. */

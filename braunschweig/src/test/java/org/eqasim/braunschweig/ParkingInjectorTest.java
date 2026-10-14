@@ -21,6 +21,7 @@ import org.eqasim.braunschweig.mode_choice.costs.BraunschweigCarCostModel;
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigCarPassengerUtilityEstimator;
 import org.eqasim.braunschweig.mode_choice.utilities.estimators.BraunschweigCarUtilityEstimator;
 import org.eqasim.braunschweig.parking.ParkingConfigGroup;
+import org.eqasim.braunschweig.parking.ParkingOptionPriceBetaCheck;
 import org.eqasim.braunschweig.parking.ParkingOutcome;
 import org.eqasim.braunschweig.parking.ParkingOutcomeCounter;
 import org.eqasim.braunschweig.parking.ParkingOutcomeReportListener;
@@ -52,6 +53,7 @@ import org.matsim.core.config.ConfigGroup;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.controler.Controler;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
+import org.matsim.core.controler.events.StartupEvent;
 import org.matsim.core.controler.listener.ControllerListener;
 import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.population.routes.RouteUtils;
@@ -181,12 +183,14 @@ public class ParkingInjectorTest {
 		CostModel carCostModel = carCostModel(injector);
 		assertTrue(carCostModel instanceof ZoneParkingCarCostModel);
 		// The tariff model is read through the config-relative path.
-		assertEquals(18, injector.getInstance(ParkingTariffs.class).zones().size());
+		assertEquals(22, injector.getInstance(ParkingTariffs.class).zones().size());
 		assertTrue(hasListener(injector, ParkingOutcomeReportListener.class));
 		// The startup check of the plans, which takes the tariff model when the controller builds its listeners.
 		assertTrue(hasListener(injector, ParkingPopulationCheck.class));
 		// The startup check of lever 4 (search time factor against the tariff model), built the same way.
 		assertTrue(hasListener(injector, ParkingSearchTimeCheck.class));
+		// The startup check of the option price coefficient of the schema-5 tariff model against the mode choice (spec v3 A2).
+		assertTrue(hasListener(injector, ParkingOptionPriceBetaCheck.class));
 
 		// Only the car cost model name changed: car and car passenger keep their estimators.
 		EqasimConfigGroup eqasim = EqasimConfigGroup.get(injector.getInstance(Config.class));
@@ -239,6 +243,7 @@ public class ParkingInjectorTest {
 		// Nothing scans the population and nothing logs its parking coverage.
 		assertFalse(hasListener(injector, ParkingPopulationCheck.class));
 		assertFalse(hasListener(injector, ParkingSearchTimeCheck.class));
+		assertFalse(hasListener(injector, ParkingOptionPriceBetaCheck.class));
 		assertNull(injector.getExistingBinding(Key.get(ParkingTariffs.class)));
 		// Lever 4 without the module: the car utility estimator is built with the neutral search time (factor 0, no
 		// minutes), although no tariff model exists to read search minutes from.
@@ -269,7 +274,7 @@ public class ParkingInjectorTest {
 	 */
 	@Test
 	public void anInvalidTariffModelFailsWhenTheControllerStarts() throws Exception {
-		Controler controller = controller(true, tariffModel -> tariffModel.put("schema_version", 5));
+		Controler controller = controller(true, tariffModel -> tariffModel.put("schema_version", 6));
 
 		RuntimeException error = assertThrows(RuntimeException.class, controller::run);
 		IllegalArgumentException readerError = null;
@@ -281,9 +286,65 @@ public class ParkingInjectorTest {
 		assertNotNull("no IllegalArgumentException of the tariff reader in " + error, readerError);
 		assertTrue(readerError.getMessage(), readerError.getMessage().contains(TARIFFS_FILE));
 		assertTrue(readerError.getMessage(),
-				readerError.getMessage().contains("schema_version must be one of [1, 2, 3, 4], got 5"));
+				readerError.getMessage().contains("schema_version must be one of [1, 2, 3, 4, 5], got 6"));
 		// No iteration has begun.
 		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
+	}
+
+	/**
+	 * Spec v3 A2, ASSUMPTION G1-d: the option price coefficient of a schema-5 tariff model must equal the magnitude of the mode
+	 * choice cost coefficient betaCost_u_MU (0.310998) within 1e-9, otherwise the run stops when the controller starts, before
+	 * iteration 0, with a message that names both values. The same model with the coefficient of the mode choice starts.
+	 */
+	@Test
+	public void anOptionPriceCoefficientThatDiffersFromTheModeChoiceStopsTheRunWhenTheControllerStarts() throws Exception {
+		Controler controller = controller(true, tariffModel -> tariffModel.put("option_price_beta_u_per_eur", 0.5));
+
+		IllegalStateException checkError = startupCheckError(assertThrows(RuntimeException.class, controller::run));
+		for (String fragment : new String[] { "option_price_beta_u_per_eur of the parking tariff model", TARIFFS_FILE, "is 0.5",
+				"betaCost_u_MU is 0.310998", "ONE money coefficient" }) {
+			assertTrue("'" + fragment + "' missing in: " + checkError.getMessage(), checkError.getMessage().contains(fragment));
+		}
+		// No iteration has begun.
+		assertFalse(Files.exists(folder.getRoot().toPath().resolve("output").resolve("ITERS").resolve("it.0")));
+	}
+
+	/**
+	 * A coefficient of 0 (the price-independent weights of v2) is refused like any other value that differs from the mode choice
+	 * one; a run that wants the weights of v2 uses a tariff model of schema 4.
+	 */
+	@Test
+	public void anOptionPriceCoefficientOfZeroIsRefusedLikeAnyOtherDifferingValue() throws Exception {
+		Controler zero = controller(true, tariffModel -> tariffModel.put("option_price_beta_u_per_eur", 0.0));
+		IllegalStateException zeroError = startupCheckError(assertThrows(RuntimeException.class, zero::run));
+		assertTrue(zeroError.getMessage(), zeroError.getMessage().contains("is 0.0"));
+	}
+
+	/**
+	 * The check reads the EFFECTIVE mode parameters (the ones the utilities use after the overrides): a coefficient override of
+	 * the mode choice that the tariff model does not follow stops the run, and one that it follows starts it.
+	 */
+	@Test
+	public void aModeChoiceCoefficientOverrideThatTheTariffModelDoesNotFollowStopsTheRun() throws Exception {
+		Controler differs = controller(true, tariffModel -> {
+		}, Map.of(), new String[] { "--mode-choice-parameter:betaCost_u_MU", "-0.4" }, config -> {
+		});
+		IllegalStateException checkError = startupCheckError(assertThrows(RuntimeException.class, differs::run));
+		assertTrue(checkError.getMessage(), checkError.getMessage().contains("betaCost_u_MU is 0.4"));
+	}
+
+	/** The same override with a tariff model that states the coefficient of the override passes the check. */
+	@Test
+	public void aModeChoiceCoefficientOverrideThatTheTariffModelFollowsStartsTheRun() throws Exception {
+		Injector follows = controller(true, tariffModel -> tariffModel.put("option_price_beta_u_per_eur", 0.4), Map.of(),
+				new String[] { "--mode-choice-parameter:betaCost_u_MU", "-0.4" }, config -> {
+				}).getInjector();
+		// The check is bound as a controller listener only (no just-in-time binding): take it from the listeners.
+		Set<ControllerListener> listeners = follows.getInstance(Key.get(new TypeLiteral<Set<ControllerListener>>() {
+		}));
+		ParkingOptionPriceBetaCheck check = listeners.stream().filter(ParkingOptionPriceBetaCheck.class::isInstance)
+				.map(ParkingOptionPriceBetaCheck.class::cast).findFirst().orElseThrow();
+		check.notifyStartup(new StartupEvent(null));
 	}
 
 	/** The IllegalStateException of the first startup check in the causes of the failure of a controller run. */

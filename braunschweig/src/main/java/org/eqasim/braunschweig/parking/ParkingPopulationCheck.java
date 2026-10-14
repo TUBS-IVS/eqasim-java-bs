@@ -52,13 +52,13 @@ import com.google.inject.Singleton;
  * {@value ZoneParkingCarCostModel#ZONE_ATTRIBUTE} has no coordinate: the garages within the maximum distance are found from
  * the activity coordinate (spec Amendment E6), so the run stops here, at the start, instead of at the first car stay that
  * reaches the garage options; the message names the way out, both decays 0;</li>
- * <li>one of the five parking attributes has another type than the plans writer writes (String zone and district ids,
- * Boolean parkingFree), which ZoneParkingCarCostModel would otherwise reject only when it first prices a car trip
- * there.</li>
+ * <li>one of the six parking attributes has another type than the plans writer writes (String zone and district ids,
+ * Boolean parkingFree and parkingEvExempt), which ZoneParkingCarCostModel would otherwise reject only when it first prices a
+ * car trip there.</li>
  * </ul>
  * The message names the person, the plan and activity index and the activity type where applicable, the attribute and
  * the offending value, and, except for a mistyped value, the tariffs path, in the one format of {@link ParkingAttributes},
- * which reads the five attributes for this check, the car cost model and the parking search time. Stage activities (such as
+ * which reads the six attributes for this check, the car cost model and the parking search time. Stage activities (such as
  * {@code car interaction}), which the router inserts without attributes and at which no car stay is priced, are
  * skipped; the activity index counts the other activities of a plan from 0, like the activity_index of the synthesis
  * frames.
@@ -68,7 +68,10 @@ import com.google.inject.Singleton;
  * NO_ZONE, the signature of plans written without the zones. A second warning ({@link #searchTimeWarning}) says that the
  * search time factor of lever 4 cannot act in this run, when it is configured and the tariff model carries search times
  * but no activity of the population lies in such a zone; a factor above 0 with no search time in the model at all fails
- * the run in {@link ParkingSearchTimeCheck}.
+ * the run in {@link ParkingSearchTimeCheck}. A third warning ({@link #evExemptionWarning}, spec v3 A5) says that the EV
+ * exemption cannot act in this run: a zone states {@code ev_free_minutes} but no person carries
+ * {@value ZoneParkingCarCostModel#EV_EXEMPT_ATTRIBUTE}, or persons carry it but no zone states {@code ev_free_minutes} (for
+ * example a tariff model of schema 4 or older).
  *
  * <p>Side effects: the log line; the population is only read.
  */
@@ -105,10 +108,12 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 * @param activitiesWithSearchTime activities the search time of lever 4 acts on: in a zone whose search_time_min is above
 	 *        0 and not of purpose home, counted by the same predicate as the car utility term
 	 *        ({@link ParkingSearchTime#minutesIn})
+	 * @param evExemptPersons persons with parkingEvExempt = true: the owners of an electric car whom a zone with
+	 *        {@code ev_free_minutes} exempts from the street fee (spec v3 A5, ASSUMPTION E1)
 	 */
 	record Coverage(long persons, long activities, Map<ZoneType, Long> activitiesInZones, long parkingFreeActivities,
 			long residentPersons, long activitiesInDistricts, long districtResidents,
-			long ownDistrictActivitiesInPermitZones, long activitiesWithSearchTime) {
+			long ownDistrictActivitiesInPermitZones, long activitiesWithSearchTime, long evExemptPersons) {
 		Coverage {
 			Map<ZoneType, Long> copy = new EnumMap<>(ZoneType.class);
 			copy.putAll(activitiesInZones);
@@ -145,6 +150,27 @@ public final class ParkingPopulationCheck implements StartupListener {
 			LOG.info(summary(coverage));
 		}
 		searchTimeWarning(coverage).ifPresent(LOG::warn);
+		evExemptionWarning(coverage).ifPresent(LOG::warn);
+	}
+
+	/**
+	 * The warning that the EV exemption cannot act in this run (spec v3 A5): the tariff model has no zone with
+	 * {@code ev_free_minutes} although persons carry the exemption attribute, or has such zones although no person carries it,
+	 * so the exemption would price exactly as without it. Empty when both exist or neither does.
+	 */
+	Optional<String> evExemptionWarning(Coverage coverage) {
+		long zones = tariffs.zonesWithEvExemption();
+		if (zones > 0 && coverage.evExemptPersons() == 0) {
+			return Optional.of("[parking] " + zones + (zones == 1 ? " zone states" : " zones state") + " ev_free_minutes but no"
+					+ " person carries " + ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE + ": the EV exemption cannot act in this"
+					+ " run; were the plans written with parking_ev_exemption_enabled and a fleet with BEV or PHEV powertrains?");
+		}
+		if (zones == 0 && coverage.evExemptPersons() > 0) {
+			return Optional.of("[parking] " + coverage.evExemptPersons() + " persons carry "
+					+ ZoneParkingCarCostModel.EV_EXEMPT_ATTRIBUTE + " but no zone of the tariff model " + tariffsPath
+					+ " states ev_free_minutes (schema " + tariffs.schemaVersion() + "): the EV exemption cannot act in this run");
+		}
+		return Optional.empty();
 	}
 
 	/**
@@ -177,6 +203,7 @@ public final class ParkingPopulationCheck implements StartupListener {
 		long districtResidents = 0;
 		long ownDistrictActivitiesInPermitZones = 0;
 		long activitiesWithSearchTime = 0;
+		long evExemptPersons = 0;
 		for (Person person : population.getPersons().values()) {
 			Object personRing = person.getAttributes().getAttribute(LEGACY_RING_ATTRIBUTE);
 			if (personRing != null) {
@@ -184,6 +211,9 @@ public final class ParkingPopulationCheck implements StartupListener {
 			}
 			if (residentZone(person) != null) {
 				residentPersons++;
+			}
+			if (ParkingAttributes.evExempt(person)) {
+				evExemptPersons++;
 			}
 			String homeDistrict = ParkingAttributes.homeDistrict(tariffs, tariffsPath, person);
 			if (homeDistrict != null) {
@@ -220,7 +250,7 @@ public final class ParkingPopulationCheck implements StartupListener {
 		}
 		return new Coverage(population.getPersons().size(), activities, activitiesInZones, parkingFreeActivities,
 				residentPersons, activitiesInDistricts, districtResidents, ownDistrictActivitiesInPermitZones,
-				activitiesWithSearchTime);
+				activitiesWithSearchTime, evExemptPersons);
 	}
 
 	/**
@@ -229,7 +259,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 	 * zone and their rate among all persons; activities in a resident district and their rate, persons with a resident
 	 * district and their rate, and the activities in the own district that lie in a zone honouring resident permits (the
 	 * stays rule R2 can free) with their rate among all activities; the activities lever 4 acts on (in a zone with a search
-	 * time above 0 minutes, home excluded) with their rate. A rate of an empty total is 0.
+	 * time above 0 minutes, home excluded) with their rate; the persons with parkingEvExempt and their rate. A rate of an
+	 * empty total is 0.
 	 */
 	static String summary(Coverage coverage) {
 		List<String> byZoneType = new ArrayList<>();
@@ -240,7 +271,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 				"[parking] population: %d persons, %d activities; %d in a zone (%.1f %%: %s), %d parkingFree, %d persons"
 						+ " with residentParkingZone (%.1f %%); %d in a resident district (%.1f %%), %d persons with"
 						+ " residentParkingDistrict (%.1f %%), %d in the own district and a zone that honours resident"
-						+ " permits (%.1f %%); %d in a zone with a search time (%.1f %%)",
+						+ " permits (%.1f %%); %d in a zone with a search time (%.1f %%); %d persons with parkingEvExempt"
+						+ " (%.1f %%)",
 				coverage.persons(), coverage.activities(), coverage.activitiesInAZone(),
 				percent(coverage.activitiesInAZone(), coverage.activities()), String.join(", ", byZoneType),
 				coverage.parkingFreeActivities(), coverage.residentPersons(),
@@ -248,7 +280,8 @@ public final class ParkingPopulationCheck implements StartupListener {
 				percent(coverage.activitiesInDistricts(), coverage.activities()), coverage.districtResidents(),
 				percent(coverage.districtResidents(), coverage.persons()), coverage.ownDistrictActivitiesInPermitZones(),
 				percent(coverage.ownDistrictActivitiesInPermitZones(), coverage.activities()),
-				coverage.activitiesWithSearchTime(), percent(coverage.activitiesWithSearchTime(), coverage.activities()));
+				coverage.activitiesWithSearchTime(), percent(coverage.activitiesWithSearchTime(), coverage.activities()),
+				coverage.evExemptPersons(), percent(coverage.evExemptPersons(), coverage.persons()));
 		if (coverage.noActivityInAZone()) {
 			summary += "; no activity lies in a parking zone although " + ParkingConfigGroup.GROUP_NAME
 					+ " is enabled, so every car stay is priced NO_ZONE: were the plans written with parking_zones_enabled?";
