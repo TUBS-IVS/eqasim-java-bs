@@ -25,7 +25,7 @@ public class GarageOptionModelTest {
 	private static GarageTariff garage(String id, double x_m, double y_m) {
 		return new GarageTariff(id, x_m, y_m, OptionalLong.of(200), OptionalInt.of(60), OptionalInt.of(0),
 				OptionalInt.of(86400), OptionalInt.empty(), OptionalLong.empty(), OptionalInt.empty(), OptionalInt.empty(),
-				OptionalLong.empty(), List.of(), List.of(), OptionalLong.empty());
+				OptionalLong.empty(), List.of(), List.of(), OptionalLong.empty(), OptionalInt.empty());
 	}
 
 	/** A scan of every garage as braunschweig.parking.cost.garage_options_in_range does it. */

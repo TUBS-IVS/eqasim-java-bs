@@ -30,9 +30,14 @@ import java.util.OptionalLong;
  * <li>the garage core (hourly rate, billing unit, fee window start and end) is given completely or not at all (spec
  * amendment A6); the garage day cap and the garage first period are optional, but only together with the core, because
  * without it they would never be priced; a garage cap of null means no cap;</li>
- * <li>a long-stay product needs a maximum stay (it is sold only above it); a maximum stay needs a long-stay product or the
- * garage core, because a stay above the maximum stay loses the street product (spec lever 2) and the commuter product
- * alone does not suffice, as it serves work and education only;</li>
+ * <li>a long-stay product needs a maximum stay (it is sold only above it); a resident zone's maximum stay needs a long-stay
+ * product or the garage core, because a stay above the maximum stay loses the street product (spec lever 2) and the commuter
+ * product alone does not suffice, as it serves work and education only. Spec v3 A1 (deliberate change of the v2 rule, ruling
+ * R-A-6): a street_paid zone may state a maximum stay without a long-stay product and without a garage core; its stays above
+ * the maximum are then served by the garage options within reach or, where there are none, priced as the street and named
+ * NO_FEASIBLE_OPTION;</li>
+ * <li>spec v3 A5: {@code ev_free_minutes} is at least 1 when set and exists on a street_paid zone only (a campus car park is
+ * the university's, a resident zone charges visitors by disc, not by the town's fee ordinance);</li>
  * <li>{@code resident_zone}: {@code resident_exempt = true} and an hourly rate of exactly 0 (disc parking for
  * non-residents);</li>
  * <li>a daily cap at least the first-period price when both are set, for the street and for the garage columns: every
@@ -73,6 +78,9 @@ import java.util.OptionalLong;
  * @param searchTimeMinutes parking search time in minutes of a destination in this zone (lever 4); not a price input
  * @param residentPermitsValid whether the parking honours resident parking permits, i.e. whether rule R2 frees a stay of a
  *        resident of the district there (ASSUMPTION R2-a); it gates R2 only, never the exemption of residents of the zone
+ * @param evFreeMinutes tariff schema 5 (spec v3 A5, ASSUMPTIONS E1 and E2): the longest chargeable stay in minutes of an
+ *        electric car that parks free on the street of the zone, within the zone's maximum stay; empty: no exemption (the
+ *        rule was never stated, the export switched an expired rule off, or the model has schema 4 or older)
  */
 public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRateCents, OptionalInt billingUnitMinutes,
 		OptionalInt freeIfStayAtMostMinutes, OptionalInt firstPeriodMinutes, OptionalLong firstPeriodCents,
@@ -81,7 +89,7 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		OptionalLong garageHourlyRateCents, OptionalInt garageBillingUnitMinutes, OptionalInt garageFirstPeriodMinutes,
 		OptionalLong garageFirstPeriodCents, OptionalLong garageDailyCapCents, OptionalInt garageFeeStart_s,
 		OptionalInt garageFeeEnd_s, OptionalLong commuterDayCents, OptionalInt searchTimeMinutes,
-		boolean residentPermitsValid) {
+		boolean residentPermitsValid, OptionalInt evFreeMinutes) {
 
 	/**
 	 * Nullable fields (JSON names) that are set together or both null, as in the Python reference's
@@ -110,13 +118,14 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		/** Bewohnerparkzone: residents exempt, disc parking with a maximum stay for everyone else. */
 		RESIDENT_ZONE("resident_zone", List.of("hourly_rate_cents", "billing_unit_min", "max_stay_min"),
 				List.of("free_if_stay_at_most_min", "first_period_min", "first_period_cents", "daily_cap_cents",
-						"member_day_cents", "guest_day_cents", "commuter_day_cents")),
+						"member_day_cents", "guest_day_cents", "commuter_day_cents", "ev_free_minutes")),
 		/** Institutional area selling member and guest day products (TU Braunschweig). */
 		CAMPUS("campus", List.of("member_day_cents", "guest_day_cents"),
 				List.of("hourly_rate_cents", "billing_unit_min", "free_if_stay_at_most_min", "first_period_min",
 						"first_period_cents", "daily_cap_cents", "max_stay_min", "long_stay_product_cents",
 						"garage_hourly_rate_cents", "garage_billing_unit_min", "garage_first_period_min",
-						"garage_first_period_cents", "garage_daily_cap_cents", "garage_fee_start_s", "garage_fee_end_s"));
+						"garage_first_period_cents", "garage_daily_cap_cents", "garage_fee_start_s", "garage_fee_end_s",
+						"ev_free_minutes"));
 
 		private final String jsonName;
 		private final List<String> requiredFields;
@@ -188,6 +197,7 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		Objects.requireNonNull(garageFeeEnd_s, zone + "garage_fee_end_s");
 		Objects.requireNonNull(commuterDayCents, zone + "commuter_day_cents");
 		Objects.requireNonNull(searchTimeMinutes, zone + "search_time_min");
+		Objects.requireNonNull(evFreeMinutes, zone + "ev_free_minutes");
 		ParkingCostCalculator.requireFeeWindow(feeStart_s, feeEnd_s, "parking zone " + zoneId);
 
 		requireNonNegative(zone, "hourly_rate_cents", hourlyRateCents);
@@ -207,6 +217,7 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		requirePositive(zone, "garage_daily_cap_cents", garageDailyCapCents);
 		requirePositive(zone, "garage_billing_unit_min", garageBillingUnitMinutes);
 		requirePositive(zone, "garage_first_period_min", garageFirstPeriodMinutes);
+		requirePositive(zone, "ev_free_minutes", evFreeMinutes);
 
 		// The nullable fields by JSON name (minutes and seconds widened to long) for the per-type and pairing rules.
 		Map<String, OptionalLong> nullableFields = new LinkedHashMap<>();
@@ -229,6 +240,7 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 		nullableFields.put("garage_fee_end_s", widen(garageFeeEnd_s));
 		nullableFields.put("commuter_day_cents", commuterDayCents);
 		nullableFields.put("search_time_min", widen(searchTimeMinutes));
+		nullableFields.put("ev_free_minutes", widen(evFreeMinutes));
 
 		for (String field : zoneType.requiredFields()) {
 			if (nullableFields.get(field).isEmpty()) {
@@ -256,7 +268,11 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 			throw new IllegalArgumentException(zone + "long_stay_product_cents needs max_stay_min: a long-stay product"
 					+ " without a maximum stay is never sold");
 		}
-		if (maxStayMinutes.isPresent() && longStayProductCents.isEmpty() && garageHourlyRateCents.isEmpty()) {
+		// Spec v3 A1 (ruling R-A-6): a street_paid zone may state a maximum stay without anything to sell above it; its stays
+		// above the maximum are then served by the garage options or priced as NO_FEASIBLE_OPTION. A resident zone keeps the
+		// v2 rule: its maximum stay needs the long-stay product or the garage core.
+		if (zoneType != ZoneType.STREET_PAID && maxStayMinutes.isPresent() && longStayProductCents.isEmpty()
+				&& garageHourlyRateCents.isEmpty()) {
 			throw new IllegalArgumentException(zone + "max_stay_min is set but neither long_stay_product_cents nor the garage"
 					+ " core is: a stay above the maximum stay would have no product");
 		}
@@ -280,6 +296,11 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 	/** Whether the zone has a garage product: its core is validated complete at construction. */
 	public boolean hasGarage() {
 		return garageHourlyRateCents.isPresent();
+	}
+
+	/** Whether the zone grants electric cars a free street stay up to {@code ev_free_minutes} (spec v3 A5). */
+	public boolean hasEvExemption() {
+		return evFreeMinutes.isPresent();
 	}
 
 	/** The parking search time of a destination in this zone in minutes (lever 4); 0 where the column is empty. */

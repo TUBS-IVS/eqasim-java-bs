@@ -28,13 +28,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Immutable parking tariff model read from the JSON contract of design "parking cost zones", section 5.4, written by the
- * eqasim-bs preparation stage: schema 4 (spec Amendment H of parking cost zones v2, eqasim-bs issue #436: schema 3 plus the
- * document key {@code garage_decay_commute_m}, the decay length lambda_c of the commuter purposes work and education),
+ * eqasim-bs preparation stage: schema 5 (parking cost zones v3, spec A1, A2 and A5, eqasim-bs issue #436: schema 4 plus the
+ * document key {@code option_price_beta_u_per_eur}, the money coefficient of the option weights in utility per EUR, the
+ * garage key {@code max_stay_min}, the longest elapsed stay a garage or lot admits, and the zone key {@code ev_free_minutes},
+ * the longest chargeable stay of an electric car that parks free on the street), schema 4 (spec Amendment H of parking cost
+ * zones v2: schema 3 plus the document key {@code garage_decay_commute_m}, the decay length lambda_c of the commuter purposes
+ * work and education),
  * schema 3 (spec Amendment E: the top-level list {@code garages} with their tariffs, the decay length
  * {@code garage_decay_m} and the maximum distance {@code garage_max_distance_m} of the distance-weighted garage options),
  * schema 2 (garage and commuter products of a zone, the parking search time, the resident permit flag and the list of
- * resident districts) and, unchanged, schema 1 of version 1. Schema 3 adds only the three document keys to schema 2 and
- * schema 4 only the commuter decay to schema 3; the zone entries are those of schema 2 throughout. Money in euro cents,
+ * resident districts) and, unchanged, schema 1 of version 1. Schema 3 adds only the three document keys to schema 2,
+ * schema 4 only the commuter decay to schema 3 and schema 5 only the three keys above to schema 4; the zone entries are
+ * those of schema 2 until schema 5. A model of schema 4 or older has no beta, no garage maximum stay and no EV exemption: it
+ * reads as beta 0 (price-independent weights), {@code max_stay_min} empty for every garage and {@code ev_free_minutes}
+ * empty for every zone, and logs that the v3 levers are inactive. Money in euro cents,
  * durations in minutes, fee windows in seconds after midnight of the simulated weekday; the class holds no tariff constants
  * of its own.
  *
@@ -65,16 +72,23 @@ public final class ParkingTariffs {
 	private static final Logger LOG = LogManager.getLogger(ParkingTariffs.class);
 
 	/** The newest JSON contract version this reader accepts: the one the current preparation stage writes. */
-	public static final int SCHEMA_VERSION = 4;
+	public static final int SCHEMA_VERSION = 5;
 
 	/**
 	 * Every JSON contract version this reader accepts: schema 2 is schema 1 plus optional fields and the district list,
-	 * schema 3 is schema 2 plus the garages and the two garage parameters, schema 4 is schema 3 plus the commuter decay.
+	 * schema 3 is schema 2 plus the garages and the two garage parameters, schema 4 is schema 3 plus the commuter decay,
+	 * schema 5 is schema 4 plus the option price coefficient, the garage maximum stay and the zone EV exemption.
 	 */
-	public static final List<Integer> SUPPORTED_SCHEMA_VERSIONS = List.of(1, 2, 3, 4);
+	public static final List<Integer> SUPPORTED_SCHEMA_VERSIONS = List.of(1, 2, 3, 4, 5);
 
 	/** The first schema version whose document carries {@code garage_decay_commute_m}. */
 	private static final int COMMUTER_DECAY_SCHEMA_VERSION = 4;
+
+	/**
+	 * The first schema version whose document carries {@code option_price_beta_u_per_eur}, whose garage entries carry
+	 * {@code max_stay_min} and whose zone entries carry {@code ev_free_minutes} (parking cost zones v3).
+	 */
+	static final int V3_MECHANICS_SCHEMA_VERSION = 5;
 
 	/** D_max of a model without the key (schema 1 and 2): irrelevant there, the garage options are off; ASSUMPTION G2. */
 	public static final double DEFAULT_GARAGE_MAX_DISTANCE_M = 1000.0;
@@ -121,10 +135,17 @@ public final class ParkingTariffs {
 	private static final List<String> SCHEMA_4_DOCUMENT_FIELDS = concat(SCHEMA_3_DOCUMENT_FIELDS,
 			List.of("garage_decay_commute_m"));
 
-	/** The exact keys of one entry of {@code garages}: braunschweig.parking.cost.GARAGE_FIELDS_JSON. */
-	private static final List<String> GARAGE_FIELDS = List.of("garage_id", "x_m", "y_m", "hourly_rate_cents",
+	/** Schema 5 adds the money coefficient of the option weights (spec v3 A2, ASSUMPTION G1-d) to the document. */
+	private static final List<String> SCHEMA_5_DOCUMENT_FIELDS = concat(SCHEMA_4_DOCUMENT_FIELDS,
+			List.of("option_price_beta_u_per_eur"));
+
+	/** The exact keys of one entry of {@code garages} up to schema 4: braunschweig.parking.cost.GARAGE_FIELDS_JSON. */
+	private static final List<String> GARAGE_FIELDS_BEFORE_SCHEMA_5 = List.of("garage_id", "x_m", "y_m", "hourly_rate_cents",
 			"billing_unit_min", "fee_start_s", "fee_end_s", "first_period_min", "first_period_cents", "first_period_start_s",
 			"first_period_end_s", "daily_cap_cents", "tiers", "bands", "monthly_cents");
+
+	/** Schema 5 adds the maximum stay of the garage or lot (spec v3 A1, ASSUMPTION M3): null = no maximum. */
+	private static final List<String> GARAGE_FIELDS = concat(GARAGE_FIELDS_BEFORE_SCHEMA_5, List.of("max_stay_min"));
 
 	/** The exact keys of one tier: braunschweig.parking.cost.GARAGE_TIER_FIELDS. */
 	private static final List<String> GARAGE_TIER_FIELDS = List.of("start_s", "end_s", "unit_min", "price_cents");
@@ -149,6 +170,9 @@ public final class ParkingTariffs {
 					"garage_first_period_cents", "garage_daily_cap_cents", "garage_fee_start_s", "garage_fee_end_s",
 					"commuter_day_cents", "search_time_min", "resident_permits_valid"));
 
+	/** Schema 5 adds the EV exemption of the zone (spec v3 A5, ASSUMPTIONS E1 and E2) to the zone entry. */
+	private static final List<String> SCHEMA_5_ZONE_FIELDS = concat(SCHEMA_2_ZONE_FIELDS, List.of("ev_free_minutes"));
+
 	private final int schemaVersion;
 	private final LocalDate tariffSnapshotDate;
 	private final String terminalStayRule;
@@ -158,6 +182,7 @@ public final class ParkingTariffs {
 	private final SortedMap<String, ResidentDistrict> residentDistrictsById;
 	private final SortedMap<String, ZoneTariff> zonesById;
 	private final GarageOptionModel garageOptions;
+	private final double optionPriceBetaPerEuro;
 
 	private ParkingTariffs(JsonNode root) {
 		if (root == null || !root.isObject()) {
@@ -167,7 +192,7 @@ public final class ParkingTariffs {
 		// then fails with its version instead of with the fields that schema renamed or added.
 		schemaVersion = integralInt(root.get("schema_version"), "schema_version");
 		if (!SUPPORTED_SCHEMA_VERSIONS.contains(schemaVersion)) {
-			throw fail("schema_version must be one of " + SUPPORTED_SCHEMA_VERSIONS + ", got " + schemaVersion);
+			throw unsupportedSchema(schemaVersion);
 		}
 		requireExactFields(root, documentFields(schemaVersion), "the tariff model", schemaVersion);
 		tariffSnapshotDate = isoDate(root.get("tariff_snapshot_date"), "tariff_snapshot_date");
@@ -197,6 +222,11 @@ public final class ParkingTariffs {
 		zonesById = zones(root.get("zones"), schemaVersion);
 		garageOptions = schemaVersion >= 3 ? readGarageOptions(root, schemaVersion)
 				: new GarageOptionModel(List.of(), 0.0, 0.0, DEFAULT_GARAGE_MAX_DISTANCE_M);
+		// A model of schema 4 or older has no beta: its option weights carry no price (0.0, the weights of v2). From schema 5 on
+		// the key is required (the key set was checked above) and never defaulted.
+		optionPriceBetaPerEuro = schemaVersion >= V3_MECHANICS_SCHEMA_VERSION
+				? nonNegativeFiniteNumber(root.get("option_price_beta_u_per_eur"), "option_price_beta_u_per_eur")
+				: 0.0;
 		warnAboutSupersededZoneGarages();
 	}
 
@@ -205,8 +235,15 @@ public final class ParkingTariffs {
 		case 1 -> SCHEMA_1_DOCUMENT_FIELDS;
 		case 2 -> SCHEMA_2_DOCUMENT_FIELDS;
 		case 3 -> SCHEMA_3_DOCUMENT_FIELDS;
-		default -> SCHEMA_4_DOCUMENT_FIELDS;
+		case 4 -> SCHEMA_4_DOCUMENT_FIELDS;
+		default -> SCHEMA_5_DOCUMENT_FIELDS;
 		};
+	}
+
+	/** The refusal of a document whose version this reader does not support: names the version and the supported range. */
+	private static IllegalArgumentException unsupportedSchema(int schemaVersion) {
+		return fail("schema_version must be one of " + SUPPORTED_SCHEMA_VERSIONS + ", got " + schemaVersion + " (this reader"
+				+ " supports schema " + SUPPORTED_SCHEMA_VERSIONS.get(0) + " to " + SCHEMA_VERSION + ")");
 	}
 
 	/**
@@ -235,6 +272,7 @@ public final class ParkingTariffs {
 				tariffs.zonesWithSearchTime(), tariffs.residentDistricts.size(), tariffs.tariffSnapshotDate,
 				tariffs.schemaVersion, tariffs.sources.size());
 		LOG.info("[parking] garage options (spec Amendment E): {}", tariffs.garageOptionsSetting());
+		LOG.info("[parking] v3 mechanics (spec v3 A1, A2 and A5): {}", tariffs.v3MechanicsSetting());
 		return tariffs;
 	}
 
@@ -251,14 +289,16 @@ public final class ParkingTariffs {
 	 */
 	static ZoneTariff parseZone(String zoneId, JsonNode zone, int schemaVersion) {
 		if (!SUPPORTED_SCHEMA_VERSIONS.contains(schemaVersion)) {
-			throw fail("schema_version must be one of " + SUPPORTED_SCHEMA_VERSIONS + ", got " + schemaVersion);
+			throw unsupportedSchema(schemaVersion);
 		}
 		String context = "zone " + zoneId;
 		if (zone == null || !zone.isObject()) {
 			throw fail(context + " must be a JSON object, got " + zone);
 		}
 		boolean schemaTwo = schemaVersion >= 2;
-		requireExactFields(zone, schemaTwo ? SCHEMA_2_ZONE_FIELDS : SCHEMA_1_ZONE_FIELDS, context, schemaVersion);
+		boolean schemaFive = schemaVersion >= V3_MECHANICS_SCHEMA_VERSION;
+		requireExactFields(zone, schemaFive ? SCHEMA_5_ZONE_FIELDS : schemaTwo ? SCHEMA_2_ZONE_FIELDS : SCHEMA_1_ZONE_FIELDS,
+				context, schemaVersion);
 		String typeName = text(zone.get("zone_type"), context + ": zone_type");
 		ZoneTariff.ZoneType zoneType = ZoneTariff.ZoneType.fromJsonName(typeName)
 				.orElseThrow(() -> fail(context + ": unknown zone_type " + typeName + "; expected one of "
@@ -281,7 +321,8 @@ public final class ParkingTariffs {
 				schemaTwo ? optionalCents(zone, "commuter_day_cents", context) : OptionalLong.empty(),
 				schemaTwo ? optionalMinutes(zone, "search_time_min", context) : OptionalInt.empty(),
 				schemaTwo ? literalBoolean(zone.get("resident_permits_valid"), context + ": resident_permits_valid")
-						: zoneType.defaultResidentPermitsValid());
+						: zoneType.defaultResidentPermitsValid(),
+				schemaFive ? optionalMinutes(zone, "ev_free_minutes", context) : OptionalInt.empty());
 	}
 
 	/** Tariff of a zone, or empty for an id the model does not contain; the caller decides how to fail. */
@@ -295,7 +336,7 @@ public final class ParkingTariffs {
 		return zonesById.keySet();
 	}
 
-	/** The JSON contract version the model declares: 1, 2 or 3. */
+	/** The JSON contract version the model declares: 1 to {@link #SCHEMA_VERSION}. */
 	public int schemaVersion() {
 		return schemaVersion;
 	}
@@ -379,6 +420,47 @@ public final class ParkingTariffs {
 	}
 
 	/**
+	 * The money coefficient {@code option_price_beta_u_per_eur} of the option weights
+	 * {@code exp(-distance / decay - beta * cost_cents / 100)} in utility per EUR (spec v3 A2, ASSUMPTION G1-d): at least 0, and
+	 * 0.0 for a model of schema 4 or older, which has no such key and whose weights carry no price (the weights of v2).
+	 */
+	public double optionPriceBetaPerEuro() {
+		return optionPriceBetaPerEuro;
+	}
+
+	/**
+	 * Number of zones that state {@code ev_free_minutes} (spec v3 A5): the zones in which an electric car can park free; 0 for a
+	 * model of schema 4 or older.
+	 */
+	public long zonesWithEvExemption() {
+		return zonesById.values().stream().filter(ZoneTariff::hasEvExemption).count();
+	}
+
+	/** Number of garages or lots that state {@code max_stay_min} (spec v3 A1); 0 for a model of schema 4 or older. */
+	public long garagesWithMaximumStay() {
+		return garageOptions.garages().stream().filter(garage -> garage.maxStayMinutes().isPresent()).count();
+	}
+
+	/**
+	 * One line that says whether the v3 mechanics are active in this model (spec v3 A1, A2 and A5): for schema 5 the option
+	 * price coefficient, the zones with an EV exemption, the garages with a maximum stay and the zones with a maximum stay and no
+	 * long-stay product; for an older schema that they are inactive and the model prices as schema 4.
+	 */
+	String v3MechanicsSetting() {
+		if (schemaVersion < V3_MECHANICS_SCHEMA_VERSION) {
+			return "INACTIVE, schema " + schemaVersion + " carries no option_price_beta_u_per_eur (read as 0: the option weights"
+					+ " carry no price), no garage max_stay_min and no zone ev_free_minutes (read as null: no garage maximum stay,"
+					+ " no EV exemption); the model prices as schema 4";
+		}
+		long zonesWithoutLongStayProduct = zonesById.values().stream()
+				.filter(zone -> zone.maxStayMinutes().isPresent() && zone.longStayProductCents().isEmpty()).count();
+		return "ACTIVE, schema " + schemaVersion + ": option_price_beta_u_per_eur " + optionPriceBetaPerEuro
+				+ (optionPriceBetaPerEuro == 0.0 ? " (the option weights carry no price)" : "") + ", " + zonesWithEvExemption()
+				+ " zone(s) with ev_free_minutes, " + garagesWithMaximumStay() + " garage(s) with max_stay_min, "
+				+ zonesWithoutLongStayProduct + " zone(s) with a max_stay_min and no long-stay product";
+	}
+
+	/**
 	 * One line that says whether the garage options act, with the garage count, both decay lengths (lambda for every purpose
 	 * but work and education, lambda_c for work and education) and D_max; it says which purposes have no garage options when
 	 * one decay is 0, and that a schema-3 model has one decay for every purpose.
@@ -454,7 +536,7 @@ public final class ParkingTariffs {
 		}
 		List<GarageTariff> garages = new ArrayList<>();
 		for (JsonNode entry : garagesNode) {
-			garages.add(parseGarage(entry));
+			garages.add(parseGarage(entry, schemaVersion));
 		}
 		double decayMeters = finiteNumber(root.get("garage_decay_m"), "garage_decay_m");
 		double commuteDecayMeters = schemaVersion >= COMMUTER_DECAY_SCHEMA_VERSION
@@ -469,16 +551,26 @@ public final class ParkingTariffs {
 	}
 
 	/**
-	 * One entry of the {@code garages} list of a schema-3 model, which is also the shape of the {@code garages} block of the
-	 * golden-case fixture: exactly the 15 keys of braunschweig.parking.cost.GARAGE_FIELDS_JSON (JSON null for "not
+	 * One entry of the {@code garages} list of a model of the newest schema, which is also the shape of the {@code garages} block
+	 * of the golden-case fixture: exactly the 16 keys of braunschweig.parking.cost.GARAGE_FIELDS_JSON (JSON null for "not
 	 * applicable", never omitted), tiers with exactly four and bands with exactly five keys. The garage rules of
 	 * {@link GarageTariff} apply; the messages name the garage.
 	 */
 	static GarageTariff parseGarage(JsonNode entry) {
+		return parseGarage(entry, SCHEMA_VERSION);
+	}
+
+	/**
+	 * One entry of the {@code garages} list of a model of the given schema (3 or later): the 15 keys of schema 3 and 4, plus
+	 * {@code max_stay_min} (null = no maximum) from schema 5 on; for an older schema the garage has no maximum stay.
+	 */
+	static GarageTariff parseGarage(JsonNode entry, int schemaVersion) {
 		if (entry == null || !entry.isObject()) {
 			throw fail("a garages entry must be a JSON object, got " + entry);
 		}
-		requireExactFields(entry, GARAGE_FIELDS, "garages entry " + entry.path("garage_id").asText("?"), 3);
+		boolean schemaFive = schemaVersion >= V3_MECHANICS_SCHEMA_VERSION;
+		requireExactFields(entry, schemaFive ? GARAGE_FIELDS : GARAGE_FIELDS_BEFORE_SCHEMA_5,
+				"garages entry " + entry.path("garage_id").asText("?"), schemaVersion);
 		String garageId = text(entry.get("garage_id"), "garages.garage_id");
 		String context = "garage " + garageId;
 		try {
@@ -490,7 +582,8 @@ public final class ParkingTariffs {
 					optionalSeconds(entry, "first_period_start_s", context),
 					optionalSeconds(entry, "first_period_end_s", context), optionalCents(entry, "daily_cap_cents", context),
 					parseTiers(entry.get("tiers"), context), parseBands(entry.get("bands"), context),
-					optionalCents(entry, "monthly_cents", context));
+					optionalCents(entry, "monthly_cents", context),
+					schemaFive ? optionalMinutes(entry, "max_stay_min", context) : OptionalInt.empty());
 		} catch (IllegalArgumentException error) {
 			throw error.getMessage().startsWith("parking_tariffs: ") ? error : fail(error.getMessage());
 		}
@@ -680,6 +773,15 @@ public final class ParkingTariffs {
 			throw fail(name + " must be a finite number, got " + value);
 		}
 		return value.doubleValue();
+	}
+
+	/** A finite JSON number at least 0, such as the money coefficient of the option weights; never a string. */
+	private static double nonNegativeFiniteNumber(JsonNode value, String name) {
+		double number = finiteNumber(value, name);
+		if (number < 0.0) {
+			throw fail(name + " must be a finite number >= 0, got " + value);
+		}
+		return number;
 	}
 
 	private static boolean literalBoolean(JsonNode value, String name) {

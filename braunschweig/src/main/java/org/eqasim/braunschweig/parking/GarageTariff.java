@@ -47,11 +47,15 @@ import java.util.OptionalLong;
  * @param tiers time-of-day tiers of the tiered form; empty: not a tiered garage
  * @param bands duration bands of the banded form or the grace period of a tiered garage; empty: none
  * @param monthlyCents monthly product in euro cents, used per working day by work and education stays (ASSUMPTION P2)
+ * @param maxStayMinutes tariff schema 5 (spec v3 A1, ASSUMPTION M3): the longest ELAPSED stay in minutes the garage or lot
+ *        admits; a longer stay leaves it out of the option set ({@link #admitsElapsedStay}); empty: no maximum, and the value
+ *        of every garage of a schema-4 or older model
  */
 public record GarageTariff(String garageId, double x_m, double y_m, OptionalLong hourlyRateCents,
 		OptionalInt billingUnitMinutes, OptionalInt feeStart_s, OptionalInt feeEnd_s, OptionalInt firstPeriodMinutes,
 		OptionalLong firstPeriodCents, OptionalInt firstPeriodStart_s, OptionalInt firstPeriodEnd_s,
-		OptionalLong dailyCapCents, List<Tier> tiers, List<Band> bands, OptionalLong monthlyCents) {
+		OptionalLong dailyCapCents, List<Tier> tiers, List<Band> bands, OptionalLong monthlyCents,
+		OptionalInt maxStayMinutes) {
 
 	/**
 	 * One time-of-day tier of a tiered garage (spec E10): a started unit of {@code unitMinutes} minutes that begins at a time
@@ -124,7 +128,8 @@ public record GarageTariff(String garageId, double x_m, double y_m, OptionalLong
 		}
 		String garage = "garage " + garageId + ": ";
 		for (Object field : new Object[] { hourlyRateCents, billingUnitMinutes, feeStart_s, feeEnd_s, firstPeriodMinutes,
-				firstPeriodCents, firstPeriodStart_s, firstPeriodEnd_s, dailyCapCents, tiers, bands, monthlyCents }) {
+				firstPeriodCents, firstPeriodStart_s, firstPeriodEnd_s, dailyCapCents, tiers, bands, monthlyCents,
+				maxStayMinutes }) {
 			Objects.requireNonNull(field, garage + "no field may be null (use an empty optional or an empty list)");
 		}
 		tiers = List.copyOf(tiers);
@@ -143,6 +148,7 @@ public record GarageTariff(String garageId, double x_m, double y_m, OptionalLong
 		requireAtLeast(garage, "first_period_end_s", firstPeriodEnd_s, 1);
 		requireAtLeast(garage, "daily_cap_cents", dailyCapCents, 1);
 		requireAtLeast(garage, "monthly_cents", monthlyCents, 1);
+		requireAtLeast(garage, "max_stay_min", maxStayMinutes, 1);
 
 		List<String> core = new ArrayList<>();
 		addIfPresent(core, "hourly_rate_cents", hourlyRateCents.isPresent());
@@ -213,6 +219,17 @@ public record GarageTariff(String garageId, double x_m, double y_m, OptionalLong
 	/** Whether the garage has the time-of-day tiers of spec E10 (the tiered form, with or without a grace period). */
 	public boolean hasTiers() {
 		return !tiers.isEmpty();
+	}
+
+	/**
+	 * Whether the garage or lot admits a stay of {@code elapsed_s} ELAPSED seconds (spec v3 A1, ASSUMPTION M3), as the Python
+	 * reference {@code option_feasible}: true without a maximum stay, else when the elapsed stay rounded up to whole minutes is
+	 * at most {@code max_stay_min}. The elapsed stay (arrival to priced departure) is compared, not the chargeable minutes
+	 * inside a fee window, because the car stands in the garage for all of it.
+	 */
+	public boolean admitsElapsedStay(long elapsed_s) {
+		return maxStayMinutes.isEmpty()
+				|| Math.ceilDiv(elapsed_s, (long) ParkingCostCalculator.SECONDS_PER_MINUTE) <= maxStayMinutes.getAsInt();
 	}
 
 	/** Whether the garage has duration bands: the banded form, or the grace period of a tiered garage. */

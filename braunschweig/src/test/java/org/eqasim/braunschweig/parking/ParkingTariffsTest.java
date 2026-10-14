@@ -33,9 +33,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 /**
  * Reading the parking tariff model JSON (design section 5.4; schema 1 of version 1, schema 2 of the v2 levers and the
  * resident districts, schema 3 of the garage options of spec Amendment E, schema 4 of the separate commuter decay length of
- * spec Amendment H). The rejection cases mutate the parsed fixture
+ * spec Amendment H, schema 5 of the v3 mechanics: the option price coefficient, the garage maximum stay and the zone EV
+ * exemption). The rejection cases mutate the parsed fixture
  * tree, so they hold for any formatting of {@code parking/parking_tariffs_fixture.json}, a byte-for-byte copy of the
- * schema-4 model
+ * schema-5 model
  * scripts/export_parking_golden_cases.py writes (eqasim-bs tests/fixtures/parking), and of
  * {@code parking/parking_tariffs_fixture_schema1.json}, the schema-1 model of version 1, which the reader must keep
  * accepting. Only facts of the fixture tariff table are pinned, not the exporter's metadata (assumption texts, sources).
@@ -45,7 +46,7 @@ public class ParkingTariffsTest {
 	private static final String SCHEMA_1_RESOURCE = ParkingCostCalculatorTest.SCHEMA_1_TARIFFS_RESOURCE;
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-	/** The zones of the schema-1 fixture of version 1; the schema-2 fixture holds them unchanged and ten more. */
+	/** The zones of the schema-1 fixture of version 1; the schema-5 fixture holds them unchanged and fourteen more. */
 	private static final Set<String> SCHEMA_1_ZONES = Set.of("fx_bs_ia", "fx_bs_ib", "fx_sz", "fx_wob", "fx_pe", "fx_res_a",
 			"fx_campus", "fx_frac");
 
@@ -74,6 +75,39 @@ public class ParkingTariffsTest {
 		return (ObjectNode) root.get("zones").get(zoneId);
 	}
 
+	/**
+	 * The schema-5 fixture downgraded to schema 4: the document key option_price_beta_u_per_eur, the zone key ev_free_minutes
+	 * and the garage key max_stay_min that schema 5 adds are removed, and the version is 4.
+	 */
+	private static void asSchemaFour(ObjectNode root) {
+		root.remove("option_price_beta_u_per_eur");
+		for (var zone : root.get("zones")) {
+			((ObjectNode) zone).remove("ev_free_minutes");
+		}
+		for (var garage : root.get("garages")) {
+			((ObjectNode) garage).remove("max_stay_min");
+		}
+		root.put("schema_version", 4);
+	}
+
+	/** The schema-5 fixture downgraded to schema 3: schema 4 without the commuter decay, which schema 3 does not have. */
+	private static void asSchemaThree(ObjectNode root) {
+		asSchemaFour(root);
+		root.remove("garage_decay_commute_m");
+		root.put("schema_version", 3);
+	}
+
+	/** The zone of the schema-5 fixture as a model of an older schema reads it: ev_free_minutes is empty there. */
+	private static ZoneTariff withoutEvExemption(ZoneTariff zone) {
+		return new ZoneTariff(zone.zoneId(), zone.zoneType(), zone.hourlyRateCents(), zone.billingUnitMinutes(),
+				zone.freeIfStayAtMostMinutes(), zone.firstPeriodMinutes(), zone.firstPeriodCents(), zone.dailyCapCents(),
+				zone.maxStayMinutes(), zone.longStayProductCents(), zone.memberDayCents(), zone.guestDayCents(),
+				zone.feeStart_s(), zone.feeEnd_s(), zone.residentExempt(), zone.garageHourlyRateCents(),
+				zone.garageBillingUnitMinutes(), zone.garageFirstPeriodMinutes(), zone.garageFirstPeriodCents(),
+				zone.garageDailyCapCents(), zone.garageFeeStart_s(), zone.garageFeeEnd_s(), zone.commuterDayCents(),
+				zone.searchTimeMinutes(), zone.residentPermitsValid(), OptionalInt.empty());
+	}
+
 	/** Applies one mutation to a fresh fixture tree; the model must be rejected with every fragment in the message. */
 	private static void assertRejected(Consumer<ObjectNode> mutation, String... fragments) throws Exception {
 		assertRejected(fixtureTree(), mutation, fragments);
@@ -97,10 +131,11 @@ public class ParkingTariffsTest {
 	@Test
 	public void readsTheFixtureTariffModel() throws Exception {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
-		assertEquals(4, tariffs.schemaVersion());
+		assertEquals(5, tariffs.schemaVersion());
 		assertEquals(Set.of("fx_bs_ia", "fx_bs_ib", "fx_sz", "fx_wob", "fx_pe", "fx_res_a", "fx_campus", "fx_frac",
 				"fx_bs_ia_v2", "fx_bs_ib_v2", "fx_wob_v2", "fx_campus_v2", "fx_garage_window_v2", "fx_capped_street_v2",
-				"fx_campus_tie_v2", "fx_res_garage_v2", "fx_bga_v2", "fx_res_nopermit_v2"), tariffs.zones());
+				"fx_campus_tie_v2", "fx_res_garage_v2", "fx_bga_v2", "fx_res_nopermit_v2", "fx_ia_nolong_v3",
+				"fx_ev_street_v3", "fx_ev_clip_v3", "fx_ev_expired_v3"), tariffs.zones());
 		assertNotNull(tariffs.tariffSnapshotDate());
 		assertEquals(ParkingCostCalculator.TERMINAL_STAY_RULE_UNTIL_FEE_END, tariffs.terminalStayRule());
 		assertFalse(tariffs.assumptions().isEmpty());
@@ -140,6 +175,112 @@ public class ParkingTariffsTest {
 
 		assertEquals(OptionalLong.of(600), tariffs.zone("fx_wob").orElseThrow().dailyCapCents());
 		assertEquals(21600, tariffs.zone("fx_wob").orElseThrow().feeStart_s());
+	}
+
+	/**
+	 * The schema-5 keys of the fixture (spec v3 A1, A2 and A5), field by field: the option price coefficient of the document
+	 * (the magnitude of the mode choice cost coefficient), the zone EV exemption (fx_ev_street_v3 240 min, fx_ev_clip_v3 240
+	 * min within a maximum stay of 150 min, fx_ev_expired_v3 none: the export switched an expired rule off), a street zone with
+	 * a maximum stay and no long-stay product (fx_ia_nolong_v3) and the garage maximum stay (120, 90 and none).
+	 */
+	@Test
+	public void readsTheSchemaFiveKeysOfTheFixture() throws Exception {
+		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
+		assertEquals(0.310998, tariffs.optionPriceBetaPerEuro(), 0.0);
+		assertEquals(OptionalInt.of(240), tariffs.zone("fx_ev_street_v3").orElseThrow().evFreeMinutes());
+		assertEquals(OptionalInt.empty(), tariffs.zone("fx_ev_street_v3").orElseThrow().maxStayMinutes());
+		assertTrue(tariffs.zone("fx_ev_street_v3").orElseThrow().hasEvExemption());
+		assertEquals(OptionalInt.of(240), tariffs.zone("fx_ev_clip_v3").orElseThrow().evFreeMinutes());
+		assertEquals(OptionalInt.of(150), tariffs.zone("fx_ev_clip_v3").orElseThrow().maxStayMinutes());
+		assertFalse(tariffs.zone("fx_ev_expired_v3").orElseThrow().hasEvExemption());
+		assertFalse(tariffs.zone("fx_bs_ib").orElseThrow().hasEvExemption());
+		assertEquals(2L, tariffs.zonesWithEvExemption());
+		// A street zone with a maximum stay and nothing to sell above it is valid (spec v3 A1, ruling R-A-6).
+		ZoneTariff noLongStay = tariffs.zone("fx_ia_nolong_v3").orElseThrow();
+		assertEquals(OptionalInt.of(180), noLongStay.maxStayMinutes());
+		assertEquals(OptionalLong.empty(), noLongStay.longStayProductCents());
+		assertFalse(noLongStay.hasGarage());
+		assertEquals(OptionalInt.of(120), garageById(tariffs, "fx_g20_max120").maxStayMinutes());
+		assertEquals(OptionalInt.of(90), garageById(tariffs, "fx_g28_max90").maxStayMinutes());
+		assertEquals(OptionalInt.empty(), garageById(tariffs, "fx_g01_core").maxStayMinutes());
+		assertEquals(3L, tariffs.garagesWithMaximumStay());
+		String setting = tariffs.v3MechanicsSetting();
+		assertTrue(setting, setting.startsWith("ACTIVE, schema 5: option_price_beta_u_per_eur 0.310998"));
+		assertTrue(setting, setting.contains("2 zone(s) with ev_free_minutes"));
+		assertTrue(setting, setting.contains("3 garage(s) with max_stay_min"));
+	}
+
+	/**
+	 * A model of schema 4 or older has no option price coefficient, no zone EV exemption and no garage maximum stay: it reads
+	 * as beta 0 (the price-independent weights of v2), ev_free_minutes empty and max_stay_min empty, and its startup line says
+	 * that the v3 levers are inactive (spec v3 A1, A2 and A5: a model with every maximum null prices exactly as schema 4).
+	 */
+	@Test
+	public void aSchemaFourModelReadsAsBetaZeroAndNoMaximumStayAndNoEvExemption() throws Exception {
+		ParkingTariffs schemaFour = assertAccepted(ParkingTariffsTest::asSchemaFour);
+		assertEquals(4, schemaFour.schemaVersion());
+		assertEquals(0.0, schemaFour.optionPriceBetaPerEuro(), 0.0);
+		assertEquals(0L, schemaFour.zonesWithEvExemption());
+		assertEquals(0L, schemaFour.garagesWithMaximumStay());
+		assertTrue(schemaFour.garages().stream().allMatch(garage -> garage.maxStayMinutes().isEmpty()));
+		assertTrue(schemaFour.zones().stream().allMatch(id -> schemaFour.zone(id).orElseThrow().evFreeMinutes().isEmpty()));
+		assertEquals(38, schemaFour.garages().size());
+		assertTrue(schemaFour.garageOptions().isActive());
+		String setting = schemaFour.v3MechanicsSetting();
+		assertTrue(setting, setting.startsWith("INACTIVE, schema 4"));
+		assertTrue(setting, setting.contains("prices as schema 4"));
+		// The zones are those of the schema-5 fixture without their EV exemption.
+		ParkingTariffs schemaFive = ParkingTariffs.read(fixturePath());
+		for (String zoneId : schemaFive.zones()) {
+			assertEquals(zoneId, withoutEvExemption(schemaFive.zone(zoneId).orElseThrow()), schemaFour.zone(zoneId).orElseThrow());
+		}
+		// Older schemas have no such key either.
+		assertEquals(0.0, ParkingTariffs.read(resourcePath(SCHEMA_1_RESOURCE)).optionPriceBetaPerEuro(), 0.0);
+		assertEquals(0.0, assertAccepted(ParkingTariffsTest::asSchemaThree).optionPriceBetaPerEuro(), 0.0);
+	}
+
+	/** The v3 line of the read log says ACTIVE for a schema-5 model and INACTIVE for an older one, so it is never silent. */
+	@Test
+	public void theReadLogSaysWhetherTheV3MechanicsAreActive() throws Exception {
+		List<Event> events = ParkingLogCapture.captureChecked(ParkingTariffs.class, () -> ParkingTariffs.read(fixturePath()));
+		List<String> info = ParkingLogCapture.messages(events, Level.INFO);
+		assertTrue(info.toString(), info.stream().anyMatch(line -> line.startsWith("[parking] v3 mechanics (spec v3 A1, A2 and"
+				+ " A5): ACTIVE, schema 5")));
+		ObjectNode schemaFour = fixtureTree();
+		asSchemaFour(schemaFour);
+		Path file = temporary.newFile("parking_tariffs_schema_4.json").toPath();
+		MAPPER.writeValue(file.toFile(), schemaFour);
+		List<String> oldInfo = ParkingLogCapture.messages(
+				ParkingLogCapture.captureChecked(ParkingTariffs.class, () -> ParkingTariffs.read(file)), Level.INFO);
+		assertTrue(oldInfo.toString(), oldInfo.stream().anyMatch(line -> line.contains("INACTIVE, schema 4 carries no"
+				+ " option_price_beta_u_per_eur")));
+	}
+
+	/** The schema-5 keys are validated: a coefficient below 0 or a string, a non-positive or fractional minute count. */
+	@Test
+	public void rejectsInvalidSchemaFiveValues() throws Exception {
+		assertRejected(root -> root.put("option_price_beta_u_per_eur", -0.1),
+			"option_price_beta_u_per_eur must be a finite number >= 0");
+		assertRejected(root -> root.put("option_price_beta_u_per_eur", "0.31"),
+			"option_price_beta_u_per_eur must be a finite number");
+		assertRejected(root -> root.putNull("option_price_beta_u_per_eur"), "option_price_beta_u_per_eur must be a finite number");
+		assertRejected(root -> root.put("option_price_beta_u_per_eur", Double.POSITIVE_INFINITY),
+				"option_price_beta_u_per_eur must be a finite number");
+		// 0 is a valid coefficient of the reader (the price-independent weights); the startup check compares it with the mode
+		// choice.
+		assertEquals(0.0, assertAccepted(root -> root.put("option_price_beta_u_per_eur", 0.0)).optionPriceBetaPerEuro(), 0.0);
+		assertRejected(root -> zone(root, "fx_ev_street_v3").put("ev_free_minutes", 0), "parking zone fx_ev_street_v3",
+				"ev_free_minutes must be positive or null, got 0");
+		assertRejected(root -> zone(root, "fx_ev_street_v3").put("ev_free_minutes", 90.5), "zone fx_ev_street_v3",
+				"ev_free_minutes must be an integral number of minutes or null");
+		assertRejected(root -> zone(root, "fx_ev_street_v3").put("ev_free_minutes", "240"), "zone fx_ev_street_v3",
+				"ev_free_minutes must be an integral number of minutes or null");
+		assertRejected(root -> garage(root, "fx_g20_max120").put("max_stay_min", 0), "garage fx_g20_max120",
+				"max_stay_min must be at least 1");
+		assertRejected(root -> garage(root, "fx_g20_max120").put("max_stay_min", 90.5), "garage fx_g20_max120",
+				"max_stay_min must be an integral number of minutes or null");
+		assertRejected(root -> garage(root, "fx_g20_max120").put("max_stay_min", "120"), "garage fx_g20_max120",
+				"max_stay_min must be an integral number of minutes or null");
 	}
 
 	/** The schema-2 columns of the fixture rows, field by field: the garage product, the commuter product, the search time. */
@@ -241,20 +382,25 @@ public class ParkingTariffsTest {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
 		assertTrue(tariffs.zone("bs_zone_unknown").isEmpty());
 		assertEquals(List.of("fx_bga_v2", "fx_bs_ia", "fx_bs_ia_v2", "fx_bs_ib", "fx_bs_ib_v2", "fx_campus", "fx_campus_tie_v2",
-				"fx_campus_v2", "fx_capped_street_v2", "fx_frac", "fx_garage_window_v2", "fx_pe", "fx_res_a",
-				"fx_res_garage_v2", "fx_res_nopermit_v2", "fx_sz", "fx_wob", "fx_wob_v2"), List.copyOf(tariffs.zones()));
+				"fx_campus_v2", "fx_capped_street_v2", "fx_ev_clip_v3", "fx_ev_expired_v3", "fx_ev_street_v3", "fx_frac",
+				"fx_garage_window_v2", "fx_ia_nolong_v3", "fx_pe", "fx_res_a", "fx_res_garage_v2", "fx_res_nopermit_v2", "fx_sz",
+				"fx_wob", "fx_wob_v2"), List.copyOf(tariffs.zones()));
 		assertThrows(UnsupportedOperationException.class, () -> tariffs.zones().add("extra"));
 		assertThrows(UnsupportedOperationException.class, () -> tariffs.zones().remove("fx_sz"));
 		assertThrows(UnsupportedOperationException.class, () -> tariffs.assumptions().add("ASSUMPTION: extra"));
 		assertThrows(UnsupportedOperationException.class, () -> tariffs.sources().clear());
 	}
 
-	/** Schema 1 to 4 are accepted; any other version, and any non-integral one, fails with the version. */
+	/**
+	 * Schema 1 to 5 are accepted; any other version, and any non-integral one, fails with the version AND the newest version the
+	 * reader supports (both numbers named).
+	 */
 	@Test
 	public void rejectsAnotherSchemaVersion() throws Exception {
-		assertRejected(root -> root.put("schema_version", 5), "schema_version must be one of [1, 2, 3, 4], got 5");
-		assertRejected(root -> root.put("schema_version", 0), "schema_version must be one of [1, 2, 3, 4], got 0");
-		assertRejected(root -> root.put("schema_version", -1), "schema_version must be one of [1, 2, 3, 4], got -1");
+		assertRejected(root -> root.put("schema_version", 6), "schema_version must be one of [1, 2, 3, 4, 5], got 6",
+				"this reader supports schema 1 to 5");
+		assertRejected(root -> root.put("schema_version", 0), "schema_version must be one of [1, 2, 3, 4, 5], got 0");
+		assertRejected(root -> root.put("schema_version", -1), "schema_version must be one of [1, 2, 3, 4, 5], got -1");
 		assertRejected(root -> root.put("schema_version", 1.5), "schema_version", "integral");
 		assertRejected(root -> root.put("schema_version", "2"), "schema_version", "integral");
 		assertRejected(root -> root.putNull("schema_version"), "schema_version", "integral");
@@ -266,14 +412,15 @@ public class ParkingTariffsTest {
 	 */
 	@Test
 	public void checksTheSchemaVersionBeforeTheDocumentFields() throws Exception {
-		ObjectNode schema5 = fixtureTree();
-		schema5.put("schema_version", 5);
-		schema5.remove("weekday_only");
-		schema5.remove("resident_districts");
-		schema5.put("service_days", "weekday");
-		zone(schema5, "fx_sz").remove("garage_daily_cap_cents");
-		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(schema5));
-		assertEquals("parking_tariffs: schema_version must be one of [1, 2, 3, 4], got 5", error.getMessage());
+		ObjectNode schema6 = fixtureTree();
+		schema6.put("schema_version", 6);
+		schema6.remove("weekday_only");
+		schema6.remove("resident_districts");
+		schema6.put("service_days", "weekday");
+		zone(schema6, "fx_sz").remove("garage_daily_cap_cents");
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.parse(schema6));
+		assertEquals("parking_tariffs: schema_version must be one of [1, 2, 3, 4, 5], got 6 (this reader supports schema 1 to 5)",
+				error.getMessage());
 
 		ObjectNode unversioned = fixtureTree();
 		unversioned.remove("schema_version");
@@ -284,34 +431,50 @@ public class ParkingTariffsTest {
 	/** After the version, the key set of THAT version is checked: schema 1 has no district list and no schema-2 zone keys. */
 	@Test
 	public void checksTheKeySetOfTheVersionTheDocumentDeclares() throws Exception {
-		// A schema-4 document declaring schema 1 has the keys of schemas 2 to 4 too many.
+		// A schema-5 document declaring schema 1 has the keys of schemas 2 to 5 too many.
 		assertRejected(root -> root.put("schema_version", 1), "must have exactly the schema-1 fields",
-				"unknown [garage_decay_commute_m, garage_decay_m, garage_max_distance_m, garages, resident_districts]");
-		// A schema-4 document declaring schema 2 has the four garage keys too many.
+				"unknown [garage_decay_commute_m, garage_decay_m, garage_max_distance_m, garages, option_price_beta_u_per_eur,"
+						+ " resident_districts]");
+		// A schema-5 document declaring schema 2 has the garage keys and the coefficient too many.
 		assertRejected(root -> root.put("schema_version", 2), "must have exactly the schema-2 fields",
-				"unknown [garage_decay_commute_m, garage_decay_m, garage_max_distance_m, garages]");
-		// A schema-4 document declaring schema 3 has the commuter decay too many (a schema-3 file has none, spec H4).
+				"unknown [garage_decay_commute_m, garage_decay_m, garage_max_distance_m, garages, option_price_beta_u_per_eur]");
+		// A schema-5 document declaring schema 3 has the commuter decay (a schema-3 file has none, spec H4) and the coefficient
+		// too many.
 		assertRejected(root -> root.put("schema_version", 3), "must have exactly the schema-3 fields",
-				"unknown [garage_decay_commute_m]");
-		// A schema-2 document (the schema-4 fixture without the garage keys) declaring schema 3 lacks them.
+				"unknown [garage_decay_commute_m, option_price_beta_u_per_eur]");
+		// A schema-5 document declaring schema 4 has the coefficient too many.
+		assertRejected(root -> root.put("schema_version", 4), "must have exactly the schema-4 fields",
+				"unknown [option_price_beta_u_per_eur]");
+		// A schema-4 document declaring schema 5 lacks the coefficient, which is never defaulted.
+		assertRejected(root -> {
+			asSchemaFour(root);
+			root.put("schema_version", 5);
+		}, "must have exactly the schema-5 fields", "missing [option_price_beta_u_per_eur]");
+		// A schema-2 document (the schema-5 fixture without the garage keys) declaring schema 3 lacks them.
 		assertRejected(root -> {
 			removeGarageKeys(root);
 			root.put("schema_version", 3);
 		}, "must have exactly the schema-3 fields", "missing [garage_decay_m, garage_max_distance_m, garages]");
 		// A schema-3 document declaring schema 4 lacks the commuter decay, which is never defaulted.
 		assertRejected(root -> {
-			root.remove("garage_decay_commute_m");
+			asSchemaThree(root);
 			root.put("schema_version", 4);
 		}, "must have exactly the schema-4 fields", "missing [garage_decay_commute_m]");
 		// A schema-1 document declaring schema 2 lacks the district list.
 		ObjectNode schemaOne = schemaOneTree();
 		assertRejected(schemaOne, root -> root.put("schema_version", 2), "must have exactly the schema-2 fields",
 				"missing [resident_districts]");
-		// A schema-1 zone has none of the ten schema-2 keys; a zone of schema 2 to 4 has all of them.
+		// A schema-1 zone has none of the ten schema-2 keys; a zone of schema 2 to 4 has all of them, a zone of schema 5 one more.
 		assertRejected(schemaOneTree(), root -> zone(root, "fx_sz").put("search_time_min", 5), "zone fx_sz",
 				"must have exactly the schema-1 fields", "unknown [search_time_min]");
 		assertRejected(root -> zone(root, "fx_sz").remove("search_time_min"), "zone fx_sz",
-				"must have exactly the schema-4 fields", "missing [search_time_min]");
+				"must have exactly the schema-5 fields", "missing [search_time_min]");
+		assertRejected(root -> zone(root, "fx_sz").remove("ev_free_minutes"), "zone fx_sz",
+				"must have exactly the schema-5 fields", "missing [ev_free_minutes]");
+		assertRejected(root -> {
+			asSchemaFour(root);
+			zone(root, "fx_sz").put("ev_free_minutes", 60);
+		}, "zone fx_sz", "must have exactly the schema-4 fields", "unknown [ev_free_minutes]");
 		assertRejected(root -> zone(root, "fx_sz").remove("resident_permits_valid"), "zone fx_sz",
 				"missing [resident_permits_valid]");
 		assertRejected(root -> root.remove("resident_districts"), "missing [resident_districts]");
@@ -327,25 +490,39 @@ public class ParkingTariffsTest {
 	}
 
 	/**
-	 * A stay above the maximum stay loses the street product (spec lever 2), so a maximum stay needs a long-stay product
-	 * or a garage; the commuter product alone does not suffice, because it serves work and education only.
+	 * A stay above the maximum stay loses the street product (spec lever 2). Spec v3 A1, ruling R-A-6 (a deliberate change of
+	 * the v2 rule): a STREET zone may state a maximum stay without a long-stay product and without a garage core, with or
+	 * without a commuter product; its stays above the maximum are served by the garage options or priced NO_FEASIBLE_OPTION. A
+	 * RESIDENT zone keeps the v2 rule: its maximum stay needs a long-stay product or the garage core, and the commuter product
+	 * alone does not suffice, because it serves work and education only (and a resident zone has none).
 	 */
 	@Test
-	public void rejectsAMaximumStayWithoutAnyProductAboveIt() throws Exception {
+	public void aStreetZoneMayStateAMaximumStayWithoutAnyProductAboveItButAResidentZoneMayNot() throws Exception {
 		String message = "max_stay_min is set but neither long_stay_product_cents nor the garage core is";
-		assertRejected(root -> zone(root, "fx_bs_ia").putNull("long_stay_product_cents"), "parking zone fx_bs_ia", message);
-		assertRejected(root -> zone(root, "fx_pe").putNull("long_stay_product_cents"), "parking zone fx_pe", message);
+		for (String streetZone : List.of("fx_bs_ia", "fx_pe")) {
+			ParkingTariffs accepted = assertAccepted(root -> zone(root, streetZone).putNull("long_stay_product_cents"));
+			ZoneTariff zone = accepted.zone(streetZone).orElseThrow();
+			assertTrue(streetZone, zone.maxStayMinutes().isPresent());
+			assertTrue(streetZone, zone.longStayProductCents().isEmpty());
+		}
 		assertRejected(root -> zone(root, "fx_res_a").putNull("long_stay_product_cents"), "parking zone fx_res_a", message);
-		// The street zone with a maximum stay and a garage but no long-stay product is valid; without the garage core it is not,
-		// also not with a commuter product.
+		// A street zone with a maximum stay, no garage core and a commuter product is valid too.
 		ObjectNode root = fixtureTree();
 		for (String field : List.of("garage_hourly_rate_cents", "garage_billing_unit_min", "garage_fee_start_s", "garage_fee_end_s",
 				"garage_daily_cap_cents")) {
 			zone(root, "fx_bs_ia_v2").putNull(field);
 		}
 		zone(root, "fx_bs_ia_v2").put("commuter_day_cents", 376);
-		assertRejected(root, ignored -> {
-		}, "parking zone fx_bs_ia_v2", message);
+		ZoneTariff withCommuterOnly = ParkingTariffs.parse(root).zone("fx_bs_ia_v2").orElseThrow();
+		assertEquals(OptionalLong.of(376), withCommuterOnly.commuterDayCents());
+		// The resident zone with a garage core and no long-stay product stays valid; without the garage core it is not.
+		ObjectNode residentRoot = fixtureTree();
+		for (String field : List.of("garage_hourly_rate_cents", "garage_billing_unit_min", "garage_fee_start_s", "garage_fee_end_s",
+				"garage_daily_cap_cents", "garage_first_period_min", "garage_first_period_cents")) {
+			zone(residentRoot, "fx_res_garage_v2").putNull(field);
+		}
+		assertRejected(residentRoot, ignored -> {
+		}, "parking zone fx_res_garage_v2", message);
 	}
 
 	/** A long-stay product is sold only above a maximum stay, so one without a maximum stay would never be sold. */
@@ -371,9 +548,9 @@ public class ParkingTariffsTest {
 		Map<String, List<String>> notApplicableByZone = Map.of( //
 				"fx_bs_ib", List.of("member_day_cents", "guest_day_cents"), //
 				"fx_res_a", List.of("free_if_stay_at_most_min", "first_period_min", "first_period_cents", "daily_cap_cents",
-						"member_day_cents", "guest_day_cents", "commuter_day_cents"), //
+						"member_day_cents", "guest_day_cents", "commuter_day_cents", "ev_free_minutes"), //
 				"fx_campus", List.of("hourly_rate_cents", "billing_unit_min", "free_if_stay_at_most_min", "first_period_min",
-						"first_period_cents", "daily_cap_cents", "max_stay_min", "long_stay_product_cents"));
+						"first_period_cents", "daily_cap_cents", "max_stay_min", "long_stay_product_cents", "ev_free_minutes"));
 		Map<String, String> zoneTypes = Map.of("fx_bs_ib", "street_paid", "fx_res_a", "resident_zone", "fx_campus", "campus");
 		int rejected = 0;
 		for (Map.Entry<String, List<String>> entry : notApplicableByZone.entrySet()) {
@@ -389,7 +566,7 @@ public class ParkingTariffsTest {
 					field + " does not apply to a campus zone and must be null, got 1");
 			rejected++;
 		}
-		assertEquals(2 + 7 + 8 + 7, rejected);
+		assertEquals(2 + 8 + 9 + 7, rejected);
 	}
 
 	/**
@@ -753,12 +930,12 @@ public class ParkingTariffsTest {
 	@Test
 	public void readNamesTheFileOfAnInvalidModel() throws Exception {
 		ObjectNode root = fixtureTree();
-		root.put("schema_version", 5);
-		Path file = temporary.newFile("parking_tariffs_schema_5.json").toPath();
+		root.put("schema_version", 6);
+		Path file = temporary.newFile("parking_tariffs_schema_6.json").toPath();
 		MAPPER.writeValue(file.toFile(), root);
 		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ParkingTariffs.read(file));
-		assertTrue(error.getMessage(), error.getMessage().contains("parking_tariffs_schema_5.json"));
-		assertTrue(error.getMessage(), error.getMessage().contains("schema_version must be one of [1, 2, 3, 4], got 5"));
+		assertTrue(error.getMessage(), error.getMessage().contains("parking_tariffs_schema_6.json"));
+		assertTrue(error.getMessage(), error.getMessage().contains("schema_version must be one of [1, 2, 3, 4, 5], got 6"));
 	}
 
 	/**
@@ -779,10 +956,11 @@ public class ParkingTariffsTest {
 		assertTrue(tariffs.zone("fx_wob_v2").orElseThrow().hasSearchTime());
 		assertFalse(tariffs.zone("fx_sz").orElseThrow().hasSearchTime());
 		List<String> info = ParkingLogCapture.messages(events, Level.INFO);
-		// One line for the model and one for the garage options.
-		assertEquals(info.toString(), 2, info.size());
+		// One line for the model, one for the garage options and one for the v3 mechanics.
+		assertEquals(info.toString(), 3, info.size());
 		assertTrue(info.get(0), info.get(0).contains("3 zone(s) with a search time"));
 		assertTrue(info.get(1), info.get(1).contains("garage options"));
+		assertTrue(info.get(2), info.get(2).contains("v3 mechanics"));
 
 		ParkingTariffs[] readSchemaOne = new ParkingTariffs[1];
 		List<Event> schemaOneEvents = ParkingLogCapture.captureChecked(ParkingTariffs.class,
@@ -792,11 +970,16 @@ public class ParkingTariffsTest {
 		assertTrue(schemaOneInfo.toString(), schemaOneInfo.get(0).contains("0 zone(s) with a search time"));
 	}
 
+	/** Removes the garage keys and the schema-5 keys of the fixture: what a schema-2 document has not. */
 	private static void removeGarageKeys(ObjectNode root) {
 		root.remove("garages");
 		root.remove("garage_decay_m");
 		root.remove("garage_decay_commute_m");
 		root.remove("garage_max_distance_m");
+		root.remove("option_price_beta_u_per_eur");
+		for (var zone : root.get("zones")) {
+			((ObjectNode) zone).remove("ev_free_minutes");
+		}
 	}
 
 	private static ObjectNode garage(ObjectNode root, String garageId) {
@@ -811,19 +994,19 @@ public class ParkingTariffsTest {
 	// ------------------------------------------------------------------------------------ schema 3 and 4: garages
 
 	/**
-	 * The 19 fixture garages, the two decay lengths lambda and lambda_c and D_max, field by field for one garage of every
+	 * The 38 fixture garages, the two decay lengths lambda and lambda_c and D_max, field by field for one garage of every
 	 * structure.
 	 */
 	@Test
-	public void readsTheGaragesOfTheSchemaFourFixture() throws Exception {
+	public void readsTheGaragesOfTheSchemaFiveFixture() throws Exception {
 		ParkingTariffs tariffs = ParkingTariffs.read(fixturePath());
-		assertEquals(4, tariffs.schemaVersion());
+		assertEquals(5, tariffs.schemaVersion());
 		assertEquals(400.0, tariffs.garageDecayMeters(), 0.0);
 		assertEquals(250.0, tariffs.garageCommuteDecayMeters(), 0.0);
 		assertEquals(250.0, tariffs.garageOptions().commuteDecayMeters(), 0.0);
 		assertEquals(1000.0, tariffs.garageMaximumDistanceMeters(), 0.0);
 		assertTrue(tariffs.garageOptions().isActive());
-		assertEquals(19, tariffs.garages().size());
+		assertEquals(38, tariffs.garages().size());
 		List<String> ids = tariffs.garages().stream().map(GarageTariff::garageId).toList();
 		assertEquals("garages are ordered by ascending id", ids.stream().sorted().toList(), ids);
 
@@ -881,7 +1064,7 @@ public class ParkingTariffsTest {
 				.orElseThrow(() -> new AssertionError("fixture garage " + garageId + " is missing"));
 	}
 
-	/** Schema 2 is the schema-4 fixture without the garage keys: no garage, both decays 0, the garage options off. */
+	/** Schema 2 is the schema-5 fixture without the garage keys: no garage, both decays 0, the garage options off. */
 	@Test
 	public void aSchemaTwoModelHasNoGarageOptionsAndPricesAsBefore() throws Exception {
 		ObjectNode root = fixtureTree();
@@ -893,11 +1076,13 @@ public class ParkingTariffsTest {
 		assertEquals(0.0, schemaTwo.garageDecayMeters(), 0.0);
 		assertEquals(0.0, schemaTwo.garageCommuteDecayMeters(), 0.0);
 		assertFalse(schemaTwo.garageOptions().isActive());
-		ParkingTariffs schemaFour = ParkingTariffs.read(fixturePath());
-		assertEquals(schemaFour.zones(), schemaTwo.zones());
+		ParkingTariffs schemaFive = ParkingTariffs.read(fixturePath());
+		assertEquals(schemaFive.zones(), schemaTwo.zones());
 		for (String zoneId : schemaTwo.zones()) {
-			assertEquals(zoneId, schemaFour.zone(zoneId).orElseThrow(), schemaTwo.zone(zoneId).orElseThrow());
+			// A schema-2 zone has no EV exemption; every other field is that of the schema-5 zone.
+			assertEquals(zoneId, withoutEvExemption(schemaFive.zone(zoneId).orElseThrow()), schemaTwo.zone(zoneId).orElseThrow());
 		}
+		assertEquals(0.0, schemaTwo.optionPriceBetaPerEuro(), 0.0);
 		ParkingTariffs schemaOne = ParkingTariffs.read(resourcePath(SCHEMA_1_RESOURCE));
 		assertTrue(schemaOne.garages().isEmpty());
 		assertEquals(0.0, schemaOne.garageCommuteDecayMeters(), 0.0);
@@ -911,7 +1096,7 @@ public class ParkingTariffsTest {
 			root.put("garage_decay_m", 0.0);
 			root.put("garage_decay_commute_m", 0.0);
 		});
-		assertEquals(19, withGarages.garages().size());
+		assertEquals(38, withGarages.garages().size());
 		assertFalse(withGarages.garageOptions().isActive());
 		assertTrue(withGarages.garageOptionsSetting(), withGarages.garageOptionsSetting().startsWith("OFF"));
 		assertTrue(withGarages.garageOptionsSetting(), withGarages.garageOptionsSetting().contains("garage_decay_m 0.0 m"));
@@ -945,11 +1130,11 @@ public class ParkingTariffsTest {
 	@Test
 	public void theGarageOptionsSettingNamesBothDecayLengths() throws Exception {
 		String on = ParkingTariffs.read(fixturePath()).garageOptionsSetting();
-		assertTrue(on, on.startsWith("ON, 19 garage(s)"));
+		assertTrue(on, on.startsWith("ON, 38 garage(s)"));
 		assertTrue(on, on.contains("garage_decay_m 400.0 m"));
 		assertTrue(on, on.contains("garage_decay_commute_m 250.0 m"));
 		assertTrue(on, on.contains("garage_max_distance_m 1000.0 m"));
-		assertTrue(on, on.contains("schema 4"));
+		assertTrue(on, on.contains("schema 5"));
 	}
 
 	/**
@@ -958,27 +1143,23 @@ public class ParkingTariffsTest {
 	 */
 	@Test
 	public void aSchemaThreeModelPricesEveryPurposeWithTheDecayOfTheFile() throws Exception {
-		ParkingTariffs schemaThree = assertAccepted(root -> {
-			root.remove("garage_decay_commute_m");
-			root.put("schema_version", 3);
-		});
+		ParkingTariffs schemaThree = assertAccepted(ParkingTariffsTest::asSchemaThree);
 		assertEquals(3, schemaThree.schemaVersion());
 		assertEquals(400.0, schemaThree.garageDecayMeters(), 0.0);
 		assertEquals(400.0, schemaThree.garageCommuteDecayMeters(), 0.0);
-		assertEquals(19, schemaThree.garages().size());
+		assertEquals(38, schemaThree.garages().size());
 		assertTrue(schemaThree.garageOptions().isActive());
 		String setting = schemaThree.garageOptionsSetting();
 		assertTrue(setting, setting.contains("garage_decay_commute_m 400.0 m"));
 		assertTrue(setting, setting.contains("schema 3"));
 		assertTrue(setting, setting.contains("no commuter decay"));
 		ParkingTariffs off = assertAccepted(root -> {
-			root.remove("garage_decay_commute_m");
-			root.put("schema_version", 3);
+			asSchemaThree(root);
 			root.put("garage_decay_m", 0.0);
 		});
 		assertFalse(off.garageOptions().isActive());
 		assertEquals(0.0, off.garageCommuteDecayMeters(), 0.0);
-		// The schema-3 zones are those of schema 4.
+		// The schema-3 zones are those of schema 5 (without their EV exemption).
 		assertEquals(ParkingTariffs.read(fixturePath()).zones(), schemaThree.zones());
 	}
 
@@ -986,12 +1167,13 @@ public class ParkingTariffsTest {
 	@Test
 	public void theCommuterDecayKeyIsExactlyTheKeyOfSchemaFour() throws Exception {
 		assertRejected(root -> {
-			root.remove("garage_decay_commute_m");
-			root.put("schema_version", 3);
+			asSchemaThree(root);
 			root.put("garage_decay_commute_m", 250.0);
 		}, "must have exactly the schema-3 fields", "unknown [garage_decay_commute_m]");
-		assertRejected(root -> root.remove("garage_decay_commute_m"), "must have exactly the schema-4 fields",
-				"missing [garage_decay_commute_m]");
+		assertRejected(root -> {
+			asSchemaFour(root);
+			root.remove("garage_decay_commute_m");
+		}, "must have exactly the schema-4 fields", "missing [garage_decay_commute_m]");
 	}
 
 	@Test
@@ -1028,11 +1210,17 @@ public class ParkingTariffsTest {
 		assertRejected(root -> root.put("garages", "none"), "garages must be an array of garages");
 	}
 
-	/** The garage entry has exactly the 15 keys of the Python reference; tiers 4 and bands 5. */
+	/** The garage entry has exactly the 16 keys of the Python reference; tiers 4 and bands 5. */
 	@Test
 	public void rejectsMissingOrUnknownGarageKeys() throws Exception {
 		assertRejected(root -> garage(root, "fx_g01_core").remove("monthly_cents"), "garages entry fx_g01_core",
-				"schema-3 fields", "missing [monthly_cents]");
+				"schema-5 fields", "missing [monthly_cents]");
+		assertRejected(root -> garage(root, "fx_g01_core").remove("max_stay_min"), "garages entry fx_g01_core",
+				"schema-5 fields", "missing [max_stay_min]");
+		assertRejected(root -> {
+			asSchemaFour(root);
+			garage(root, "fx_g01_core").put("max_stay_min", 120);
+		}, "garages entry fx_g01_core", "schema-4 fields", "unknown [max_stay_min]");
 		assertRejected(root -> garage(root, "fx_g01_core").put("capacity", 100), "garages entry fx_g01_core",
 				"unknown [capacity]");
 		assertRejected(root -> ((ObjectNode) garage(root, "fx_g07_tiers").get("tiers").get(0)).remove("unit_min"),
