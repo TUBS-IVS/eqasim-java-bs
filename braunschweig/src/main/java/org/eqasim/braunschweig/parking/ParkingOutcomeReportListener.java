@@ -180,8 +180,7 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		return Optional.of(String.format(Locale.ROOT,
 				"[parking] it %d: %d of %d priced stays (%.1f %%) have no feasible parking option (NO_FEASIBLE_OPTION: the stay"
 						+ " exceeds the maximum stay of the street and of every garage within reach) and are priced as the street"
-						+ " at"
-						+ " its metered price; the option set of these zones is incomplete (spec v3 A1, ASSUMPTION M3)",
+						+ " at its metered price; the option set of these zones is incomplete (spec v3 A1, ASSUMPTION M3)",
 				iteration, noFeasibleOption, priced, 100.0 * share(noFeasibleOption, priced)));
 	}
 

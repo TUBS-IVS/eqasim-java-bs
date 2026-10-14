@@ -30,9 +30,9 @@ import com.fasterxml.jackson.databind.JsonNode;
  * The garage options of a stay (spec Amendments E and H of parking cost zones v2 and spec v3 A1, A2 and A5, eqasim-bs issue
  * #436) against the golden file {@code parking/parking_golden_cases.json} of schema 6, a byte-for-byte copy of the file the
  * Python reference writes (eqasim-bs tests/fixtures/parking; the SHA-256 of the LF text is pinned below, so a changed copy
- * fails here). Every case of {@code cases} (the 100 cases of the families G, L, LZ, V, R and the cases F01..F03 and X01..X07
- * without a destination, E01..E38 and the cases F04..F08, P01..P06, X08 with garage options: the expected cost over the street
- * and the garage options, E33..E38 with a separate decay length for the commuter purposes, F with the maximum-stay
+ * fails here). Every case of {@code cases} (the 100 cases of the families G, L, LZ, V, R and the cases F01..F03, X01..X06 and
+ * X09 without a destination, E01..E38 and the cases F04..F08, P01..P06, X07 and X08 with garage options: the expected cost
+ * over the street and the garage options, E33..E38 with a separate decay length for the commuter purposes, F with the maximum-stay
  * feasibility, P with the price in the option weights, X with the EV exemption) is priced as
  * braunschweig.parking.golden_cases.evaluate_case_detail prices it, to the cent, with the same outcome and the garage
  * probability within 1e-9. THE PER-CASE VALUES ARE USED, never those of the model: a case carries its own ev_exempt, its own
@@ -142,11 +142,10 @@ public class GarageParkingCostCalculatorTest {
 			assertEquals(id + ": keys of the golden case", CASE_FIELDS, fieldNames(goldenCase));
 			ZoneTariff tariff = tariffs.get(goldenCase.get("zone_id").asText());
 			assertNotNull(id + ": unknown zone " + goldenCase.get("zone_id"), tariff);
-			Decays decays = new Decays(goldenCase.get("garage_decay_m").doubleValue(),
-					goldenCase.get("garage_decay_commute_m").doubleValue());
+			Decays decays = new Decays(number(goldenCase, "garage_decay_m"), number(goldenCase, "garage_decay_commute_m"));
 			GarageOptionModel model = modelByDecay.computeIfAbsent(decays, key -> new GarageOptionModel(garages,
 					key.decayMeters(), key.commuteDecayMeters(), maximumDistanceMeters));
-			if (goldenCase.get("expected_error").booleanValue()) {
+			if (ParkingCostCalculatorTest.literalBoolean(goldenCase, "expected_error")) {
 				errorCases++;
 				try {
 					Result result = evaluate(goldenCase, tariff, model, counters);
@@ -452,6 +451,35 @@ public class GarageParkingCostCalculatorTest {
 	}
 
 	/**
+	 * A paid garage whose weight is far below 1e-16 of the total (here a garage at 120 EUR for the hour: exp(-0.310998 * 120) =
+	 * 6e-17) next to a free garage and the street. The paid part of the garage probability is accumulated directly, so it is
+	 * exactly the tiny positive share, never a difference of two sums that could come out at -1e-17 and make the report counter
+	 * throw inside the car cost model; the stay is accepted by {@link ParkingOutcomeCounter.PricedStay}.
+	 */
+	@Test
+	public void aTinyPaidGarageWeightGivesATinyNonNegativePaidProbabilityThatTheCounterAccepts() throws Exception {
+		ZoneTariff zone = ParkingCostCalculatorTest.goldenTariffs().get("fx_bs_ib");
+		GarageOptionModel.Option[] options = {
+				new GarageOptionModel.Option(nightOnlyGarage("g_a_free", 200), 0.0),
+				new GarageOptionModel.Option(hourlyGarage("g_b_dear", 12000, OptionalInt.empty()), 0.0) };
+		double beta = 0.310998;
+		Result result = GarageParkingCostCalculator.cents(zone, 36000, 39600, "shop", false, false, false, false, 400.0, 250.0,
+				beta, () -> options, null);
+		double streetWeight = StrictMath.exp(-0.0 / 400.0 - beta * 180 / 100);
+		double freeWeight = StrictMath.exp(-0.0 / 400.0 - beta * 0 / 100);
+		double dearWeight = StrictMath.exp(-0.0 / 400.0 - beta * 12000 / 100);
+		double total = streetWeight + freeWeight + dearWeight;
+		assertTrue("the paid weight must be below 1e-16 for this test: " + dearWeight, dearWeight < 1e-16);
+		assertEquals(dearWeight / total, result.garageProbabilityPaid(), 0.0);
+		assertTrue(result.garageProbabilityPaid() > 0.0);
+		assertEquals(freeWeight / total, result.garageProbabilityFree(), 0.0);
+		ParkingOutcomeCounter.PricedStay stay = new ParkingOutcomeCounter.PricedStay(result.outcome(), "fx_bs_ib", "shop",
+				result.expectedCents().getAsDouble(), result.garageProbabilityPaid(), result.garageProbabilityFree(),
+				result.garagesInRange(), !result.streetFeasible());
+		new ParkingOutcomeCounter().record(stay);
+	}
+
+	/**
 	 * The weights use StrictMath.exp (fdlibm), so that the expectation is bit-identical on every JVM and CPU: the probability
 	 * of one garage at 300 m and decay 400 m is exactly w / (1 + w) with w = StrictMath.exp(-300 / 400).
 	 */
@@ -469,25 +497,34 @@ public class GarageParkingCostCalculatorTest {
 	/** One golden case as braunschweig.parking.golden_cases.evaluate_case_detail evaluates it. */
 	private static Result evaluate(JsonNode goldenCase, ZoneTariff tariff, GarageOptionModel model,
 			GarageOptionCounters counters) {
-		double arrival_s = goldenCase.get("arrival_s").doubleValue();
+		double arrival_s = number(goldenCase, "arrival_s");
 		double departure_s;
-		if (goldenCase.get("terminal").booleanValue()) {
+		if (ParkingCostCalculatorTest.literalBoolean(goldenCase, "terminal")) {
 			departure_s = ParkingCostCalculator.terminalDeparture_s(arrival_s, tariff.feeEnd_s());
 		} else {
-			departure_s = goldenCase.get("departure_s").doubleValue();
+			departure_s = number(goldenCase, "departure_s");
 		}
 		int minimumStay_s = 60 * goldenCase.get("minimum_stay_min").intValue();
 		double pricedDeparture_s = ParkingCostCalculator.minimumStayDeparture_s(arrival_s, departure_s, minimumStay_s);
 		JsonNode destinationX = goldenCase.get("destination_x_m");
 		GarageParkingCostCalculator.OptionSource options = destinationX.isNull() ? () -> new GarageOptionModel.Option[0]
-				: () -> model.optionsWithin(destinationX.doubleValue(), goldenCase.get("destination_y_m").doubleValue());
+				: () -> model.optionsWithin(number(goldenCase, "destination_x_m"), number(goldenCase, "destination_y_m"));
 		// The per-case ev_exempt and option_price_beta_u_per_eur: never those of the document or of the model (the 128 cases of
 		// schema 5 carry beta 0.0 and their numbers are the v2 values, while the model of the fixture says 0.310998).
 		return GarageParkingCostCalculator.cents(tariff, arrival_s, pricedDeparture_s, goldenCase.get("purpose").asText(),
-				goldenCase.get("parking_free").booleanValue(), goldenCase.get("resident_of_zone").booleanValue(),
-				goldenCase.get("resident_of_district").booleanValue(), goldenCase.get("ev_exempt").booleanValue(),
-				model.decayMeters(), model.commuteDecayMeters(), goldenCase.get("option_price_beta_u_per_eur").doubleValue(),
-				options, counters);
+				ParkingCostCalculatorTest.literalBoolean(goldenCase, "parking_free"),
+				ParkingCostCalculatorTest.literalBoolean(goldenCase, "resident_of_zone"),
+				ParkingCostCalculatorTest.literalBoolean(goldenCase, "resident_of_district"),
+				ParkingCostCalculatorTest.literalBoolean(goldenCase, "ev_exempt"), model.decayMeters(),
+				model.commuteDecayMeters(), number(goldenCase, "option_price_beta_u_per_eur"), options, counters);
+	}
+
+	/** A numeric field of a golden case: a JSON null or a string fails instead of silently reading as 0.0. */
+	private static double number(JsonNode goldenCase, String field) {
+		JsonNode value = goldenCase.get(field);
+		assertTrue(goldenCase.get("id") + ": " + field + " must be a JSON number, got " + value,
+				value != null && value.isNumber());
+		return value.doubleValue();
 	}
 
 	/** A garage at the origin that charges {@code hourlyRateCents} per started hour all day, with an optional maximum stay. */

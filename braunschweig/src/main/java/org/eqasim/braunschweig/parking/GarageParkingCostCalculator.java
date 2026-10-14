@@ -77,8 +77,11 @@ public final class GarageParkingCostCalculator {
 	 *
 	 * @param cents non-negative price in euro cents
 	 * @param outcome the rule that decided the price; PAID_EXPECTED for an expectation
-	 * @param garageProbability the sum of the garage probabilities, 0 when no garage acted; the sum of
-	 *        {@code garageProbabilityFree} and the probability of the paid garage options
+	 * @param garageProbability the sum of the garage probabilities, 0 when no garage acted; summed in the order of the
+	 *        mixture, like the paid and the free part below, so the three are separate accumulations (a difference of two of
+	 *        them can come out at -1e-17 when one part is far below 1e-16, which the report counter would refuse)
+	 * @param garageProbabilityPaid the part of {@code garageProbability} that lies on garage options which cost more than 0 ct
+	 *        for this stay, accumulated directly, never as a difference
 	 * @param garageProbabilityFree the part of {@code garageProbability} that lies on garage options which cost 0 ct for this
 	 *        stay (free lots, free grace periods), 0 when no garage acted (spec v3 A4: the paid and the free garage share
 	 *        are reported separately)
@@ -89,19 +92,14 @@ public final class GarageParkingCostCalculator {
 	 *        long-stay product or the zone commuter product could serve it; false only where the maximum stay removed all of
 	 *        them; true for a stay decided before the options act (early rule, campus)
 	 */
-	public record Result(long cents, ParkingOutcome outcome, double garageProbability, double garageProbabilityFree,
-			int garagesInRange, OptionalDouble expectedCents, boolean streetFeasible) {
+	public record Result(long cents, ParkingOutcome outcome, double garageProbability, double garageProbabilityPaid,
+			double garageProbabilityFree, int garagesInRange, OptionalDouble expectedCents, boolean streetFeasible) {
 		public Result {
 			if (cents < 0) {
 				throw new IllegalArgumentException("parking cost must be non-negative euro cents, got " + cents);
 			}
 			Objects.requireNonNull(outcome, "outcome");
 			Objects.requireNonNull(expectedCents, "expectedCents");
-		}
-
-		/** The sum of the probabilities of the garage options that cost more than 0 ct for this stay. */
-		public double garageProbabilityPaid() {
-			return garageProbability - garageProbabilityFree;
 		}
 	}
 
@@ -193,7 +191,7 @@ public final class GarageParkingCostCalculator {
 		}
 		double decayOfStayMeters = decayMetersForPurpose(purpose, decayMeters, commuteDecayMeters);
 		if (decidedBeforeProducts(base.outcome(), tariff)) {
-			return new Result(base.cents(), base.outcome(), 0.0, 0.0, 0, OptionalDouble.empty(), true);
+			return new Result(base.cents(), base.outcome(), 0.0, 0.0, 0.0, 0, OptionalDouble.empty(), true);
 		}
 		// The street side of the stay (spec E8: the zone-level garage family is superseded): the EV exemption, the street or
 		// long-stay product and the zone commuter product, whichever is cheapest, a tie going to the first of them, or none
@@ -205,7 +203,8 @@ public final class GarageParkingCostCalculator {
 				ParkingCostCalculator.streetProduct(tariff, streetChargeable_s),
 				ParkingCostCalculator.commuterProduct(tariff, purpose));
 		boolean streetFeasible = street != null;
-		Result unchanged = new Result(base.cents(), base.outcome(), 0.0, 0.0, 0, OptionalDouble.empty(), streetFeasible);
+		Result unchanged = new Result(base.cents(), base.outcome(), 0.0, 0.0, 0.0, 0, OptionalDouble.empty(),
+				streetFeasible);
 		if (decayOfStayMeters == 0.0) {
 			return unchanged;
 		}
@@ -238,7 +237,7 @@ public final class GarageParkingCostCalculator {
 			if (counters != null) {
 				counters.countStreetFree();
 			}
-			return new Result(0, street.outcome(), 0.0, 0.0, garageOptions.length, OptionalDouble.empty(), true);
+			return new Result(0, street.outcome(), 0.0, 0.0, 0.0, garageOptions.length, OptionalDouble.empty(), true);
 		}
 		if (street == null && counters != null) {
 			counters.countStreetUnavailable();
@@ -251,10 +250,10 @@ public final class GarageParkingCostCalculator {
 					counters.countNoFeasibleOption();
 				}
 				return new Result(ParkingCostCalculator.streetMeteredCents(tariff, streetChargeable_s),
-						ParkingOutcome.NO_FEASIBLE_OPTION, 0.0, 0.0, garageOptions.length, OptionalDouble.empty(), false);
+						ParkingOutcome.NO_FEASIBLE_OPTION, 0.0, 0.0, 0.0, garageOptions.length, OptionalDouble.empty(), false);
 			}
 			// The street is the only option left: it is not an expectation over a mixture, so it keeps its own outcome.
-			return new Result(street.cents(), street.outcome(), 0.0, 0.0, garageOptions.length, OptionalDouble.empty(), true);
+			return new Result(street.cents(), street.outcome(), 0.0, 0.0, 0.0, garageOptions.length, OptionalDouble.empty(), true);
 		}
 		// Spec v3 A2: every option, the street included (distance 0, its own cents), is weighted by its distance AND its price
 		// for THIS stay; the street only when it is an option. Beta 0 gives the weights of v2 bit for bit.
@@ -285,6 +284,7 @@ public final class GarageParkingCostCalculator {
 		}
 		double expected = 0.0;
 		double garageProbability = 0.0;
+		double garageProbabilityPaid = 0.0;
 		double garageProbabilityFree = 0.0;
 		for (int position = 0; position < optionCount; position++) {
 			double probability = weights[position] / totalWeight;
@@ -293,6 +293,8 @@ public final class GarageParkingCostCalculator {
 				garageProbability += probability;
 				if (costs[position] == 0) {
 					garageProbabilityFree += probability;
+				} else {
+					garageProbabilityPaid += probability;
 				}
 			}
 		}
@@ -301,7 +303,7 @@ public final class GarageParkingCostCalculator {
 		}
 		// Rounded half up to the cent once, at the end.
 		return new Result((long) Math.floor(expected + 0.5), ParkingOutcome.PAID_EXPECTED, garageProbability,
-				garageProbabilityFree, garageOptions.length, OptionalDouble.of(expected), street != null);
+				garageProbabilityPaid, garageProbabilityFree, garageOptions.length, OptionalDouble.of(expected), street != null);
 	}
 
 	/**

@@ -336,7 +336,7 @@ public class ParkingCostCalculatorTest {
 		return value.asDouble();
 	}
 
-	private static boolean literalBoolean(JsonNode goldenCase, String field) {
+	static boolean literalBoolean(JsonNode goldenCase, String field) {
 		JsonNode value = goldenCase.get(field);
 		assertTrue(goldenCase.get("id") + ": " + field + " must be a JSON boolean, got " + value,
 				value != null && value.isBoolean());

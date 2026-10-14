@@ -93,6 +93,10 @@ public final class ParkingOutcomeCounter {
 		public PricedStay {
 			Objects.requireNonNull(outcome, "outcome");
 			Objects.requireNonNull(purpose, "purpose");
+			// The upper tolerance 1e-12 exists because the calculator sums the probabilities P_i = w_i / sum(w) in double
+			// precision: the sum of up to a few dozen options can exceed 1 by rounding (about 1e-16 each). Anything beyond that
+			// is a defect and fails; a negative part is never tolerated, which is why the calculator accumulates the paid and
+			// the free part directly instead of subtracting one from the total.
 			if (!(garageProbabilityPaid >= 0.0 && garageProbabilityFree >= 0.0
 					&& garageProbabilityPaid + garageProbabilityFree <= 1.0 + 1e-12) || garagesInRange < 0) {
 				throw new IllegalArgumentException("the paid and the free garage probability must lie in [0, 1] together and the"
