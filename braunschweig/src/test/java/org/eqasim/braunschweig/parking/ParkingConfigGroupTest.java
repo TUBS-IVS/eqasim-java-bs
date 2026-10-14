@@ -52,7 +52,7 @@ public class ParkingConfigGroupTest {
 		assertEquals("1.0", parking.getCostFactor());
 	}
 
-	/** The range is [0, 10] (spec v3 A3, ruling R-A-15), both ends included, as plain decimals. */
+	/** The range is [0, 10] (spec v3 A3, ADR-0142 decision 3), both ends included, as plain decimals. */
 	@Test
 	public void costFactorAcceptsPlainDecimalsFromZeroToTen() {
 		ParkingConfigGroup parking = new ParkingConfigGroup();

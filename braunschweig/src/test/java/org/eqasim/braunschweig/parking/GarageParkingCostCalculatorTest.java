@@ -640,7 +640,7 @@ public class GarageParkingCostCalculatorTest {
 	}
 
 	/**
-	 * Spec v3 A1, ruling R-A-6: with no option left (street above its maximum without a product, the one garage above its own
+	 * Spec v3 A1, ADR-0142 decision 1: with no option left (street above its maximum without a product, the one garage above its own
 	 * maximum) the stay is priced as the street at its metered price with the maximum ignored (240 min = 720 ct) and named
 	 * NO_FEASIBLE_OPTION, probability 0, no exception; the garage in range is counted, the infeasible option and the stay
 	 * without a feasible option are counted too.
@@ -698,7 +698,7 @@ public class GarageParkingCostCalculatorTest {
 	}
 
 	/**
-	 * Spec v3 A5, ruling R-A-10: an exempt stay within ev_free_minutes (240) and the maximum stay is 0 ct, EV_EXEMPT, with
+	 * Spec v3 A5, ADR-0142 decision 5: an exempt stay within ev_free_minutes (240) and the maximum stay is 0 ct, EV_EXEMPT, with
 	 * garages in range (the garage probability is 0, the stay counts as a free street, E4); one minute above the limit the stay
 	 * is priced as everybody's stay, over the street and the garage.
 	 */

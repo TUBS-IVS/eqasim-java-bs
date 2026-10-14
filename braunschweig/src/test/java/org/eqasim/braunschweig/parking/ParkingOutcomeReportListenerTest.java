@@ -104,6 +104,10 @@ public class ParkingOutcomeReportListenerTest {
 		return parking;
 	}
 
+	/** The startup line of the default parking cost factor 1.0, the model value (ADR-0142 decision 3). */
+	private static final String UNSCALED_COST_FACTOR_LINE = "[parking] parking cost factor 1.0 (braunschweigParking.costFactor,"
+			+ " assumption CF): the parking cost of a car trip enters the car cost unscaled (the model value)";
+
 	private Path reportOfIteration(int iteration) {
 		return folder.getRoot().toPath().resolve("ITERS").resolve("it." + iteration)
 				.resolve(iteration + ".parking_outcomes.csv");
@@ -216,7 +220,8 @@ public class ParkingOutcomeReportListenerTest {
 		assertEquals(List.of("[parking] minimum stay 15 min (braunschweigParking.minimumStayMinutes, assumption L1): every"
 				+ " priced car stay lasts at least 900 s; the simulated timing is unchanged",
 				"[parking] search time (lever 4): active in 3 zones (searchTimeFactor 1.5); the car utility of a trip to a"
-						+ " non-home destination in such a zone adds betaTravelTime_u_min * 1.5 * search_time_min of the zone"),
+						+ " non-home destination in such a zone adds betaTravelTime_u_min * 1.5 * search_time_min of the zone",
+				UNSCALED_COST_FACTOR_LINE),
 				logDuring(() -> listener.notifyStartup(new StartupEvent(null))));
 
 		ParkingOutcomeReportListener versionOne = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
@@ -224,7 +229,8 @@ public class ParkingOutcomeReportListenerTest {
 		assertEquals(List.of("[parking] minimum stay 0 min (braunschweigParking.minimumStayMinutes, assumption L1): car"
 				+ " stays are priced as simulated (version 1)",
 				"[parking] search time (lever 4): off (searchTimeFactor 0.0); the car utility carries no parking search time"
-						+ " term (version 1)"),
+						+ " term (version 1)",
+				UNSCALED_COST_FACTOR_LINE),
 				logDuring(() -> versionOne.notifyStartup(new StartupEvent(null))));
 
 		// An explicit 0 is the same as the default, also for a model without search times.
@@ -233,6 +239,30 @@ public class ParkingOutcomeReportListenerTest {
 					output(), parking("15", "0"), tariffs);
 			assertEquals("[parking] search time (lever 4): off (searchTimeFactor 0.0); the car utility carries no parking"
 					+ " search time term (version 1)", logDuring(() -> explicitZero.notifyStartup(new StartupEvent(null))).get(1));
+		}
+	}
+
+	/**
+	 * The effective parking cost factor is logged once at startup (ADR-0142 decision 3, ASSUMPTION CF), so a run log shows
+	 * which factor the car cost used: the default 1.0 as the model value, any other value with the note that it is a
+	 * sensitivity and no model value. A factor written as 0 is a legal sensitivity and is named as such.
+	 */
+	@Test
+	public void logsTheEffectiveParkingCostFactorAtStartupAndNotesWhenItIsNotTheModelValue() {
+		ParkingOutcomeReportListener defaultFactor = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+				parking("15"), tariffsWithSearchTimes);
+		assertEquals(UNSCALED_COST_FACTOR_LINE, logDuring(() -> defaultFactor.notifyStartup(new StartupEvent(null))).get(2));
+
+		for (String factor : new String[] { "0.5", "2.0", "0" }) {
+			ParkingConfigGroup scaled = parking("15");
+			scaled.addParam("costFactor", factor);
+			ParkingOutcomeReportListener listener = new ParkingOutcomeReportListener(new ParkingOutcomeCounter(), output(),
+					scaled, tariffsWithSearchTimes);
+			List<String> lines = logDuring(() -> listener.notifyStartup(new StartupEvent(null)));
+			assertEquals(3, lines.size());
+			assertEquals("[parking] parking cost factor " + scaled.getCostFactor() + " (braunschweigParking.costFactor,"
+					+ " assumption CF): NOT the model value 1.0, a sensitivity; the parking cost of a car trip is multiplied by "
+					+ scaled.getCostFactor() + " before it enters the car cost", lines.get(2));
 		}
 	}
 

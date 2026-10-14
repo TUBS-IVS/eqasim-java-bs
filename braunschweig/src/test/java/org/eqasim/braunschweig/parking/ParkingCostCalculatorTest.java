@@ -233,7 +233,7 @@ public class ParkingCostCalculatorTest {
 	}
 
 	/**
-	 * Ruling R-A-10 (ASSUMPTION E2): the exemption applies within the maximum stay only. fx_ev_clip_v3 states ev_free_minutes
+	 * ADR-0142 decision 5 (ASSUMPTION E2): the exemption applies within the maximum stay only. fx_ev_clip_v3 states ev_free_minutes
 	 * 240 and a maximum stay of 150 minutes without a long-stay product: an exempt stay of 150 chargeable minutes is free, a
 	 * stay of 151 to 240 minutes is NOT exempt (it exceeds the maximum) and, with nothing to sell above it, is priced as the
 	 * street at its metered price with the outcome NO_FEASIBLE_OPTION (180 ct/h in 1-min units: 151 min = 453 ct).
@@ -250,7 +250,7 @@ public class ParkingCostCalculatorTest {
 	}
 
 	/**
-	 * Spec v3 A1, ruling R-A-6 (ASSUMPTION M3), hand-derived on fx_ia_nolong_v3 (street 180 ct/h in 1-min units, 09:00-20:00,
+	 * Spec v3 A1, ADR-0142 decision 1 (ASSUMPTION M3), hand-derived on fx_ia_nolong_v3 (street 180 ct/h in 1-min units, 09:00-20:00,
 	 * maximum stay 180 min, NO long-stay product): within the maximum the street prices (180 chargeable min = 540 ct); one
 	 * second above it the street is no option and nothing else is for sale, so the stay is priced as the street at its metered
 	 * price, the maximum ignored (181 started min = 543 ct), with the outcome NO_FEASIBLE_OPTION, and it is not an exception.

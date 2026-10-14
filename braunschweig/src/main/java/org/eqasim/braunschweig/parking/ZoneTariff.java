@@ -32,8 +32,8 @@ import java.util.OptionalLong;
  * without it they would never be priced; a garage cap of null means no cap;</li>
  * <li>a long-stay product needs a maximum stay (it is sold only above it); a resident zone's maximum stay needs a long-stay
  * product or the garage core, because a stay above the maximum stay loses the street product (spec lever 2) and the commuter
- * product alone does not suffice, as it serves work and education only. Spec v3 A1 (deliberate change of the v2 rule, ruling
- * R-A-6): a street_paid zone may state a maximum stay without a long-stay product and without a garage core; its stays above
+ * product alone does not suffice, as it serves work and education only. Spec v3 A1 (deliberate change of the v2 rule, ADR-0142
+ * decision 1): a street_paid zone may state a maximum stay without a long-stay product and without a garage core; its stays above
  * the maximum are then served by the garage options within reach or, where there are none, priced as the street and named
  * NO_FEASIBLE_OPTION;</li>
  * <li>spec v3 A5: {@code ev_free_minutes} is at least 1 when set and exists on a street_paid zone only (a campus car park is
@@ -268,7 +268,7 @@ public record ZoneTariff(String zoneId, ZoneType zoneType, OptionalLong hourlyRa
 			throw new IllegalArgumentException(zone + "long_stay_product_cents needs max_stay_min: a long-stay product"
 					+ " without a maximum stay is never sold");
 		}
-		// Spec v3 A1 (ruling R-A-6): a street_paid zone may state a maximum stay without anything to sell above it; its stays
+		// Spec v3 A1 (ADR-0142 decision 1): a street_paid zone may state a maximum stay without anything to sell above it; its stays
 		// above the maximum are then served by the garage options or priced as NO_FEASIBLE_OPTION. A resident zone keeps the
 		// v2 rule: its maximum stay needs the long-stay product or the garage core.
 		if (zoneType != ZoneType.STREET_PAID && maxStayMinutes.isPresent() && longStayProductCents.isEmpty()

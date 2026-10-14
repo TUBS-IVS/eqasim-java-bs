@@ -195,7 +195,7 @@ public class ParkingTariffsTest {
 		assertFalse(tariffs.zone("fx_ev_expired_v3").orElseThrow().hasEvExemption());
 		assertFalse(tariffs.zone("fx_bs_ib").orElseThrow().hasEvExemption());
 		assertEquals(2L, tariffs.zonesWithEvExemption());
-		// A street zone with a maximum stay and nothing to sell above it is valid (spec v3 A1, ruling R-A-6).
+		// A street zone with a maximum stay and nothing to sell above it is valid (spec v3 A1, ADR-0142 decision 1).
 		ZoneTariff noLongStay = tariffs.zone("fx_ia_nolong_v3").orElseThrow();
 		assertEquals(OptionalInt.of(180), noLongStay.maxStayMinutes());
 		assertEquals(OptionalLong.empty(), noLongStay.longStayProductCents());
@@ -490,7 +490,7 @@ public class ParkingTariffsTest {
 	}
 
 	/**
-	 * A stay above the maximum stay loses the street product (spec lever 2). Spec v3 A1, ruling R-A-6 (a deliberate change of
+	 * A stay above the maximum stay loses the street product (spec lever 2). Spec v3 A1, ADR-0142 decision 1 (a deliberate change of
 	 * the v2 rule): a STREET zone may state a maximum stay without a long-stay product and without a garage core, with or
 	 * without a commuter product; its stays above the maximum are served by the garage options or priced NO_FEASIBLE_OPTION. A
 	 * RESIDENT zone keeps the v2 rule: its maximum stay needs a long-stay product or the garage core, and the commuter product

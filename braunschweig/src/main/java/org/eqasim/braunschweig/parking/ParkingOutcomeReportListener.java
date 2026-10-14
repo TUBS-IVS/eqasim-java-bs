@@ -107,6 +107,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	private final int minimumStay_s;
 	private final double searchTimeFactor;
 	private final String searchTimeFactorText;
+	private final double costFactor;
+	private final String costFactorText;
 	private final long zonesWithSearchTime;
 	private final boolean garageOptionsActive;
 	private final String garageDecaySetting;
@@ -120,6 +122,8 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		this.minimumStay_s = parking.minimumStay_s();
 		this.searchTimeFactor = parking.searchTimeFactor();
 		this.searchTimeFactorText = parking.getSearchTimeFactor();
+		this.costFactor = parking.costFactor();
+		this.costFactorText = parking.getCostFactor();
 		this.zonesWithSearchTime = tariffs.zonesWithSearchTime();
 		this.garageOptionsActive = tariffs.garageOptions().isActive();
 		this.garageDecaySetting = "garage_decay_m " + tariffs.garageDecayMeters() + " m (every purpose but work and"
@@ -127,14 +131,15 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 	}
 
 	/**
-	 * Logs the active minimum parked duration (assumption L1) and the active search time factor (lever 4) once. The state of
-	 * the garage options (spec Amendment E) is logged once by {@link ParkingTariffs#read}, when the controller builds this
-	 * listener's tariff model.
+	 * Logs the active minimum parked duration (assumption L1), the active search time factor (lever 4) and the effective
+	 * parking cost factor (ADR-0142 decision 3, assumption CF) once. The state of the garage options (spec Amendment E) is
+	 * logged once by {@link ParkingTariffs#read}, when the controller builds this listener's tariff model.
 	 */
 	@Override
 	public void notifyStartup(StartupEvent event) {
 		LOG.info(minimumStaySetting(minimumStayMinutes, minimumStay_s));
 		LOG.info(searchTimeSetting(searchTimeFactor, searchTimeFactorText, zonesWithSearchTime));
+		LOG.info(costFactorSetting(costFactor, costFactorText));
 	}
 
 	@Override
@@ -235,6 +240,20 @@ public final class ParkingOutcomeReportListener implements StartupListener, Iter
 		return setting + "active in " + zonesWithSearchTime + (zonesWithSearchTime == 1 ? " zone" : " zones")
 				+ " (searchTimeFactor " + searchTimeFactorText + "); the car utility of a trip to a non-home destination in such"
 				+ " a zone adds betaTravelTime_u_min * " + searchTimeFactorText + " * search_time_min of the zone";
+	}
+
+	/**
+	 * The startup line of the parking cost factor (ADR-0142 decision 3, assumption CF), which multiplies the parking cost of a
+	 * car trip before it enters the car cost: the default 1.0 is the model value, any other value is named a sensitivity.
+	 */
+	private static String costFactorSetting(double costFactor, String costFactorText) {
+		String setting = "[parking] parking cost factor " + costFactorText + " (" + ParkingConfigGroup.GROUP_NAME
+				+ ".costFactor, assumption CF): ";
+		if (costFactor == 1.0) {
+			return setting + "the parking cost of a car trip enters the car cost unscaled (the model value)";
+		}
+		return setting + "NOT the model value 1.0, a sensitivity; the parking cost of a car trip is multiplied by "
+				+ costFactorText + " before it enters the car cost";
 	}
 
 	/** The minimum parked duration line of one iteration: the priced stays it extended, as a count and in percent. */

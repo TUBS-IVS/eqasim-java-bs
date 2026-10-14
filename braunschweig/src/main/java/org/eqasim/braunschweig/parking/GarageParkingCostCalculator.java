@@ -19,7 +19,7 @@ import java.util.Set;
  * <li>{@link ParkingCostCalculator#cents} decides first. A stay it prices before any product (home, employer-free, resident,
  * outside the street fee window), a campus stay, a garage decay of 0 for the purpose of the stay and a stay with no garage
  * in range keep that result: same cents, same outcome, probability 0. An electric car within the exemption of its zone (spec
- * v3 A5) is priced there too, EV_EXEMPT, and keeps it also with garages in range (ruling R-A-10: an exempt stay is 0 ct);</li>
+ * v3 A5) is priced there too, EV_EXEMPT, and keeps it also with garages in range (ADR-0142 decision 5: an exempt stay is 0 ct);</li>
  * <li>otherwise the options are the street and every garage within the maximum distance, in this order, the garages by
  * ascending id, weighted by {@code StrictMath.exp(-distance / decay - beta * cost_cents / 100)} (spec v3 A2, ASSUMPTION
  * G1-d): {@code distance} is 0 for the street, {@code decay} the decay length of the purpose of the stay (lambda_c for work
@@ -233,7 +233,7 @@ public final class GarageParkingCostCalculator {
 			counters.countOptionsInfeasible(garageOptions.length - feasibleOptions.length);
 		}
 		if (street != null && street.cents() == 0) {
-			// Spec E4: nobody pays a garage when the street is free (an EV-exempt stay included, ruling R-A-10).
+			// Spec E4: nobody pays a garage when the street is free (an EV-exempt stay included, ADR-0142 decision 5).
 			if (counters != null) {
 				counters.countStreetFree();
 			}
