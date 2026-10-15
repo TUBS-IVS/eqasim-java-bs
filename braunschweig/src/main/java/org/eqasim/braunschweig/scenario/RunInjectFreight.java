@@ -2,13 +2,16 @@ package org.eqasim.braunschweig.scenario;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -51,6 +54,14 @@ import org.matsim.vehicles.VehicleUtils;
  * network mode to all car links, adapts the config, and writes
  * population/vehicles/network/config back in place plus a summary CSV.
  *
+ * Boundary endpoints (the start of incoming and transit trips, the end of
+ * outgoing and transit trips) get an explicit link from
+ * {@link FreightBoundaryLinkSelector}: a high-capacity link next to the crossing
+ * point that heads in the trip direction (issue #444). Endpoints without such
+ * a link, and the endpoints of internal trips, keep only their coordinate and
+ * are snapped by MATSim; the boundary fallbacks are counted, logged, written
+ * to the boundary-link summary and fail the run above a configured share.
+ *
  * Sampling already happened upstream in Python, so this is a deterministic
  * writer (no RNG here).
  */
@@ -65,14 +76,32 @@ public class RunInjectFreight {
 	private static final String EXPECTED_HEADER =
 			"person_id;origin_x;origin_y;destination_x;destination_y;departure_time;trip_type";
 
+	/** Trip types of the freight extraction; the first two start, the last two end on the study-area boundary. */
+	private static final Set<String> TRIP_TYPES = Set.of("internal", "incoming", "outgoing", "transit");
+	private static final Set<String> BOUNDARY_START_TRIP_TYPES = Set.of("incoming", "transit");
+	private static final Set<String> BOUNDARY_END_TRIP_TYPES = Set.of("outgoing", "transit");
+
+	// Defaults mirror braunschweig/matsim/simulation/prepare.py, which always passes the options explicitly.
+	private static final double DEFAULT_BOUNDARY_LINK_MINIMUM_CAPACITY_VEHICLES_PER_HOUR = 1000.0;
+	private static final double DEFAULT_BOUNDARY_LINK_MAXIMUM_DISTANCE_METERS = 300.0;
+	private static final double DEFAULT_BOUNDARY_LINK_MAXIMUM_FALLBACK_SHARE = 0.05;
+
 	public static void main(String[] args) throws ConfigurationException, IOException {
 		CommandLine cmd = new CommandLine.Builder(args)
 				.requireOptions("config-path", "freight-csv-path", "summary-path")
-				.allowOptions("truck-pce", "truck-max-velocity-kmh")
+				.allowOptions("truck-pce", "truck-max-velocity-kmh", "boundary-link-minimum-capacity-veh-per-h",
+						"boundary-link-maximum-distance-m", "boundary-link-maximum-fallback-share",
+						"boundary-link-summary-path")
 				.build();
 
 		double pce = cmd.getOption("truck-pce").map(Double::parseDouble).orElse(3.5);
 		double maxVelocityKmh = cmd.getOption("truck-max-velocity-kmh").map(Double::parseDouble).orElse(80.0);
+		double boundaryMinimumCapacityVehiclesPerHour = cmd.getOption("boundary-link-minimum-capacity-veh-per-h")
+				.map(Double::parseDouble).orElse(DEFAULT_BOUNDARY_LINK_MINIMUM_CAPACITY_VEHICLES_PER_HOUR);
+		double boundaryMaximumDistanceMeters = cmd.getOption("boundary-link-maximum-distance-m")
+				.map(Double::parseDouble).orElse(DEFAULT_BOUNDARY_LINK_MAXIMUM_DISTANCE_METERS);
+		double boundaryMaximumFallbackShare = cmd.getOption("boundary-link-maximum-fallback-share")
+				.map(Double::parseDouble).orElse(DEFAULT_BOUNDARY_LINK_MAXIMUM_FALLBACK_SHARE);
 
 		// Load the config with all eqasim/MATSim config groups registered (the
 		// BraunschweigConfigurator registers them), mirroring ConfigAdapter: the
@@ -103,6 +132,14 @@ public class RunInjectFreight {
 					"unexpected freight CSV header.\n  expected: " + EXPECTED_HEADER + "\n  got:      " + lines.get(0).trim());
 		}
 
+		FreightBoundaryLinkSelector boundaryLinks = new FreightBoundaryLinkSelector(
+				scenario.getNetwork(), boundaryMinimumCapacityVehiclesPerHour, boundaryMaximumDistanceMeters);
+		logger.info("freight injection: {} candidate boundary links (minimum capacity {} veh/h, maximum distance {} m)",
+				boundaryLinks.getCandidateLinkCount(), boundaryMinimumCapacityVehiclesPerHour,
+				boundaryMaximumDistanceMeters);
+		BoundaryLinkCounts startCounts = new BoundaryLinkCounts();
+		BoundaryLinkCounts endCounts = new BoundaryLinkCounts();
+
 		Map<String, Long> tripTypeCounts = new TreeMap<>();
 		int injected = 0;
 		for (int i = 1; i < lines.size(); i++) {
@@ -120,6 +157,10 @@ public class RunInjectFreight {
 			Coord destination = new Coord(Double.parseDouble(f[3]), Double.parseDouble(f[4]));
 			double departureTime = Double.parseDouble(f[5]);
 			String tripType = f[6];
+			if (!TRIP_TYPES.contains(tripType)) {
+				throw new IllegalStateException("freight CSV line " + (i + 1) + " has unknown trip_type '" + tripType
+						+ "', expected one of " + TRIP_TYPES);
+			}
 
 			Id<Person> id = Id.createPersonId(personId);
 			if (population.getPersons().containsKey(id)) {
@@ -134,7 +175,14 @@ public class RunInjectFreight {
 			start.setEndTime(departureTime);
 			plan.addActivity(start);
 			plan.addLeg(factory.createLeg(TRUCK_MODE));
-			plan.addActivity(factory.createActivityFromCoord(ACTIVITY_END, destination));
+			Activity end = factory.createActivityFromCoord(ACTIVITY_END, destination);
+			plan.addActivity(end);
+			if (BOUNDARY_START_TRIP_TYPES.contains(tripType)) {
+				startCounts.record(start, boundaryLinks.selectEntryLink(origin, destination));
+			}
+			if (BOUNDARY_END_TRIP_TYPES.contains(tripType)) {
+				endCounts.record(end, boundaryLinks.selectExitLink(destination, origin));
+			}
 			person.addPlan(plan);
 			population.addPerson(person);
 
@@ -151,6 +199,11 @@ public class RunInjectFreight {
 		for (Map.Entry<String, Long> entry : tripTypeCounts.entrySet()) {
 			logger.info("  trip type {}: injected {}", entry.getKey(), entry.getValue());
 		}
+		startCounts.log("start");
+		endCounts.log("end");
+		cmd.getOption("boundary-link-summary-path").ifPresent(path -> writeBoundaryLinkSummary(path, startCounts, endCounts));
+		FreightBoundaryLinkSelector.checkFallbackShare(startCounts.assigned + endCounts.assigned,
+				startCounts.fallback + endCounts.fallback, boundaryMaximumFallbackShare);
 
 		int updatedLinks = 0;
 		for (Link link : scenario.getNetwork().getLinks().values()) {
@@ -182,6 +235,49 @@ public class RunInjectFreight {
 			for (Map.Entry<String, Long> entry : tripTypeCounts.entrySet()) {
 				writer.write(String.format("%s;%d%n", entry.getKey(), entry.getValue()));
 			}
+		}
+	}
+
+	/** Counts, per endpoint role, how many boundary endpoints got a selected link and how many fell back. */
+	private static final class BoundaryLinkCounts {
+		private int assigned;
+		private int fallback;
+		private final Map<Id<Link>, Integer> endpointsByLink = new HashMap<>();
+
+		void record(Activity activity, Optional<Link> link) {
+			if (link.isPresent()) {
+				activity.setLinkId(link.get().getId());
+				endpointsByLink.merge(link.get().getId(), 1, Integer::sum);
+				assigned++;
+			} else {
+				fallback++;
+			}
+		}
+
+		void log(String role) {
+			int total = assigned + fallback;
+			double fallbackPercent = total == 0 ? 0.0 : 100.0 * fallback / total;
+			logger.info("freight boundary links ({}): selected {}/{}, fallback to nearest-node snapping {} ({} %)",
+					role, assigned, total, fallback, String.format("%.1f", fallbackPercent));
+			if (fallback > 0) {
+				logger.warn("freight boundary links ({}): {} endpoints found no link with the minimum capacity heading"
+						+ " in the trip direction; MATSim snaps them to the link of the nearest node", role, fallback);
+			}
+			endpointsByLink.entrySet().stream()
+					.sorted(Map.Entry.<Id<Link>, Integer>comparingByValue().reversed()
+							.thenComparing(entry -> entry.getKey().toString()))
+					.limit(10)
+					.forEach(entry -> logger.info("  {} link {}: {} endpoints", role, entry.getKey(), entry.getValue()));
+		}
+	}
+
+	private static void writeBoundaryLinkSummary(String path, BoundaryLinkCounts startCounts, BoundaryLinkCounts endCounts) {
+		try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(path), StandardCharsets.UTF_8)) {
+			writer.write("endpoint_role;selected_link_endpoints;nearest_node_fallback_endpoints\n");
+			writer.write(String.format("start;%d;%d%n", startCounts.assigned, startCounts.fallback));
+			writer.write(String.format("end;%d;%d%n", endCounts.assigned, endCounts.fallback));
+		} catch (IOException e) {
+			throw new UncheckedIOException("could not write the freight boundary link summary " + path, e);
 		}
 	}
 
