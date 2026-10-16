@@ -2,6 +2,7 @@ package org.eqasim.core.simulation.modes.feeder_drt.analysis;
 
 import com.google.inject.Inject;
 import org.eqasim.core.components.config.EqasimConfigGroup;
+import org.eqasim.core.simulation.analysis.AnalysisOutputFileCopier;
 import org.eqasim.core.simulation.modes.drt.analysis.utils.VehicleRegistry;
 import org.eqasim.core.simulation.modes.feeder_drt.analysis.passengers.FeederTripSequenceListener;
 import org.eqasim.core.simulation.modes.feeder_drt.analysis.passengers.FeederTripSequenceWriter;
@@ -17,11 +18,13 @@ import org.matsim.core.controler.listener.ShutdownListener;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 
 public class FeederDrtAnalysisListener implements IterationStartsListener, IterationEndsListener, ShutdownListener {
 
-    private static final String FEEDER_TRIPS_FILE_NAME = "eqasim_feeder_drt_trips.csv";
+    /** File name of the feeder trips table in the output root. */
+    public static final String FEEDER_TRIPS_FILE_NAME = "eqasim_feeder_drt_trips.csv";
+    /** Per-iteration feeder trips file; must not end with "trips.csv" (MATSim matchInput suffix collision, see AnalysisOutputListener.ITERATION_TRIPS_FILE_NAME). */
+    public static final String ITERATION_FEEDER_TRIPS_FILE_NAME = "eqasim_feeder_drt_trips_iteration.csv";
     private final OutputDirectoryHierarchy outputDirectory;
     private final int analysisInterval;
     private boolean isActive = false;
@@ -45,7 +48,7 @@ public class FeederDrtAnalysisListener implements IterationStartsListener, Itera
                 event.getServices().getEvents().removeHandler(feederTripSequenceListener);
                 event.getServices().getEvents().removeHandler(vehicleRegistry);
 
-                String feederTripsPath = outputDirectory.getIterationFilename(event.getIteration(), FEEDER_TRIPS_FILE_NAME);
+                String feederTripsPath = outputDirectory.getIterationFilename(event.getIteration(), ITERATION_FEEDER_TRIPS_FILE_NAME);
                 new FeederTripSequenceWriter(feederTripSequenceListener).writeTripItems(new File(feederTripsPath));
             }
         }catch (IOException e) {
@@ -67,12 +70,8 @@ public class FeederDrtAnalysisListener implements IterationStartsListener, Itera
 
     @Override
     public void notifyShutdown(ShutdownEvent event) {
-        try {
-            File iterationPath = new File(outputDirectory.getIterationFilename(event.getIteration(), FEEDER_TRIPS_FILE_NAME));
-            File outputPath = new File(outputDirectory.getOutputFilename(FEEDER_TRIPS_FILE_NAME));
-            Files.copy(iterationPath.toPath(), outputPath.toPath());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        File iterationPath = new File(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_FEEDER_TRIPS_FILE_NAME));
+        File outputPath = new File(outputDirectory.getOutputFilename(FEEDER_TRIPS_FILE_NAME));
+        AnalysisOutputFileCopier.copyToOutputRoot(iterationPath, outputPath);
     }
 }

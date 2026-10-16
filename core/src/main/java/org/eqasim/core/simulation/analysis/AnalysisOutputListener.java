@@ -37,11 +37,26 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 
 	private final static Logger log = LogManager.getLogger(AnalysisOutputListener.class);
 
-	private static final String TRIPS_FILE_NAME = "eqasim_trips.csv";
-	private static final String LEGS_FILE_NAME = "eqasim_legs.csv";
-	private static final String PT_FILE_NAME = "eqasim_pt.csv";
-	private static final String ACTIVITIES_FILE_NAME = "eqasim_activities.csv";
-	private static final String TRAVEL_TIMES_FILE_NAME = "eqasim_travel_times.bin";
+	/** File name of the eqasim trips table in the output root (consumed by downstream tools). */
+	public static final String TRIPS_FILE_NAME = "eqasim_trips.csv";
+	/**
+	 * File name of the eqasim trips table inside each ITERS/it.N directory. It deliberately does NOT end with
+	 * "trips.csv": MATSim's SimWrapper TripAnalysis looks up MATSim's own iteration trips via
+	 * ApplicationUtils.matchInput("trips.csv", ITERS/it.0), whose suffix-match fallback otherwise may return
+	 * "0.eqasim_trips.csv.gz" (directory-order dependent) and then fails to parse the eqasim schema. The copy in the
+	 * output root keeps the name TRIPS_FILE_NAME.
+	 */
+	public static final String ITERATION_TRIPS_FILE_NAME = "eqasim_trips_iteration.csv";
+	/** File name of the eqasim legs table in the output root. */
+	public static final String LEGS_FILE_NAME = "eqasim_legs.csv";
+	/** Per-iteration legs file; must not end with "legs.csv" (MATSim matchInput suffix collision, see ITERATION_TRIPS_FILE_NAME). */
+	public static final String ITERATION_LEGS_FILE_NAME = "eqasim_legs_iteration.csv";
+	public static final String PT_FILE_NAME = "eqasim_pt.csv";
+	/** File name of the eqasim activities table in the output root. */
+	public static final String ACTIVITIES_FILE_NAME = "eqasim_activities.csv";
+	/** Per-iteration activities file; must not end with "activities.csv" (MATSim matchInput suffix collision, see ITERATION_TRIPS_FILE_NAME). */
+	public static final String ITERATION_ACTIVITIES_FILE_NAME = "eqasim_activities_iteration.csv";
+	public static final String TRAVEL_TIMES_FILE_NAME = "eqasim_travel_times.bin";
 
 	private final OutputDirectoryHierarchy outputDirectory;
 	
@@ -117,13 +132,13 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 				event.getServices().getEvents().removeHandler(ptAnalysisListener);
 
 				new TripWriter(tripAnalysisListener.getTripItems(), scenarioDistanceUnit, analysisDistanceUnit, delimiter)
-						.write(outputDirectory.getIterationFilename(event.getIteration(), TRIPS_FILE_NAME, compressionType));
+						.write(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_TRIPS_FILE_NAME, compressionType));
 
 				new LegWriter(legAnalysisListener.getLegItems(), scenarioDistanceUnit, analysisDistanceUnit, delimiter)
-						.write(outputDirectory.getIterationFilename(event.getIteration(), LEGS_FILE_NAME, compressionType));
+						.write(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_LEGS_FILE_NAME, compressionType));
 
 				new ActivityWriter(activityAnalysisListener.getActivityItems(), delimiter)
-						.write(outputDirectory.getIterationFilename(event.getIteration(), ACTIVITIES_FILE_NAME, compressionType));
+						.write(outputDirectory.getIterationFilename(event.getIteration(), ITERATION_ACTIVITIES_FILE_NAME, compressionType));
 
 				new PublicTransportLegWriter(ptAnalysisListener.getTripItems(), delimiter)
 						.write(outputDirectory.getIterationFilename(event.getIteration(), PT_FILE_NAME, compressionType));
@@ -143,19 +158,40 @@ public class AnalysisOutputListener implements IterationStartsListener, Iteratio
 
 	@Override
 	public void notifyShutdown(ShutdownEvent event) {
-		try {
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), TRIPS_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(TRIPS_FILE_NAME, compressionType)).toPath());
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), LEGS_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(LEGS_FILE_NAME, compressionType)).toPath());
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), PT_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(PT_FILE_NAME, compressionType)).toPath());
-			Files.copy(
-					new File(outputDirectory.getIterationFilename(event.getIteration(), ACTIVITIES_FILE_NAME, compressionType)).toPath(),
-					new File(outputDirectory.getOutputFilename(ACTIVITIES_FILE_NAME, compressionType)).toPath());
-			Files.copy(new File(outputDirectory.getIterationFilename(event.getIteration(), TRAVEL_TIMES_FILE_NAME, compressionType))
-					.toPath(), new File(outputDirectory.getOutputFilename(TRAVEL_TIMES_FILE_NAME, compressionType)).toPath());
-		} catch (IOException e) {
+		if (event.isUnexpected()) {
+			// The run aborted; the last iteration's tables may not exist. Do not add a second failure that would
+			// hide the original exception.
+			log.warn("Run terminated unexpectedly, skipping the copy of the eqasim analysis tables to the output root");
+			return;
 		}
+
+		int iteration = event.getIteration();
+
+		if (analysisInterval > 0) {
+			// The last iteration is always analysed when the interval is positive, so every table must exist.
+			copyIterationFileToOutputRoot(iteration, ITERATION_TRIPS_FILE_NAME, TRIPS_FILE_NAME);
+			copyIterationFileToOutputRoot(iteration, ITERATION_LEGS_FILE_NAME, LEGS_FILE_NAME);
+			copyIterationFileToOutputRoot(iteration, PT_FILE_NAME, PT_FILE_NAME);
+			copyIterationFileToOutputRoot(iteration, ITERATION_ACTIVITIES_FILE_NAME, ACTIVITIES_FILE_NAME);
+		} else {
+			log.info("analysisInterval is " + analysisInterval + ", no eqasim analysis tables were written; "
+					+ "not copying trips, legs, pt and activities to the output root");
+		}
+
+		if (travelTimeInterval > 0) {
+			copyIterationFileToOutputRoot(iteration, TRAVEL_TIMES_FILE_NAME, TRAVEL_TIMES_FILE_NAME);
+		} else {
+			log.info("travelTimeRecordingInterval is " + travelTimeInterval + ", no eqasim travel times were "
+					+ "recorded; not copying " + TRAVEL_TIMES_FILE_NAME + " to the output root");
+		}
+	}
+
+	/**
+	 * Copies a file of the last iteration (ITERS/it.N) to the output root, replacing a file of a previous run.
+	 */
+	private void copyIterationFileToOutputRoot(int iteration, String iterationFileName, String outputFileName) {
+		AnalysisOutputFileCopier.copyToOutputRoot(
+				new File(outputDirectory.getIterationFilename(iteration, iterationFileName, compressionType)),
+				new File(outputDirectory.getOutputFilename(outputFileName, compressionType)));
 	}
 }
