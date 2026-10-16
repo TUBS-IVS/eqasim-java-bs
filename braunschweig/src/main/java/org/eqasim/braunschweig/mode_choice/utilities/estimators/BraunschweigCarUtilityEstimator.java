@@ -9,6 +9,7 @@ import org.eqasim.core.simulation.mode_choice.utilities.variables.CarVariables;
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigModeParameters;
 import org.eqasim.braunschweig.mode_choice.utilities.predictors.BraunschweigPersonPredictor;
 import org.eqasim.braunschweig.mode_choice.utilities.variables.BraunschweigPersonVariables;
+import org.eqasim.braunschweig.parking.ParkingSearchTime;
 import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.PlanElement;
@@ -20,15 +21,22 @@ public class BraunschweigCarUtilityEstimator extends CarUtilityEstimator {
 	private final BraunschweigModeParameters parameters;
 	private final CarPredictor predictor;
 	private final BraunschweigPersonPredictor personPredictor;
+	private final ParkingSearchTime searchTime;
 
+	/**
+	 * @param searchTime parking search time of the destination zone (lever 4 of the zone-based parking costs); bound to
+	 *        {@link ParkingSearchTime#none()} when the braunschweigParking module is absent, which leaves the utility
+	 *        exactly as without the term
+	 */
 	@Inject
 	public BraunschweigCarUtilityEstimator(BraunschweigModeParameters parameters, CarPredictor predictor,
-			BraunschweigPersonPredictor personPredictor) {
+			BraunschweigPersonPredictor personPredictor, ParkingSearchTime searchTime) {
 		super(parameters, predictor);
 
 		this.parameters = parameters;
 		this.predictor = predictor;
 		this.personPredictor = personPredictor;
+		this.searchTime = searchTime;
 	}
 
 	protected double estimateAccessEgressTimeUtility(CarVariables variables) {
@@ -49,6 +57,24 @@ public class BraunschweigCarUtilityEstimator extends CarUtilityEstimator {
 				parameters.referenceHouseholdIncome_MU, parameters.lambdaCostIncome);
 	}
 
+	/**
+	 * Parking search time of the destination zone (lever 4 of the zone-based parking costs, eqasim-bs issue #436):
+	 * {@code betaTravelTime_u_min * searchTimeFactor * search_time_min}, i.e. the minutes of the zone column, scaled by
+	 * the config parameter braunschweigParking.searchTimeFactor, valued like car travel time. 0 with the default factor
+	 * 0 (off) and without the parking module: then nothing about the destination is read, so the utility is the one
+	 * of version 1. The global car.constantParkingSearchPenalty_min stays 0, so the zone column is the only source of
+	 * search time (ParkingSearchTimeCheck stops a run with both at the controller start). The term depends on the
+	 * destination activity only (the person names the owner of a failing attribute in the message and nothing else) and
+	 * lives here, not in a predictor: the cached car variables are not involved.
+	 */
+	protected double estimateParkingSearchTimeUtility(Person person, Activity destination) {
+		double factor = searchTime.factor();
+		if (factor == 0.0) {
+			return 0.0;
+		}
+		return parameters.car.betaTravelTime_u_min * factor * searchTime.minutes(person, destination);
+	}
+
 	@Override
 	public double estimateUtility(Person person, DiscreteModeChoiceTrip trip, List<? extends PlanElement> elements) {
 		CarVariables variables = predictor.predictVariables(person, trip, elements);
@@ -60,6 +86,7 @@ public class BraunschweigCarUtilityEstimator extends CarUtilityEstimator {
 		utility += estimateTravelTimeUtility(variables);
 		utility += estimateAccessEgressTimeUtility(variables);
 		utility += estimateMonetaryCostUtility(variables, personVariables);
+		utility += estimateParkingSearchTimeUtility(person, trip.getDestinationActivity());
 
 		if (isParis(trip)) {
 			utility += parameters.munich.car_u;

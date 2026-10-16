@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigModeParameters;
 import org.eqasim.braunschweig.mode_choice.utilities.variables.BraunschweigPersonVariables;
 import org.eqasim.braunschweig.mode_choice.utilities.variables.BraunschweigPtVariables;
+import org.eqasim.braunschweig.parking.ParkingSearchTime;
 import org.eqasim.core.simulation.mode_choice.utilities.variables.CarVariables;
 import org.junit.Test;
 
@@ -35,7 +36,8 @@ public class BraunschweigIncomeUtilityTest {
 	@Test
 	public void carLowerIncomeHasMoreNegativeCostUtility() {
 		BraunschweigModeParameters parameters = BraunschweigModeParameters.buildDefault();
-		BraunschweigCarUtilityEstimator estimator = new BraunschweigCarUtilityEstimator(parameters, null, null);
+		BraunschweigCarUtilityEstimator estimator = new BraunschweigCarUtilityEstimator(parameters, null, null,
+				ParkingSearchTime.none());
 
 		CarVariables variables = carTrip();
 		double lowIncomeUtility = estimator.estimateMonetaryCostUtility(variables, person(1500.0));
@@ -66,7 +68,8 @@ public class BraunschweigIncomeUtilityTest {
 	@Test
 	public void missingIncomeFallsBackToReferenceIncomeNeutralFactor() {
 		BraunschweigModeParameters parameters = BraunschweigModeParameters.buildDefault();
-		BraunschweigCarUtilityEstimator estimator = new BraunschweigCarUtilityEstimator(parameters, null, null);
+		BraunschweigCarUtilityEstimator estimator = new BraunschweigCarUtilityEstimator(parameters, null, null,
+				ParkingSearchTime.none());
 
 		CarVariables variables = carTrip();
 		// A missing income (NaN sentinel) must behave exactly like a person AT the
@@ -82,7 +85,8 @@ public class BraunschweigIncomeUtilityTest {
 	@Test
 	public void referenceIncomeYieldsNeutralIncomeFactor() {
 		BraunschweigModeParameters parameters = BraunschweigModeParameters.buildDefault();
-		BraunschweigCarUtilityEstimator estimator = new BraunschweigCarUtilityEstimator(parameters, null, null);
+		BraunschweigCarUtilityEstimator estimator = new BraunschweigCarUtilityEstimator(parameters, null, null,
+				ParkingSearchTime.none());
 
 		CarVariables variables = carTrip();
 		// At the reference income the income interaction is (1)^lambda = 1, so the
