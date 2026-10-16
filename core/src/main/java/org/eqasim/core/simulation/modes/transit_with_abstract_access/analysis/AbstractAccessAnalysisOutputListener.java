@@ -2,6 +2,7 @@ package org.eqasim.core.simulation.modes.transit_with_abstract_access.analysis;
 
 import com.google.inject.Inject;
 import org.eqasim.core.components.config.EqasimConfigGroup;
+import org.eqasim.core.simulation.analysis.AnalysisOutputFileCopier;
 import org.matsim.core.controler.OutputDirectoryHierarchy;
 import org.matsim.core.controler.events.IterationEndsEvent;
 import org.matsim.core.controler.events.IterationStartsEvent;
@@ -12,10 +13,12 @@ import org.matsim.core.controler.listener.ShutdownListener;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 
 public class AbstractAccessAnalysisOutputListener implements IterationStartsListener, IterationEndsListener, ShutdownListener {
-    private final static String ABSTRACT_ACCESS_LEGS_FILE_NAME = "eqasim_abstract_access_legs.csv";
+    /** File name of the abstract access legs table in the output root. */
+    public static final String ABSTRACT_ACCESS_LEGS_FILE_NAME = "eqasim_abstract_access_legs.csv";
+    /** Per-iteration abstract access legs file; must not end with "legs.csv" (MATSim matchInput suffix collision, see AnalysisOutputListener.ITERATION_TRIPS_FILE_NAME). */
+    public static final String ITERATION_ABSTRACT_ACCESS_LEGS_FILE_NAME = "eqasim_abstract_access_legs_iteration.csv";
 
     private final OutputDirectoryHierarchy outputDirectoryHierarchy;
 
@@ -50,7 +53,7 @@ public class AbstractAccessAnalysisOutputListener implements IterationStartsList
             event.getServices().getEvents().removeHandler(this.abstractAccessLegListener);
             try {
                 new AbstractAccessLegWriter(this.abstractAccessLegListener.getAbstractAccessLegItems(), ";")
-                        .write(outputDirectoryHierarchy.getIterationFilename(event.getIteration(), ABSTRACT_ACCESS_LEGS_FILE_NAME));
+                        .write(outputDirectoryHierarchy.getIterationFilename(event.getIteration(), ITERATION_ABSTRACT_ACCESS_LEGS_FILE_NAME));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -60,11 +63,8 @@ public class AbstractAccessAnalysisOutputListener implements IterationStartsList
 
     @Override
     public void notifyShutdown(ShutdownEvent event) {
-        try {
-            Files.copy(new File(this.outputDirectoryHierarchy.getIterationFilename(event.getIteration(), ABSTRACT_ACCESS_LEGS_FILE_NAME)).toPath(),
-                    new File(outputDirectoryHierarchy.getOutputFilename(ABSTRACT_ACCESS_LEGS_FILE_NAME)).toPath());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        AnalysisOutputFileCopier.copyToOutputRoot(
+                new File(this.outputDirectoryHierarchy.getIterationFilename(event.getIteration(), ITERATION_ABSTRACT_ACCESS_LEGS_FILE_NAME)),
+                new File(outputDirectoryHierarchy.getOutputFilename(ABSTRACT_ACCESS_LEGS_FILE_NAME)));
     }
 }

@@ -2,6 +2,7 @@ package org.eqasim.core.simulation.modes.drt.analysis;
 
 import com.google.inject.Singleton;
 import org.eqasim.core.components.config.EqasimConfigGroup;
+import org.eqasim.core.simulation.analysis.AnalysisOutputFileCopier;
 import org.eqasim.core.simulation.modes.drt.analysis.dvrp_vehicles.VehicleAnalysisListener;
 import org.eqasim.core.simulation.modes.drt.analysis.dvrp_vehicles.VehicleAnalysisWriter;
 import org.eqasim.core.simulation.modes.drt.analysis.passengers.PassengerAnalysisListener;
@@ -21,14 +22,16 @@ import org.matsim.core.controler.listener.ShutdownListener;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.stream.Collectors;
 
 @Singleton
 public class DrtAnalysisListener implements IterationStartsListener, IterationEndsListener, ShutdownListener {
 	private static final String PASSENGER_RIDES_FILE_NAME = "eqasim_drt_passenger_rides.csv";
 	private static final String VEHICLE_MOVEMENTS_FILE_NAME = "eqasim_drt_vehicle_movements.csv";
-	private static final String VEHICLE_ACTIVITIES_FILE_NAME = "eqasim_drt_vehicle_activities.csv";
+	/** File name of the DRT vehicle activities table in the output root. */
+	public static final String VEHICLE_ACTIVITIES_FILE_NAME = "eqasim_drt_vehicle_activities.csv";
+	/** Per-iteration DRT vehicle activities file; must not end with "activities.csv" (MATSim matchInput suffix collision, see AnalysisOutputListener.ITERATION_TRIPS_FILE_NAME). */
+	public static final String ITERATION_VEHICLE_ACTIVITIES_FILE_NAME = "eqasim_drt_vehicle_activities_iteration.csv";
 
 	private final OutputDirectoryHierarchy outputDirectory;
 
@@ -80,7 +83,7 @@ public class DrtAnalysisListener implements IterationStartsListener, IterationEn
 				new VehicleAnalysisWriter(vehicleAnalysisListener).writeMovements(new File(movementsPath));
 
 				String activitiesPath = outputDirectory.getIterationFilename(event.getIteration(),
-						VEHICLE_ACTIVITIES_FILE_NAME);
+						ITERATION_VEHICLE_ACTIVITIES_FILE_NAME);
 				new VehicleAnalysisWriter(vehicleAnalysisListener).writeActivities(new File(activitiesPath));
 			}
 		} catch (IOException e) {
@@ -90,31 +93,14 @@ public class DrtAnalysisListener implements IterationStartsListener, IterationEn
 
 	@Override
 	public void notifyShutdown(ShutdownEvent event) {
-		try {
-			File iterationPath = new File(
-					outputDirectory.getIterationFilename(event.getIteration(), PASSENGER_RIDES_FILE_NAME));
-			File outputPath = new File(outputDirectory.getOutputFilename(PASSENGER_RIDES_FILE_NAME));
-			Files.copy(iterationPath.toPath(), outputPath.toPath());
-		} catch (IOException exception) {
-			throw new RuntimeException(exception);
-		}
+		copyIterationFileToOutputRoot(event.getIteration(), PASSENGER_RIDES_FILE_NAME, PASSENGER_RIDES_FILE_NAME);
+		copyIterationFileToOutputRoot(event.getIteration(), VEHICLE_MOVEMENTS_FILE_NAME, VEHICLE_MOVEMENTS_FILE_NAME);
+		copyIterationFileToOutputRoot(event.getIteration(), ITERATION_VEHICLE_ACTIVITIES_FILE_NAME,
+				VEHICLE_ACTIVITIES_FILE_NAME);
+	}
 
-		try {
-			File iterationPath = new File(
-					outputDirectory.getIterationFilename(event.getIteration(), VEHICLE_MOVEMENTS_FILE_NAME));
-			File outputPath = new File(outputDirectory.getOutputFilename(VEHICLE_MOVEMENTS_FILE_NAME));
-			Files.copy(iterationPath.toPath(), outputPath.toPath());
-		} catch (IOException exception) {
-			throw new RuntimeException(exception);
-		}
-
-		try {
-			File iterationPath = new File(
-					outputDirectory.getIterationFilename(event.getIteration(), VEHICLE_ACTIVITIES_FILE_NAME));
-			File outputPath = new File(outputDirectory.getOutputFilename(VEHICLE_ACTIVITIES_FILE_NAME));
-			Files.copy(iterationPath.toPath(), outputPath.toPath());
-		} catch (IOException exception) {
-			throw new RuntimeException(exception);
-		}
+	private void copyIterationFileToOutputRoot(int iteration, String iterationFileName, String outputFileName) {
+		AnalysisOutputFileCopier.copyToOutputRoot(new File(outputDirectory.getIterationFilename(iteration, iterationFileName)),
+				new File(outputDirectory.getOutputFilename(outputFileName)));
 	}
 }
