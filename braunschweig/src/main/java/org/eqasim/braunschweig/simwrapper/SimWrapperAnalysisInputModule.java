@@ -11,5 +11,6 @@ public class SimWrapperAnalysisInputModule extends AbstractModule {
 	@Override
 	public void install() {
 		addControllerListenerBinding().to(SimWrapperHouseholdsInputLinker.class);
+		addControllerListenerBinding().to(SimWrapperNetworkAttributeSanitizer.class);
 	}
 }
