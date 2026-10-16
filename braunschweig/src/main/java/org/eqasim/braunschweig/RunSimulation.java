@@ -3,6 +3,7 @@ package org.eqasim.braunschweig;
 import java.util.Collections;
 import java.util.Set;
 
+import org.eqasim.braunschweig.simwrapper.SimWrapperAnalysisInputModule;
 import org.eqasim.core.scenario.validation.VehiclesValidator;
 import org.eqasim.core.simulation.vdf.VDFConfigGroup;
 import org.eqasim.core.simulation.vdf.engine.VDFEngineConfigGroup;
@@ -67,6 +68,9 @@ public class RunSimulation {
 		// pipeline via --simwrapper true (config key: simwrapper_dashboards).
 		if (cmd.getOption("simwrapper").map(Boolean::parseBoolean).orElse(false)) {
 			controller.addOverridingModule(new SimWrapperModule());
+			// MATSim's SimWrapper analyses resolve run inputs against the output directory; see the module for the
+			// households input that PublicTransitAnalysis does not re-point to the MATSim output file.
+			controller.addOverridingModule(new SimWrapperAnalysisInputModule());
 		}
 
 		// Terminate explicitly on BOTH paths. MATSim's SimWrapper dashboard generation
