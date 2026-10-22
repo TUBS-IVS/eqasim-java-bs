@@ -4,17 +4,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
-import org.eqasim.core.misc.ParallelProgress;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eqasim.core.misc.ParallelProgress;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.Population;
@@ -103,7 +104,7 @@ public class PopulationRouter {
 
 	/** Sums the per-mode counts of several routers, as selected by the accessor. */
 	static Map<String, Integer> sumCounts(Iterable<PlanRouter> routers,
-			java.util.function.Function<PlanRouter, Map<String, Integer>> accessor) {
+			Function<PlanRouter, Map<String, Integer>> accessor) {
 		Map<String, Integer> sum = new TreeMap<>();
 		for (PlanRouter router : routers) {
 			accessor.apply(router).forEach((mode, count) -> sum.merge(mode, count, Integer::sum));
