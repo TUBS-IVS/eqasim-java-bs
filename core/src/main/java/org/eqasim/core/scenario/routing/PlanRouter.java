@@ -1,6 +1,9 @@
 package org.eqasim.core.scenario.routing;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.matsim.api.core.v01.TransportMode;
@@ -22,6 +25,17 @@ import com.google.inject.Inject;
 public class PlanRouter {
 	private final ActivityFacilities facilities;
 	private final TripRouter tripRouter;
+
+	/**
+	 * Leg attribute set on every leg of a trip that was replaced by a plain walk
+	 * because the routed trip of the given main mode contained only walk legs. The
+	 * value is the original main mode (e.g. "pt").
+	 */
+	public static final String WALK_FALLBACK_ATTRIBUTE = "walkFallbackFrom";
+
+	// Not thread-safe by design: one PlanRouter instance is used by one thread.
+	private final Map<String, Integer> walkFallbackCounts = new HashMap<>();
+	private final Map<String, Integer> routedTripCounts = new HashMap<>();
 
 	@Inject
 	public PlanRouter(ActivityFacilities facilities, TripRouter tripRouter) {
@@ -58,6 +72,8 @@ public class PlanRouter {
 					List<? extends PlanElement> newElements = tripRouter.calcRoute(mainMode, fromFacility, toFacility,
 							departureTime.seconds(), plan.getPerson(), trip.getTripAttributes());
 
+					routedTripCounts.merge(mainMode, 1, Integer::sum);
+
 					// Fix in case we have a transit trip that is only walk
 					newElements = fixOnlyWalk(mainMode, fromFacility, toFacility, departureTime.seconds(),
 							plan.getPerson(), newElements, trip.getTripAttributes());
@@ -82,7 +98,26 @@ public class PlanRouter {
 			}
 		}
 
-		// We have only walk legs
-		return tripRouter.calcRoute(TransportMode.walk, fromFacility, toFacility, departureTime, person, attributes);
+		// We have only walk legs: replace by a plain walk, but make it observable
+		walkFallbackCounts.merge(mainMode, 1, Integer::sum);
+
+		List<? extends PlanElement> replacement = tripRouter.calcRoute(TransportMode.walk, fromFacility, toFacility,
+				departureTime, person, attributes);
+
+		for (Leg leg : TripStructureUtils.getLegs(replacement)) {
+			leg.getAttributes().putAttribute(WALK_FALLBACK_ATTRIBUTE, mainMode);
+		}
+
+		return replacement;
+	}
+
+	/** Trips replaced by a plain walk so far, per original main mode. */
+	public Map<String, Integer> getWalkFallbackCounts() {
+		return Collections.unmodifiableMap(walkFallbackCounts);
+	}
+
+	/** Trips routed so far (including replaced ones), per original main mode. */
+	public Map<String, Integer> getRoutedTripCounts() {
+		return Collections.unmodifiableMap(routedTripCounts);
 	}
 }
