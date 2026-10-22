@@ -1,5 +1,7 @@
 package org.eqasim.core.scenario.routing;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.Assert;
@@ -30,8 +32,6 @@ import org.matsim.pt.transitSchedule.api.TransitRouteStop;
 import org.matsim.pt.transitSchedule.api.TransitSchedule;
 import org.matsim.pt.transitSchedule.api.TransitScheduleFactory;
 import org.matsim.pt.transitSchedule.api.TransitStopFacility;
-
-import java.util.List;
 
 /**
  * Verifies that the plan router counts and marks pt trips that it replaces by
@@ -137,5 +137,42 @@ public class PlanRouterWalkFallbackTest {
 			Assert.assertNull(leg.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
 		}
 		Assert.assertNull(router.getWalkFallbackCounts().get("walk"));
+	}
+
+	@Test
+	public void existingRoutesAreNotReroutedAndNotCounted() {
+		buildScenario();
+		// Unserved departure: would be a walk fallback if it were routed
+		Plan plan = createPlan("pt", 20.0 * 3600.0);
+		for (Leg leg : TripStructureUtils.getLegs(plan)) {
+			leg.setRoute(RouteUtils.createGenericRouteImpl(Id.createLinkId("l1"), Id.createLinkId("l1")));
+		}
+		router.run(plan, false, Set.of());
+		Assert.assertTrue(router.getRoutedTripCounts().isEmpty());
+		Assert.assertTrue(router.getWalkFallbackCounts().isEmpty());
+		for (Leg leg : TripStructureUtils.getLegs(plan)) {
+			Assert.assertEquals("pt", leg.getMode());
+			Assert.assertNull(leg.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+		}
+	}
+
+	@Test
+	public void countsOfTwoRoutersAreSummedPerMode() {
+		buildScenario();
+		TripRouter tripRouter = new TripRouterFactoryBuilderWithDefaults().build(scenario).get();
+		PlanRouter second = new PlanRouter(scenario.getActivityFacilities(), tripRouter);
+		router.run(createPlan("pt", 20.0 * 3600.0), true, Set.of());
+		router.run(createPlan("pt", 7.0 * 3600.0 + 3000.0), true, Set.of());
+		second.run(createPlan("pt", 21.0 * 3600.0), true, Set.of());
+		second.run(createPlan("walk", 9.0 * 3600.0), true, Set.of());
+
+		Map<String, Integer> routed = PopulationRouter.sumCounts(List.of(router, second),
+				PlanRouter::getRoutedTripCounts);
+		Map<String, Integer> fallback = PopulationRouter.sumCounts(List.of(router, second),
+				PlanRouter::getWalkFallbackCounts);
+		Assert.assertEquals(3, (int) routed.get("pt"));
+		Assert.assertEquals(1, (int) routed.get("walk"));
+		Assert.assertEquals(2, (int) fallback.get("pt"));
+		Assert.assertNull(fallback.get("walk"));
 	}
 }

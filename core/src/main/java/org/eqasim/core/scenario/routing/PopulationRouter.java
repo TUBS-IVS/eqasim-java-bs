@@ -2,10 +2,11 @@ package org.eqasim.core.scenario.routing;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -100,21 +101,26 @@ public class PopulationRouter {
 		}
 	}
 
+	/** Sums the per-mode counts of several routers, as selected by the accessor. */
+	static Map<String, Integer> sumCounts(Iterable<PlanRouter> routers,
+			java.util.function.Function<PlanRouter, Map<String, Integer>> accessor) {
+		Map<String, Integer> sum = new TreeMap<>();
+		for (PlanRouter router : routers) {
+			accessor.apply(router).forEach((mode, count) -> sum.merge(mode, count, Integer::sum));
+		}
+		return sum;
+	}
+
 	/** Logs, per main mode, how many routed trips were replaced by a plain walk. */
 	private static void logWalkFallback(Iterable<PlanRouter> routers) {
-		Map<String, Integer> routed = new TreeMap<>();
-		Map<String, Integer> fallback = new TreeMap<>();
-
-		for (PlanRouter router : routers) {
-			router.getRoutedTripCounts().forEach((mode, count) -> routed.merge(mode, count, Integer::sum));
-			router.getWalkFallbackCounts().forEach((mode, count) -> fallback.merge(mode, count, Integer::sum));
-		}
+		Map<String, Integer> routed = sumCounts(routers, PlanRouter::getRoutedTripCounts);
+		Map<String, Integer> fallback = sumCounts(routers, PlanRouter::getWalkFallbackCounts);
 
 		for (Map.Entry<String, Integer> entry : routed.entrySet()) {
 			int total = entry.getValue();
 			int replaced = fallback.getOrDefault(entry.getKey(), 0);
-			logger.info(String.format("[PlanRouter] walk fallback: %s %d/%d (%.1f %%)", entry.getKey(), replaced,
-					total, total == 0 ? 0.0 : 100.0 * replaced / total));
+			logger.info(String.format(Locale.ROOT, "[PlanRouter] walk fallback: %s %d/%d (%.1f %%)", entry.getKey(),
+					replaced, total, total == 0 ? 0.0 : 100.0 * replaced / total));
 		}
 	}
 }
