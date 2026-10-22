@@ -205,6 +205,10 @@ public class BatchPublicTransportRouter {
 									legInformation.lineId = transitLine.getId().toString();
 									legInformation.routeId = transitRoute.getId().toString();
 									legInformation.vehicleId = departure.getVehicleId().toString();
+									legInformation.accessStopId = route.getAccessStopId() == null ? ""
+											: route.getAccessStopId().toString();
+									legInformation.egressStopId = route.getEgressStopId() == null ? ""
+											: route.getEgressStopId().toString();
 									legInformation.accessTime = route.getBoardingTime().seconds();
 									legInformation.egressTime = leg.getDepartureTime().seconds()
 											+ leg.getTravelTime().seconds();
@@ -391,5 +395,12 @@ public class BatchPublicTransportRouter {
 
 		@JsonProperty("egress_time")
 		public double egressTime;
+
+		// Stop facility ids of the pt leg (empty only if the route carries no stop id; walk legs write no row)
+		@JsonProperty("access_stop_id")
+		public String accessStopId = "";
+
+		@JsonProperty("egress_stop_id")
+		public String egressStopId = "";
 	}
 }
