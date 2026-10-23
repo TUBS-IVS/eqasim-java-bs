@@ -33,6 +33,7 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 	private final static String USE_SCHEDULE_BASED_TRANSPORT = "useScheduleBasedTransport";
 	private final static String TRANSIT_BOARDING_TOLERANCE = "transitBoardingTolerance";
 	private final static String TRANSIT_LINE_FALLBACK = "transitLineFallback";
+	private final static String TRANSIT_STOP_PAIR_FALLBACK = "transitStopPairFallback";
 
 	private final static String USE_PSEUDO_RANDOM_ERRORS = "usePseudoRandomErrors";
 
@@ -56,6 +57,7 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 	// eqasim-bs#465: see the comments of the parameters
 	private double transitBoardingTolerance = 1.0;
 	private boolean transitLineFallback = true;
+	private boolean transitStopPairFallback = true;
 
 	private boolean usePseudoRandomErrors = false;
 
@@ -78,6 +80,11 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 				"Schedule-based transit: whether a passenger whose planned route has no departure left boards the "
 						+ "earliest departure of another route of the same line serving the access and then the egress "
 						+ "stop (true) or is stuck (false).");
+		map.put(TRANSIT_STOP_PAIR_FALLBACK,
+				"Schedule-based transit (eqasim-bs ADR-0161): whether a passenger who missed the planned departure "
+						+ "boards the vehicle of ANY line serving the access and then the egress stop that arrives "
+						+ "there first (true; replaces the line fallback for missed departures) or keeps the planned "
+						+ "route and line fallback only (false). Passengers on time board as planned either way.");
 
 		return map;
 	}
@@ -105,6 +112,16 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 	@StringSetter(TRANSIT_LINE_FALLBACK)
 	public void setTransitLineFallback(boolean transitLineFallback) {
 		this.transitLineFallback = transitLineFallback;
+	}
+
+	@StringGetter(TRANSIT_STOP_PAIR_FALLBACK)
+	public boolean getTransitStopPairFallback() {
+		return transitStopPairFallback;
+	}
+
+	@StringSetter(TRANSIT_STOP_PAIR_FALLBACK)
+	public void setTransitStopPairFallback(boolean transitStopPairFallback) {
+		this.transitStopPairFallback = transitStopPairFallback;
 	}
 
 	@StringGetter(CROSSING_PENALTY)
