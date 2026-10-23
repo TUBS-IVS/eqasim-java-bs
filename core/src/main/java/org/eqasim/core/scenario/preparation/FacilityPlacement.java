@@ -5,6 +5,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.eqasim.core.misc.ParallelProgress;
 import org.eqasim.core.scenario.cutter.network.RoadNetwork;
 import org.matsim.api.core.v01.network.Link;
@@ -14,20 +16,56 @@ import org.matsim.facilities.ActivityFacilities;
 import org.matsim.facilities.ActivityFacility;
 import org.matsim.facilities.ActivityFacilityImpl;
 
+/**
+ * Attaches every facility to a link of the road (car) network.
+ *
+ * <p>
+ * A facility whose input file already carries a link keeps it (TUBS-IVS/eqasim-bs#465, ADR-0167): the regional
+ * pipeline pins the facilities at the cordon road gates to a motorway or trunk carriageway, which the
+ * {@link FacilityPlacementVoter} would never choose. A preset link must be a car link of the network, otherwise
+ * the placement fails before any facility is placed. Every other facility gets the closest link the voter accepts.
+ * The numbers of kept and placed facilities are logged.
+ * </p>
+ */
 public class FacilityPlacement {
+	private final static Logger logger = LogManager.getLogger(FacilityPlacement.class);
+
 	private final int numberOfThreads;
 	private final int batchSize;
+	private final RoadNetwork network;
 	private final QuadTree<Link> spatialIndex;
+
+	private int numberOfPresetLinks = 0;
+	private int numberOfPlacedFacilities = 0;
 
 	public FacilityPlacement(int numberOfThreads, int batchSize, RoadNetwork network, FacilityPlacementVoter voter) {
 		this.numberOfThreads = numberOfThreads;
 		this.batchSize = batchSize;
+		this.network = network;
 
 		this.spatialIndex = QuadTrees.createQuadTree(
 				network.getLinks().values().stream().filter(voter::canPlaceFacility).collect(Collectors.toList()));
 	}
 
 	public void run(ActivityFacilities facilities) throws InterruptedException {
+		// Validate the preset links before the worker threads start: an exception inside a worker would only end
+		// that thread and leave facilities without a link.
+		numberOfPresetLinks = 0;
+
+		for (ActivityFacility facility : facilities.getFacilities().values()) {
+			if (facility.getLinkId() != null) {
+				if (!network.getLinks().containsKey(facility.getLinkId())) {
+					throw new IllegalStateException(String.format(
+							"Facility %s carries the preset link %s, which is not a car link of the network",
+							facility.getId(), facility.getLinkId()));
+				}
+
+				numberOfPresetLinks++;
+			}
+		}
+
+		numberOfPlacedFacilities = facilities.getFacilities().size() - numberOfPresetLinks;
+
 		Iterator<? extends ActivityFacility> facilityIterator = facilities.getFacilities().values().iterator();
 
 		List<Thread> threads = new LinkedList<>();
@@ -48,6 +86,18 @@ public class FacilityPlacement {
 		}
 
 		progress.close();
+
+		logger.info(String.format("Facility placement: %d of %d facilities kept their preset link, %d were placed"
+				+ " on the closest eligible link", numberOfPresetLinks, facilities.getFacilities().size(),
+				numberOfPlacedFacilities));
+	}
+
+	public int getNumberOfPresetLinks() {
+		return numberOfPresetLinks;
+	}
+
+	public int getNumberOfPlacedFacilities() {
+		return numberOfPlacedFacilities;
 	}
 
 	private class Worker implements Runnable {
@@ -73,6 +123,10 @@ public class FacilityPlacement {
 				}
 
 				for (ActivityFacility facility : localTasks) {
+					if (facility.getLinkId() != null) {
+						continue; // preset link, validated in run()
+					}
+
 					Link link = spatialIndex.getClosest(facility.getCoord().getX(), facility.getCoord().getY());
 					((ActivityFacilityImpl) facility).setLinkId(link.getId());
 				}
