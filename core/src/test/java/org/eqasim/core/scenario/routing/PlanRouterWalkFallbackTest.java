@@ -157,6 +157,28 @@ public class PlanRouterWalkFallbackTest {
 	}
 
 	@Test
+	public void stampOfAReroutedWalkFallbackTripIsKept() {
+		// A trip an earlier routing pass replaced by a walk, whose route was dropped
+		// afterwards (the scenario cutter rebuilds its legs): eqasim-bs#487
+		buildScenario();
+		Plan plan = createPlan(TransportMode.walk, 20.0 * 3600.0);
+		for (Leg leg : TripStructureUtils.getLegs(plan)) {
+			leg.getAttributes().putAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE, "pt");
+		}
+		router.run(plan, false, Set.of());
+
+		List<Leg> legs = TripStructureUtils.getLegs(plan);
+		Assert.assertFalse(legs.isEmpty());
+		for (Leg leg : legs) {
+			Assert.assertEquals(TransportMode.walk, leg.getMode());
+			Assert.assertEquals("pt", leg.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+		}
+		// Kept, not a new fallback of this pass
+		Assert.assertNull(router.getWalkFallbackCounts().get("pt"));
+		Assert.assertEquals(1, (int) router.getKeptWalkFallbackCounts().get("pt"));
+	}
+
+	@Test
 	public void countsOfTwoRoutersAreSummedPerMode() {
 		buildScenario();
 		TripRouter tripRouter = new TripRouterFactoryBuilderWithDefaults().build(scenario).get();
