@@ -130,7 +130,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python .github/scripts/claude_review.py post --result "$RUNNER_TEMP/claude-review-result.json" \
-            --repo "$REPO" --pr "$PR_NUMBER" --tier "$TIER" --sha "$HEAD_SHA" \n            --diff-file .claude/review-pr.diff
+            --repo "$REPO" --pr "$PR_NUMBER" --tier "$TIER" --sha "$HEAD_SHA" \
+            --diff-file .claude/review-pr.diff
       - name: Upload cost record
         if: always()
         uses: actions/upload-artifact@v4
