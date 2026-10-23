@@ -133,22 +133,22 @@ public class BatchPublicTransportRouter {
 						}
 
 						int currentIndex = 0;
+						List<LegRole> legRoles = classifyLegs(planElements);
 
 						for (PlanElement planElement : planElements) {
 							if(!(planElement instanceof Leg)) {
 								continue;
 							}
 							Leg leg = (Leg) planElement;
-							boolean isFirstLeg = currentIndex == 0;
-							boolean isLastLeg = currentIndex == planElements.size() - 1;
+							LegRole legRole = legRoles.get(currentIndex);
 
-							if (leg.getMode().contains("walk") && isFirstLeg) {
+							if (legRole == LegRole.ACCESS_WALK) {
 								tripInformation.accessTravelTime_min += leg.getTravelTime().seconds() / 60.0;
 								tripInformation.accessDistance_km += leg.getRoute().getDistance() * 1e-3;
-							} else if (leg.getMode().contains("walk") && isLastLeg) {
+							} else if (legRole == LegRole.EGRESS_WALK) {
 								tripInformation.egressTravelTime_min += leg.getTravelTime().seconds() / 60.0;
 								tripInformation.egressDistance_km += leg.getRoute().getDistance() * 1e-3;
-							} else if (leg.getMode().contains("walk")) {
+							} else if (legRole == LegRole.TRANSFER_WALK) {
 								tripInformation.transferTravelTime_min += leg.getTravelTime().seconds() / 60.0;
 								tripInformation.transferDistance_km += leg.getRoute().getDistance() * 1e-3;
 							} else if (leg.getRoute() instanceof TransitPassengerRoute) {
@@ -245,6 +245,47 @@ public class BatchPublicTransportRouter {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Role of a leg in a routed trip: walk legs are access, egress or transfer
+	 * walks, every other leg is a vehicle leg.
+	 */
+	enum LegRole {
+		ACCESS_WALK, EGRESS_WALK, TRANSFER_WALK, VEHICLE
+	}
+
+	/**
+	 * Classifies the legs of a routed trip, in the order of the legs. The first
+	 * and the last leg are found by their position among the LEGS: interaction
+	 * activities between the legs (for instance from intermodal access and egress)
+	 * must not shift the last leg, otherwise the egress walk would be booked as a
+	 * transfer walk. A single walk leg (a direct walk) is the access walk.
+	 */
+	static List<LegRole> classifyLegs(List<? extends PlanElement> planElements) {
+		List<Leg> legs = new ArrayList<>(planElements.size());
+
+		for (PlanElement planElement : planElements) {
+			if (planElement instanceof Leg) {
+				legs.add((Leg) planElement);
+			}
+		}
+
+		List<LegRole> roles = new ArrayList<>(legs.size());
+
+		for (int legIndex = 0; legIndex < legs.size(); legIndex++) {
+			if (!legs.get(legIndex).getMode().contains("walk")) {
+				roles.add(LegRole.VEHICLE);
+			} else if (legIndex == 0) {
+				roles.add(LegRole.ACCESS_WALK);
+			} else if (legIndex == legs.size() - 1) {
+				roles.add(LegRole.EGRESS_WALK);
+			} else {
+				roles.add(LegRole.TRANSFER_WALK);
+			}
+		}
+
+		return roles;
 	}
 
 	private static Departure findDeparture(TransitPassengerRoute passengerRoute, TransitRoute route) {
