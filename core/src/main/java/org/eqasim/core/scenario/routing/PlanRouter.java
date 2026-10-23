@@ -191,25 +191,19 @@ public class PlanRouter {
 	 * originally requested mode, so that routing the plan again tries that mode at
 	 * the plan's (possibly new) departure times instead of keeping the walk. Used
 	 * before the routed day-end shift re-routes a plan whose times it moved
-	 * (eqasim-bs ADR-0160).
+	 * (eqasim-bs ADR-0160). Only trips whose requested mode the next pass routes
+	 * ({@code modes} empty or containing it) are restored; the others keep their
+	 * routed walk, so no unrouted leg is left behind.
 	 *
 	 * @return the number of trips restored
 	 */
-	public static int restoreWalkFallbackModes(Plan plan) {
+	public static int restoreWalkFallbackModes(Plan plan, Set<String> modes) {
 		int restored = 0;
 
 		for (Trip trip : TripStructureUtils.getTrips(plan)) {
-			Object originalMode = null;
+			Object originalMode = walkFallbackMode(trip);
 
-			for (Leg leg : trip.getLegsOnly()) {
-				originalMode = leg.getAttributes().getAttribute(WALK_FALLBACK_ATTRIBUTE);
-
-				if (originalMode != null) {
-					break;
-				}
-			}
-
-			if (originalMode != null) {
+			if (originalMode != null && (modes.isEmpty() || modes.contains(originalMode.toString()))) {
 				Leg leg = PopulationUtils.createLeg(originalMode.toString());
 				TripStructureUtils.setRoutingMode(leg, originalMode.toString());
 				TripRouter.insertTrip(plan, trip.getOriginActivity(), List.of(leg), trip.getDestinationActivity());
@@ -218,6 +212,33 @@ public class PlanRouter {
 		}
 
 		return restored;
+	}
+
+	/** Trips of the plan that are stamped walk fallbacks of a mode that {@code modes} routes. */
+	public static int countWalkFallbackTrips(Plan plan, Set<String> modes) {
+		int count = 0;
+
+		for (Trip trip : TripStructureUtils.getTrips(plan)) {
+			Object originalMode = walkFallbackMode(trip);
+
+			if (originalMode != null && (modes.isEmpty() || modes.contains(originalMode.toString()))) {
+				count++;
+			}
+		}
+
+		return count;
+	}
+
+	private static Object walkFallbackMode(Trip trip) {
+		for (Leg leg : trip.getLegsOnly()) {
+			Object originalMode = leg.getAttributes().getAttribute(WALK_FALLBACK_ATTRIBUTE);
+
+			if (originalMode != null) {
+				return originalMode;
+			}
+		}
+
+		return null;
 	}
 
 	/** Trips replaced by a plain walk so far, per original main mode. */

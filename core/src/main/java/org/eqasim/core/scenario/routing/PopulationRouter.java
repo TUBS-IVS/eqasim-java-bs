@@ -106,8 +106,10 @@ public class PopulationRouter {
 								// is tried at the new departure times (eqasim-bs ADR-0160)
 								dayEndShift.apply(plan, () -> {
 									router.restoreCounts(beforeRouting);
-									PlanRouter.restoreWalkFallbackModes(plan);
+									int restored = PlanRouter.restoreWalkFallbackModes(plan, modes);
 									router.run(plan, true, modes);
+									dayEndShift.recordRestoredTrips(restored,
+											restored - PlanRouter.countWalkFallbackTrips(plan, modes));
 								});
 							}
 						}
@@ -149,10 +151,13 @@ public class PopulationRouter {
 		String message = String.format(Locale.ROOT,
 				"[PopulationRouter] day end: routed last arrival after %.2f h for %d of %d plans (%.2f %%); moved "
 						+ "earlier as a whole day and routed again: %d, mean shift %.0f s, max %d s; unresolved (no "
-						+ "room before 0 s, or still late after the re-routing): %d",
+						+ "room before 0 s, or still late after the re-routing): %d; walk-fallback trips of shifted "
+						+ "plans given their requested mode back: %d, of which routed by it after the shift: %d (the "
+						+ "shift is sized by the first-pass routes, so these plans may have moved more than needed)",
 				shift.getLatestLastArrival() / 3600.0, shift.getLatePlans(), total,
 				total == 0 ? 0.0 : 100.0 * shift.getLatePlans() / total, shift.getShiftedPlans(),
-				shift.getMeanShiftSeconds(), shift.getMaxShiftSeconds(), shift.getUnresolvedPlans());
+				shift.getMeanShiftSeconds(), shift.getMaxShiftSeconds(), shift.getUnresolvedPlans(),
+				shift.getRestoredTrips(), shift.getRecoveredTrips());
 
 		if (shift.getUnresolvedPlans() > 0) {
 			logger.warn(message);

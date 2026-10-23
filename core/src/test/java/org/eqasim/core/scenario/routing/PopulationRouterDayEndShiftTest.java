@@ -104,6 +104,9 @@ public class PopulationRouterDayEndShiftTest {
 
 		Assert.assertEquals(1, shift.getShiftedPlans());
 		Assert.assertEquals(0, shift.getUnresolvedPlans());
+		// the walk fallback of the first pass was given its mode back and routed by pt after the shift
+		Assert.assertEquals(1, shift.getRestoredTrips());
+		Assert.assertEquals(1, shift.getRecoveredTrips());
 		Assert.assertTrue(home.getEndTime().seconds() <= 8.0 * 3600.0);
 
 		// routed again as pt at the new departure time, not kept as the walk of the first pass
@@ -117,6 +120,31 @@ public class PopulationRouterDayEndShiftTest {
 		Assert.assertEquals(Integer.valueOf(1), router.getRoutedTripCounts().get("pt"));
 		Assert.assertNull(router.getWalkFallbackCounts().get("pt"));
 		Assert.assertTrue(router.getKeptWalkFallbackCounts().isEmpty());
+	}
+
+	@Test
+	public void walkFallbackOfAModeTheNextPassDoesNotRouteKeepsItsWalk() {
+		Scenario scenario = createScenario();
+		PopulationFactory factory = scenario.getPopulation().getFactory();
+		Plan plan = factory.createPlan();
+		Activity home = factory.createActivityFromCoord("home", new Coord(100.0, 0.0));
+		home.setEndTime(9.0 * 3600.0);
+		plan.addActivity(home);
+		plan.addLeg(factory.createLeg("pt"));
+		plan.addActivity(factory.createActivityFromCoord("work", new Coord(4900.0, 0.0)));
+		factory.createPerson(Id.createPersonId("p")).addPlan(plan);
+
+		TripRouter tripRouter = new TripRouterFactoryBuilderWithDefaults().build(scenario).get();
+		new PlanRouter(scenario.getActivityFacilities(), tripRouter).run(plan, true, Set.of());
+		Assert.assertEquals(1, PlanRouter.countWalkFallbackTrips(plan, Set.of()));
+
+		// a pass that routes car only would leave a bare pt leg: the trip keeps its routed walk
+		Assert.assertEquals(0, PlanRouter.restoreWalkFallbackModes(plan, Set.of(TransportMode.car)));
+		for (Leg leg : TripStructureUtils.getLegs(plan)) {
+			Assert.assertEquals(TransportMode.walk, leg.getMode());
+			Assert.assertNotNull(leg.getRoute());
+		}
+		Assert.assertEquals(1, PlanRouter.restoreWalkFallbackModes(plan, Set.of(TransportMode.pt)));
 	}
 
 	@Test(expected = IllegalStateException.class)

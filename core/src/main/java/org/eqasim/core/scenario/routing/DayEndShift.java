@@ -48,6 +48,8 @@ public class DayEndShift {
 	private final AtomicLong unresolvedPlans = new AtomicLong();
 	private final AtomicLong shiftSumSeconds = new AtomicLong();
 	private final AtomicLong shiftMaxSeconds = new AtomicLong();
+	private final AtomicLong restoredTrips = new AtomicLong();
+	private final AtomicLong recoveredTrips = new AtomicLong();
 
 	/**
 	 * @param latestLastArrival latest planned arrival (s after midnight of the
@@ -152,6 +154,26 @@ public class DayEndShift {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Records, for one re-routed plan, the walk-fallback trips given their
+	 * requested mode back before the re-routing and how many of them that mode
+	 * routed after the shift. The shift is sized by the FIRST-pass routes, so a
+	 * plan whose late walk fallback becomes, say, pt again may have moved more
+	 * than its new routes need; these counts make that visible.
+	 */
+	public void recordRestoredTrips(int restored, int recovered) {
+		restoredTrips.addAndGet(restored);
+		recoveredTrips.addAndGet(recovered);
+	}
+
+	public long getRestoredTrips() {
+		return restoredTrips.get();
+	}
+
+	public long getRecoveredTrips() {
+		return recoveredTrips.get();
 	}
 
 	public long getPlans() {
