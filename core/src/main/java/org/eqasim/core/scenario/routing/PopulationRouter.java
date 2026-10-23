@@ -30,14 +30,27 @@ public class PopulationRouter {
 	private final boolean replaceExistingRoutes;
 	private final Provider<PlanRouter> routerProvider;
 	private final Set<String> modes;
+	/** Routed day-end shift (eqasim-bs ADR-0160); null when off. */
+	private final DayEndShift dayEndShift;
 
 	public PopulationRouter(int numberOfThreads, int batchSize, boolean replaceExistingRoutes, Set<String> modes,
 			Provider<PlanRouter> routerProvider) {
+		this(numberOfThreads, batchSize, replaceExistingRoutes, modes, routerProvider, null);
+	}
+
+	/**
+	 * @param dayEndShift when not null, every routed plan whose last planned
+	 *                    arrival is later than its latest arrival moves earlier
+	 *                    as a whole and is routed again (eqasim-bs ADR-0160)
+	 */
+	public PopulationRouter(int numberOfThreads, int batchSize, boolean replaceExistingRoutes, Set<String> modes,
+			Provider<PlanRouter> routerProvider, DayEndShift dayEndShift) {
 		this.numberOfThreads = numberOfThreads;
 		this.batchSize = batchSize;
 		this.routerProvider = routerProvider;
 		this.replaceExistingRoutes = replaceExistingRoutes;
 		this.modes = modes;
+		this.dayEndShift = dayEndShift;
 	}
 
 	public void run(Population population) throws InterruptedException {
@@ -79,6 +92,11 @@ public class PopulationRouter {
 					for (Person p : chunk) {
 						for (Plan plan : p.getPlans()) {
 							router.run(plan, replaceExistingRoutes, modes);
+
+							if (dayEndShift != null) {
+								// the shifted plan is routed again with all its routes replaced
+								dayEndShift.apply(plan, () -> router.run(plan, true, modes));
+							}
 						}
 					}
 					progress.update(chunk.size());
@@ -97,8 +115,33 @@ public class PopulationRouter {
 
 		logWalkFallback(allRouters);
 
+		if (dayEndShift != null) {
+			logDayEndShift(dayEndShift);
+		}
+
 		if (errorOccurred.get()) {
 			throw new RuntimeException("Found errors in routing threads");
+		}
+	}
+
+	/**
+	 * Logs the routed day-end shift as rates; WARN when a plan could not move far
+	 * enough or still ends too late after its re-routing (eqasim-bs ADR-0160).
+	 */
+	private static void logDayEndShift(DayEndShift shift) {
+		long total = shift.getPlans();
+		String message = String.format(Locale.ROOT,
+				"[PopulationRouter] day end: routed last arrival after %.2f h for %d of %d plans (%.2f %%); moved "
+						+ "earlier as a whole day and routed again: %d, mean shift %.0f s, max %d s; unresolved (no "
+						+ "room before 0 s, or still late after the re-routing): %d",
+				shift.getLatestLastArrival() / 3600.0, shift.getLatePlans(), total,
+				total == 0 ? 0.0 : 100.0 * shift.getLatePlans() / total, shift.getShiftedPlans(),
+				shift.getMeanShiftSeconds(), shift.getMaxShiftSeconds(), shift.getUnresolvedPlans());
+
+		if (shift.getUnresolvedPlans() > 0) {
+			logger.warn(message);
+		} else {
+			logger.info(message);
 		}
 	}
 
