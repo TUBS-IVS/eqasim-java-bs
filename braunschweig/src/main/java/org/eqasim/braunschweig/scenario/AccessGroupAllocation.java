@@ -13,7 +13,7 @@ import org.matsim.api.core.v01.population.Person;
 
 /**
  * Splits the persons of a large site over its access groups in proportion to the groups' parking spaces (issue #465,
- * ADR-0165).
+ * ADR-0169).
  *
  * <p>
  * The counts per group follow the largest-remainder method: group g gets floor(n w_g / W) persons, and the

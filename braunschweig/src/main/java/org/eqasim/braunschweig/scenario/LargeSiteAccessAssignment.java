@@ -32,7 +32,7 @@ import org.matsim.facilities.ActivityFacilityImpl;
 import org.matsim.facilities.ActivityOption;
 
 /**
- * Road access of large sites (issue #465, ADR-0165).
+ * Road access of large sites (issue #465, ADR-0169).
  *
  * <p>
  * eqasim attaches every facility to its single nearest link whatever the link's capacity, so all car departures of a
@@ -54,7 +54,7 @@ import org.matsim.facilities.ActivityOption;
  * with most of its persons and gets a sub-facility {@code <id>__access_<n>} (same coordinate, copied activity options
  * and attributes, attribute {@link #PARENT_ATTRIBUTE}) for each other group; the persons' activities at the site take
  * their group's facility and link.</li>
- * <li><b>Out of scope, or in scope without a usable lot:</b> the single-link rule of ADR-0165, per site: kept when the
+ * <li><b>Out of scope, or in scope without a usable lot:</b> the single-link rule of ADR-0169, per site: kept when the
  * link of its facility with most activities has the minimum capacity ({@code ADEQUATE}); else every facility of the
  * site and every activity at it moves to the closest link of the minimum capacity within
  * {@link Parameters#singleLinkMaximumDistanceMeters()} ({@code MOVED}); else kept ({@code FALLBACK}). An adequate

@@ -33,7 +33,7 @@ import org.matsim.facilities.FacilitiesWriter;
 import org.matsim.facilities.MatsimFacilitiesReader;
 
 /**
- * Road access of large sites (issue #465, ADR-0165): runs {@link LargeSiteAccessAssignment} on the prepared network,
+ * Road access of large sites (issue #465, ADR-0169): runs {@link LargeSiteAccessAssignment} on the prepared network,
  * facilities and population, between eqasim's {@code RunPreparation} and the population routing.
  *
  * <p>

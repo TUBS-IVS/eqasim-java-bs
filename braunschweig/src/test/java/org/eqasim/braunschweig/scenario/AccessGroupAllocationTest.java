@@ -16,7 +16,7 @@ import org.matsim.api.core.v01.population.Person;
 
 /**
  * Persons of a site are split over its access groups in exact proportion to the groups' spaces, without a random
- * number generator, and the split must not depend on the order in which the population lists them (ADR-0165).
+ * number generator, and the split must not depend on the order in which the population lists them (ADR-0169).
  */
 public class AccessGroupAllocationTest {
 	private static List<Id<Person>> persons(int count) {

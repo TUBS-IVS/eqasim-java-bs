@@ -37,7 +37,7 @@ import org.matsim.facilities.ActivityOption;
 import org.matsim.facilities.FacilitiesUtils;
 
 /**
- * Pins the large-site access rule of ADR-0165 on a small layout: a site at (0, 0) on a 600 veh/h side street, lot A
+ * Pins the large-site access rule of ADR-0169 on a small layout: a site at (0, 0) on a 600 veh/h side street, lot A
  * 100 m north (300 spaces; a 600 veh/h lane 5 m away, a 1000 veh/h street 200 m away), lot B 200 m south (200
  * spaces; only a 600 veh/h street next to it), lot C 2000 m east (beyond the 1500 m radius), and a 1000 veh/h
  * secondary road 400 m west. Sample size 1 %, so 10 activities stand for 1000.

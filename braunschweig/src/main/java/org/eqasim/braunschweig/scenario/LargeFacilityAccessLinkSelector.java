@@ -13,7 +13,7 @@ import org.matsim.core.utils.collections.QuadTree;
 import org.matsim.core.utils.geometry.CoordUtils;
 
 /**
- * Chooses the access link of a large facility (issue #465, ADR-0165).
+ * Chooses the access link of a large facility (issue #465, ADR-0169).
  *
  * <p>
  * eqasim's {@code FacilityPlacement} attaches every facility to its single nearest car link that is not a

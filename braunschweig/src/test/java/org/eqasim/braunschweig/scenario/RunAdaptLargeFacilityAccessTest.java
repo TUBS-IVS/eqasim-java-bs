@@ -41,7 +41,7 @@ import org.matsim.facilities.FacilitiesWriter;
 import org.matsim.facilities.MatsimFacilitiesReader;
 
 /**
- * End-to-end check of {@link RunAdaptLargeFacilityAccess} (issue #465, ADR-0165): files in, files out, the two
+ * End-to-end check of {@link RunAdaptLargeFacilityAccess} (issue #465, ADR-0169): files in, files out, the two
  * summaries, and the bounds that stop a broken lots file or a broken network from passing silently.
  */
 public class RunAdaptLargeFacilityAccessTest {
