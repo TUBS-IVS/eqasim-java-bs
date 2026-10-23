@@ -4,7 +4,7 @@
         --branch feat/x [--labels a,b] [--draft] [--event-action labeled --event-label x]
     python .github/scripts/claude_review.py cost --execution-file <path> [--tier full] [--model m] [--json out.json]
 
-Copied unchanged in its logic from TUBS-IVS/eqasim-bs scripts/claude_review.py (commit 86d3f16e,
+Copied unchanged in its logic from TUBS-IVS/eqasim-bs scripts/claude_review.py (commit 8784a8f2,
 PR eqasim-bs#497), where its tests live (tests/test_claude_review.py). Change it there first and
 copy it here, so both repositories gate the same way.
 
@@ -163,6 +163,9 @@ def cost_summary(result: dict) -> dict:
         "duration_s": round(float(result.get("duration_ms", 0)) / 1000.0, 1),
         "is_error": bool(result.get("is_error", False)),
         "subtype": str(result.get("subtype", "unknown")),
+        # On a failed run the result text carries the error (e.g. the API's message), which the
+        # action itself hides in its log; keep it so the failure is diagnosable.
+        "error_text": str(result.get("result", ""))[:1000] if result.get("is_error") else "",
         "model_usage": result.get("modelUsage", {}),
     }
 
@@ -204,7 +207,11 @@ def _cmd_cost(args) -> int:
         return 1
     summary.update({"tier": args.tier, "model": args.model})
     # A run cut off by --max-turns or an API error still costs money but is not a complete review.
-    status = summary["subtype"] if summary["is_error"] or summary["subtype"] != "success" else "complete"
+    # The SDK can report subtype "success" together with is_error (an API error on the first call).
+    if summary["is_error"]:
+        status = "error" if summary["subtype"] == "success" else summary["subtype"]
+    else:
+        status = "complete" if summary["subtype"] == "success" else summary["subtype"]
     line = (f"[claude-review] {status}: cost ${summary['total_cost_usd']:.4f} USD, tier {args.tier or '-'}, "
             f"model {args.model or '-'}, {summary['num_turns']} turns, {summary['duration_s']} s, "
             f"tokens in {summary['input_tokens']} / out {summary['output_tokens']} / "
@@ -212,13 +219,17 @@ def _cmd_cost(args) -> int:
     print(line)
     if status != "complete":
         print(f"::warning::Claude review did not complete ({status}); the cost is real, the review is partial.")
+    if summary["error_text"]:
+        # One line, so the workflow command is not cut at the first newline.
+        print(f"::error::Claude run error: {' '.join(summary['error_text'].split())}")
     _append("GITHUB_STEP_SUMMARY",
             "### Claude review cost\n\n| Status | Cost (USD) | Tier | Model | Turns | Duration (s) | Input | Output "
             "| Cache write | Cache read |\n|---|---|---|---|---|---|---|---|---|---|\n"
             f"| {status} | {summary['total_cost_usd']:.4f} | {args.tier or '-'} | {args.model or '-'} | {summary['num_turns']} "
             f"| {summary['duration_s']} | {summary['input_tokens']} | {summary['output_tokens']} "
             f"| {summary['cache_creation_input_tokens']} | {summary['cache_read_input_tokens']} |\n\n"
-            "Source: the `result` record of the Claude Code execution file (as reported by the API).\n")
+            "Source: the `result` record of the Claude Code execution file (as reported by the API).\n"
+            + (f"\n**Run error:** `{' '.join(summary['error_text'].split())}`\n" if summary["error_text"] else ""))
     if args.json_out:
         Path(args.json_out).write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return 0
