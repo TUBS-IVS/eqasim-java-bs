@@ -2,6 +2,7 @@ package org.eqasim.core.components.transit;
 
 import org.eqasim.core.components.config.EqasimConfigGroup;
 import org.eqasim.core.components.transit.departure.DepartureFinder;
+import org.eqasim.core.components.transit.departure.TransitBoardingFinder;
 import org.matsim.core.api.experimental.events.EventsManager;
 import org.matsim.core.config.Config;
 import org.matsim.core.mobsim.qsim.AbstractQSimModule;
@@ -26,8 +27,10 @@ public class EqasimTransitQSimModule extends AbstractQSimModule {
 	@Provides
 	@Singleton
 	public EqasimTransitEngine provideBaselineTransitEngine(EventsManager eventsManager,
-			TransitSchedule transitSchedule, DepartureFinder departureFinder, QSim qsim) {
-		return new EqasimTransitEngine(eventsManager, transitSchedule, departureFinder, qsim.getAgentCounter());
+			TransitSchedule transitSchedule, DepartureFinder departureFinder, QSim qsim, EqasimConfigGroup eqasimConfig) {
+		TransitBoardingFinder boardingFinder = new TransitBoardingFinder(departureFinder,
+				eqasimConfig.getTransitBoardingTolerance(), eqasimConfig.getTransitLineFallback());
+		return new EqasimTransitEngine(eventsManager, transitSchedule, boardingFinder, qsim.getAgentCounter());
 	}
 
 	static public void configure(QSimComponentsConfig components, Config config) {
