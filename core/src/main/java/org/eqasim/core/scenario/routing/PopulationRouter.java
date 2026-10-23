@@ -112,16 +112,27 @@ public class PopulationRouter {
 		return sum;
 	}
 
-	/** Logs, per main mode, how many routed trips were replaced by a plain walk. */
+	/**
+	 * Logs, per main mode, how many routed trips were replaced by a plain walk,
+	 * and, per stamped mode, how many re-routed walk trips kept the stamp of an
+	 * earlier routing pass (eqasim-bs#487).
+	 */
 	private static void logWalkFallback(Iterable<PlanRouter> routers) {
 		Map<String, Integer> routed = sumCounts(routers, PlanRouter::getRoutedTripCounts);
 		Map<String, Integer> fallback = sumCounts(routers, PlanRouter::getWalkFallbackCounts);
+		Map<String, Integer> kept = sumCounts(routers, PlanRouter::getKeptWalkFallbackCounts);
 
 		for (Map.Entry<String, Integer> entry : routed.entrySet()) {
 			int total = entry.getValue();
 			int replaced = fallback.getOrDefault(entry.getKey(), 0);
 			logger.info(String.format(Locale.ROOT, "[PlanRouter] walk fallback: %s %d/%d (%.1f %%)", entry.getKey(),
 					replaced, total, total == 0 ? 0.0 : 100.0 * replaced / total));
+		}
+
+		for (Map.Entry<String, Integer> entry : kept.entrySet()) {
+			logger.info(String.format(Locale.ROOT,
+					"[PlanRouter] walk fallback of an earlier routing pass kept: %s %d re-routed walk trips",
+					entry.getKey(), entry.getValue()));
 		}
 	}
 }

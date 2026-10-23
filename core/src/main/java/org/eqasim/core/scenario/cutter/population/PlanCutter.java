@@ -6,8 +6,10 @@ import java.util.List;
 import org.eqasim.core.misc.Constants;
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.eqasim.core.scenario.cutter.population.trips.TripProcessor;
+import org.eqasim.core.scenario.routing.PlanRouter;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.population.Activity;
+import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.PlanElement;
 import org.matsim.core.population.PopulationUtils;
@@ -47,6 +49,34 @@ public class PlanCutter {
 		}
 	}
 
+	/**
+	 * The trip processors build the cut trip from fresh legs, which carry no
+	 * attributes. A trip the plan router had replaced by a walk carries the
+	 * walk-fallback stamp; without this copy the final routing re-routes it as a
+	 * plain walk and the stamp, i.e. the information that the trip was requested
+	 * as pt, is lost for the plan check (eqasim-bs#487). Outside legs are not
+	 * simulated as walks and stay unstamped.
+	 */
+	static void keepWalkFallbackStamp(List<Leg> originalLegs, List<PlanElement> processed) {
+		Object walkFallbackFrom = null;
+
+		for (Leg leg : originalLegs) {
+			walkFallbackFrom = leg.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE);
+
+			if (walkFallbackFrom != null) {
+				break;
+			}
+		}
+
+		if (walkFallbackFrom != null) {
+			for (PlanElement element : processed) {
+				if (element instanceof Leg leg && !leg.getMode().equals(Constants.OUTSIDE_MODE)) {
+					leg.getAttributes().putAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE, walkFallbackFrom);
+				}
+			}
+		}
+	}
+
 	public List<PlanElement> processPlan(Id<Person> personId, List<PlanElement> elements) {
 		List<PlanElement> result = new LinkedList<>();
 
@@ -56,9 +86,11 @@ public class PlanCutter {
 
 			for (TripStructureUtils.Trip trip : TripStructureUtils.getTrips(elements)) {
 				String routingMode = TripStructureUtils.getRoutingMode(trip.getLegsOnly().get(0));
-				
-				result.addAll(tripProcessor.process(personId, legIndex, trip.getOriginActivity(),
-						trip.getTripElements(), trip.getDestinationActivity(), routingMode));
+
+				List<PlanElement> processed = tripProcessor.process(personId, legIndex, trip.getOriginActivity(),
+						trip.getTripElements(), trip.getDestinationActivity(), routingMode);
+				keepWalkFallbackStamp(trip.getLegsOnly(), processed);
+				result.addAll(processed);
 
 				addActivity(result, trip.getDestinationActivity());
 				legIndex += trip.getLegsOnly().size();
