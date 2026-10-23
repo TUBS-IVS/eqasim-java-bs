@@ -1,12 +1,15 @@
 package org.eqasim.core.components.transit;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.PriorityQueue;
 import java.util.Set;
 
-import org.eqasim.core.components.transit.departure.DepartureFinder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.eqasim.core.components.transit.departure.DepartureFinder.NoDepartureFoundException;
-import org.eqasim.core.components.transit.departure.DepartureFinder.StopDeparture;
+import org.eqasim.core.components.transit.departure.TransitBoardingFinder;
+import org.eqasim.core.components.transit.departure.TransitBoardingFinder.Boarding;
 import org.eqasim.core.components.transit.events.PublicTransitEvent;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.events.PersonStuckEvent;
@@ -29,11 +32,20 @@ import com.google.inject.Singleton;
 
 @Singleton
 public class EqasimTransitEngine implements DepartureHandler, MobsimEngine {
+	private static final Logger logger = LogManager.getLogger(EqasimTransitEngine.class);
+
 	final private TransitSchedule transitSchedule;
-	final private DepartureFinder departureFinder;
+	final private TransitBoardingFinder boardingFinder;
 	private InternalInterface internalInterface;
 	final private EventsManager eventsManager;
 	final private AgentCounter agentCounter;
+
+	// Boarding outcomes of the current mobsim run, logged after it (eqasim-bs#465)
+	private int numberOfPtDepartures = 0;
+	private int numberOfToleratedBoardings = 0;
+	private int numberOfLaterBoardings = 0;
+	private int numberOfOtherRouteBoardings = 0;
+	private int numberOfMissingDepartures = 0;
 
 	final private PriorityQueue<AgentDeparture> departures = new PriorityQueue<>();
 	final private PriorityQueue<AgentArrival> arrivals = new PriorityQueue<>();
@@ -75,10 +87,10 @@ public class EqasimTransitEngine implements DepartureHandler, MobsimEngine {
 	}
 
 	public EqasimTransitEngine(EventsManager eventsManager, TransitSchedule transitSchedule,
-			DepartureFinder departureFinder, AgentCounter agentCounter) {
+			TransitBoardingFinder boardingFinder, AgentCounter agentCounter) {
 		this.eventsManager = eventsManager;
 		this.transitSchedule = transitSchedule;
-		this.departureFinder = departureFinder;
+		this.boardingFinder = boardingFinder;
 		this.agentCounter = agentCounter;
 	}
 
@@ -91,33 +103,52 @@ public class EqasimTransitEngine implements DepartureHandler, MobsimEngine {
 			TransitLine transitLine = transitSchedule.getTransitLines().get(route.getLineId());
 			TransitRoute transitRoute = transitLine.getRoutes().get(route.getRouteId());
 
+			numberOfPtDepartures++;
+
 			try {
-				StopDeparture stopDeparture = departureFinder.findNextDeparture(transitRoute, route.getAccessStopId(),
+				Boarding boarding = boardingFinder.findBoarding(transitLine, transitRoute, route.getAccessStopId(),
 						route.getEgressStopId(), now);
 
-				double vehicleDepartureTime = stopDeparture.departure.getDepartureTime()
-						+ stopDeparture.stop.getDepartureOffset().seconds();
+				double vehicleDepartureTime = boarding.vehicleDepartureTime;
+				double inVehicleTime;
 
-				double waitingTime = route.getBoardingTime().seconds() - leg.getDepartureTime().seconds();
-				double inVehicleTime = leg.getTravelTime().seconds() - waitingTime;
+				if (boarding.onPlannedRoute) {
+					// As planned by the router (unchanged behaviour)
+					double waitingTime = route.getBoardingTime().seconds() - leg.getDepartureTime().seconds();
+					inVehicleTime = leg.getTravelTime().seconds() - waitingTime;
+				} else {
+					// Another route of the line: its own stop offsets
+					inVehicleTime = boarding.inVehicleTime;
+					numberOfOtherRouteBoardings++;
+				}
+
+				if (vehicleDepartureTime < now) {
+					numberOfToleratedBoardings++;
+				}
+
+				if (vehicleDepartureTime > route.getBoardingTime().seconds()) {
+					numberOfLaterBoardings++;
+				}
 
 				double arrivalTime = vehicleDepartureTime + inVehicleTime;
 
-				if (Math.abs(arrivalTime - now) < 1.0) {
+				// Never in the past: a tolerated boarding departed up to the tolerance before now
+				if (arrivalTime < now + 1.0) {
 					arrivalTime = now + 1.0;
 				}
 
 				Id<Link> arrivalLinkId = transitSchedule.getFacilities().get(route.getEgressStopId()).getLinkId();
 
 				PublicTransitEvent transitEvent = new PublicTransitEvent(arrivalTime, agent.getId(),
-						transitLine.getId(), transitRoute.getId(), route.getAccessStopId(), route.getEgressStopId(),
-						stopDeparture.departure.getId(),
+						transitLine.getId(), boarding.route.getId(), route.getAccessStopId(), route.getEgressStopId(),
+						boarding.stopDeparture.departure.getId(),
 						vehicleDepartureTime, route.getDistance(), route.getBoardingTime().seconds());
 
 				internalInterface.registerAdditionalAgentOnLink(agent);
 				departures.add(new AgentDeparture(agent, vehicleDepartureTime, departureLinkId));
 				arrivals.add(new AgentArrival(agent, arrivalTime, arrivalLinkId, transitEvent));
 			} catch (NoDepartureFoundException e) {
+				numberOfMissingDepartures++;
 				eventsManager.processEvent(new PersonStuckEvent(now, agent.getId(), agent.getCurrentLinkId(), "pt"));
 				agentCounter.decLiving();
 			}
@@ -150,10 +181,46 @@ public class EqasimTransitEngine implements DepartureHandler, MobsimEngine {
 	public void onPrepareSim() {
 		departures.clear();
 		arrivals.clear();
+
+		numberOfPtDepartures = 0;
+		numberOfToleratedBoardings = 0;
+		numberOfLaterBoardings = 0;
+		numberOfOtherRouteBoardings = 0;
+		numberOfMissingDepartures = 0;
+	}
+
+	private static String share(int count, int total) {
+		return String.format(Locale.ROOT, "%d (%.2f %%)", count, total == 0 ? 0.0 : 100.0 * count / total);
+	}
+
+	/**
+	 * Logs how the pt departures of this mobsim run were served: boarded within
+	 * the tolerance after the vehicle left, on a later departure than planned, on
+	 * another route of the planned line, or not at all (agent stuck).
+	 */
+	private void logBoardings() {
+		String message = String.format(Locale.ROOT,
+				"[EqasimTransitEngine] pt departures %d: boarded within the tolerance of %.1f s %s, later departure "
+						+ "than planned %s, another route of the planned line %s (line fallback %s), no departure "
+						+ "found (agent stuck) %s",
+				numberOfPtDepartures, boardingFinder.getBoardingToleranceSeconds(),
+				share(numberOfToleratedBoardings, numberOfPtDepartures),
+				share(numberOfLaterBoardings, numberOfPtDepartures),
+				share(numberOfOtherRouteBoardings, numberOfPtDepartures),
+				boardingFinder.isLineFallbackEnabled() ? "on" : "off",
+				share(numberOfMissingDepartures, numberOfPtDepartures));
+
+		if (numberOfMissingDepartures > 0) {
+			logger.warn(message);
+		} else {
+			logger.info(message);
+		}
 	}
 
 	@Override
 	public void afterSim() {
+		logBoardings();
+
 		double time = internalInterface.getMobsim().getSimTimer().getTimeOfDay();
 		Set<MobsimAgent> processedAgents = new HashSet<>();
 
