@@ -11,7 +11,8 @@ of the PR is in the file {{DIFF_FILE}}: read ALL of it with Read, page by page
 (offset/limit) when it is long, before you conclude. Open surrounding code with
 Read/Grep/Glob where a finding depends on it. Review only what this diff changes. You have
 no shell and cannot write or post anything; your structured output is posted for you. If
-you could not read the whole diff, say so in the summary.
+you could not read the whole diff, say so in the summary. Generated views, lock files and the upstream
+region modules (the gate's ignored_paths) are left out of the diff file on purpose.
 
 Look for, in this order:
 1. Correctness bugs: wrong simulation results, crashes, null handling, wrong units
