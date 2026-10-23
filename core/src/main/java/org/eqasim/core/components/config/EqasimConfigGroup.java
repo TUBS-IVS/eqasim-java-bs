@@ -31,6 +31,8 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 	private final static String TRAVEL_TIME_ANALYSIS_INTERVAL = "travelTimeAnalysisInterval";
 
 	private final static String USE_SCHEDULE_BASED_TRANSPORT = "useScheduleBasedTransport";
+	private final static String TRANSIT_BOARDING_TOLERANCE = "transitBoardingTolerance";
+	private final static String TRANSIT_LINE_FALLBACK = "transitLineFallback";
 
 	private final static String USE_PSEUDO_RANDOM_ERRORS = "usePseudoRandomErrors";
 
@@ -51,6 +53,9 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 	private int travelTimeAnalysisInterval = 10;
 
 	private boolean useScheduleBasedTransport = true;
+	// eqasim-bs#465: see the comments of the parameters
+	private double transitBoardingTolerance = 1.0;
+	private boolean transitLineFallback = true;
 
 	private boolean usePseudoRandomErrors = false;
 
@@ -65,8 +70,41 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 		Map<String, String> map = super.getComments();
 		map.put(SAMPLE_SIZE,
 				"The sample size of the population you are simulating. This is normally set by the synthesis pipeline.");
+		map.put(TRANSIT_BOARDING_TOLERANCE,
+				"Schedule-based transit: how long (s, >= 0) after a departure a passenger may still board it. The pt "
+						+ "router plans zero-duration transfers, the QSim teleports the zero-length transfer walk in one "
+						+ "time step; 1 s absorbs that step, 0 restores the strict search.");
+		map.put(TRANSIT_LINE_FALLBACK,
+				"Schedule-based transit: whether a passenger whose planned route has no departure left boards the "
+						+ "earliest departure of another route of the same line serving the access and then the egress "
+						+ "stop (true) or is stuck (false).");
 
 		return map;
+	}
+
+	@StringGetter(TRANSIT_BOARDING_TOLERANCE)
+	public double getTransitBoardingTolerance() {
+		return transitBoardingTolerance;
+	}
+
+	@StringSetter(TRANSIT_BOARDING_TOLERANCE)
+	public void setTransitBoardingTolerance(double transitBoardingTolerance) {
+		if (!(transitBoardingTolerance >= 0.0) || Double.isInfinite(transitBoardingTolerance)) {
+			throw new IllegalArgumentException(TRANSIT_BOARDING_TOLERANCE
+					+ " must be a finite number of seconds >= 0, got " + transitBoardingTolerance);
+		}
+
+		this.transitBoardingTolerance = transitBoardingTolerance;
+	}
+
+	@StringGetter(TRANSIT_LINE_FALLBACK)
+	public boolean getTransitLineFallback() {
+		return transitLineFallback;
+	}
+
+	@StringSetter(TRANSIT_LINE_FALLBACK)
+	public void setTransitLineFallback(boolean transitLineFallback) {
+		this.transitLineFallback = transitLineFallback;
 	}
 
 	@StringGetter(CROSSING_PENALTY)

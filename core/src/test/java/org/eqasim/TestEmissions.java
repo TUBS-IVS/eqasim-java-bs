@@ -150,11 +150,14 @@ public class TestEmissions {
 
 	private void runMelunEmissions() throws CommandLine.ConfigurationException, IOException {
 		Map<String, Long> counts = countLegs("melun_test/output/output_events.xml.gz");
-		Assert.assertEquals(4641, (long) counts.get("car"));
-		Assert.assertEquals(1554, (long) counts.get("car_passenger"));
-		Assert.assertEquals(11910, (long) counts.get("walk"));
+		// eqasim-bs#465: since the transit engine boards a zero-slack transfer (1 s tolerance) and falls back to
+		// another route of the planned line, passengers it used to abort complete their day (more legs than the
+		// former 4641 / 1554 / 11910 / 638 / 2251)
+		Assert.assertEquals(4647, (long) counts.get("car"));
+		Assert.assertEquals(1560, (long) counts.get("car_passenger"));
+		Assert.assertEquals(11951, (long) counts.get("walk"));
 		Assert.assertEquals(638, (long) counts.getOrDefault("bike", 0L));
-		Assert.assertEquals(2251, (long) counts.get("pt"));
+		Assert.assertEquals(2260, (long) counts.get("pt"));
 
 		SafeOsmHbefaMapping.defaultType = "URB/Local/50";
 
@@ -165,7 +168,8 @@ public class TestEmissions {
 				"sample_41_EFA_HOT_SubSegm_2020detailed.csv",
 				"--eqasim-configurator", TestConfigurator.class.getName() });
 
-		assertEquals(640230, countLines(new File("melun_test/output/output_emissions_events.xml.gz")));
+		// eqasim-bs#465: more completed car legs, see above (formerly 640230)
+		assertEquals(641382, countLines(new File("melun_test/output/output_emissions_events.xml.gz")));
 
 		RunExportEmissionsNetwork.main(new String[] { "--config-path", "melun_test/input/config.xml",
 				"--pollutants", "PM,CO,NOx,Unknown", "--time-bin-size", "3600",
@@ -177,7 +181,8 @@ public class TestEmissions {
 		// 32528. No clue why this is, but all the previous tests on the events line
 		// length etc. pass without a problem ...
 
-		assertEquals(42235, features.size());
+		// eqasim-bs#465: more completed car legs reach more link and hour bins (formerly 42235)
+		assertEquals(42242, features.size());
 
 		SimpleFeature feature = features.stream().filter(f -> f.getAttribute("link").toString().equals("163994")
 				& f.getAttribute("time").toString().equals("43200")).findFirst().orElse(null);
