@@ -1,4 +1,4 @@
-# Copied unchanged from TUBS-IVS/eqasim-bs scripts/claude_review.py (commit d1bc9caa, PR eqasim-bs#497),
+# Copied unchanged from TUBS-IVS/eqasim-bs scripts/claude_review.py (commit 2748ba52, PR eqasim-bs#497),
 # where its tests live (tests/test_claude_review.py). Change it there first and copy it here,
 # so both repositories gate, review and post the same way. Run it as .github/scripts/claude_review.py.
 """Gate, review run, posting and cost record of the automatic Claude PR review
@@ -231,6 +231,9 @@ def build_prompt(template: str, repo: str, pr: int, tier: str, sha: str) -> str:
 def claude_command(claude_bin: str, tier_cfg: dict, allowed_tools: list) -> list:
     return [
         claude_bin, "-p",
+        # --bare: authenticate strictly with ANTHROPIC_API_KEY (never a Claude plan login, so the
+        # run bills the API key), and load no user hooks, plugins, memory or CLAUDE.md on its own.
+        "--bare",
         "--model", str(tier_cfg["model"]),
         "--max-turns", str(int(tier_cfg["max_turns"])),
         "--max-budget-usd", str(float(tier_cfg["max_budget_usd"])),
@@ -404,8 +407,9 @@ def _cmd_review(args) -> int:
                           args.repo, args.pr, args.tier, args.sha)
     claude_bin = shutil.which(args.claude_bin) or args.claude_bin
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        # Without the key the CLI falls back to its own login, which bills a Claude plan, not the API credits.
-        print("::warning::ANTHROPIC_API_KEY is not set; claude uses its own login, not the API key.")
+        # claude --bare authenticates only with this key; fail here with a clear message instead.
+        print("::error::ANTHROPIC_API_KEY is not set; the review needs a workspace API key.")
+        return 1
     command = claude_command(claude_bin, tier_cfg, review_cfg["allowed_tools"])
     print(f"[claude-review] running claude -p: tier {args.tier}, model {tier_cfg['model']}, "
           f"max {tier_cfg['max_turns']} turns, budget {tier_cfg['max_budget_usd']} USD")
