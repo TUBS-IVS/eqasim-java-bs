@@ -19,11 +19,14 @@ import com.google.inject.Inject;
 public class NetworkTripProcessor implements TripProcessor {
 	final private NetworkTripCrossingPointFinder crossingPointFinder;
 	final private ScenarioExtent extent;
+	final private NetworkTripCrossingStatistics statistics;
 
 	@Inject
-	public NetworkTripProcessor(NetworkTripCrossingPointFinder crossingPointFinder, ScenarioExtent extent) {
+	public NetworkTripProcessor(NetworkTripCrossingPointFinder crossingPointFinder, ScenarioExtent extent,
+			NetworkTripCrossingStatistics statistics) {
 		this.crossingPointFinder = crossingPointFinder;
 		this.extent = extent;
+		this.statistics = statistics;
 	}
 
 	@Override
@@ -34,11 +37,16 @@ public class NetworkTripProcessor implements TripProcessor {
 
 		if (crossingPoints.size() > 0) { // there are crossing points
 			List<PlanElement> result = new LinkedList<>();
+			int lastLegIndex = TripStructureUtils.getLegs(trip).size() - 1;
 
-			result.add(PopulationUtils
-					.createLeg(crossingPoints.get(0).isOutgoing ? crossingPoints.get(0).legMode : "outside"));
+			NetworkTripCrossingPoint firstPoint = crossingPoints.get(0);
+			result.add(PopulationUtils.createLeg(firstPoint.isOutgoing
+					? insidePieceMode(0, firstPoint.tripLegIndex, firstPoint.legMode, routingMode)
+					: "outside"));
 
-			for (NetworkTripCrossingPoint point : crossingPoints) {
+			for (int i = 0; i < crossingPoints.size(); i++) {
+				NetworkTripCrossingPoint point = crossingPoints.get(i);
+
 				if (point.isInVehicle) {
 					Activity activity = PopulationUtils.createActivityFromLinkId("outside",
 							point.networkRoutePoint.link.getId());
@@ -51,7 +59,14 @@ public class NetworkTripProcessor implements TripProcessor {
 					result.add(activity);
 				}
 
-				result.add(PopulationUtils.createLeg(point.isOutgoing ? "outside" : point.legMode));
+				if (point.isOutgoing) {
+					result.add(PopulationUtils.createLeg("outside"));
+				} else {
+					int pieceEndLegIndex = i + 1 < crossingPoints.size() ? crossingPoints.get(i + 1).tripLegIndex
+							: lastLegIndex;
+					result.add(PopulationUtils.createLeg(
+							insidePieceMode(point.tripLegIndex, pieceEndLegIndex, point.legMode, routingMode)));
+				}
 			}
 
 			return result;
@@ -88,5 +103,29 @@ public class NetworkTripProcessor implements TripProcessor {
 				return result;
 			}
 		}
+	}
+
+	/**
+	 * Mode of an inside piece of a border-crossing network trip that starts on the
+	 * leg with trip index startLegIndex (the trip start or an incoming crossing) and
+	 * ends on the leg with trip index endLegIndex (an outgoing crossing or the trip
+	 * end).
+	 * 
+	 * A piece within one access or egress leg keeps that leg's mode: it is the short
+	 * walk between the border and an activity. Any other piece contains the main
+	 * network leg and keeps the trip's routing mode, so that the router routes the
+	 * inside part by car again. Before eqasim-bs#465, every inside piece took the
+	 * mode of the leg it crossed the border on, so a car trip from a home just
+	 * outside the border, whose access walk crosses it, became one walk across the
+	 * whole inside part.
+	 */
+	private String insidePieceMode(int startLegIndex, int endLegIndex, String crossingLegMode, String routingMode) {
+		if (startLegIndex == endLegIndex && !crossingLegMode.equals(routingMode)) {
+			statistics.recordAccessEgressOnlyPiece();
+			return crossingLegMode;
+		}
+
+		statistics.recordRoutingModePiece(!crossingLegMode.equals(routingMode));
+		return routingMode;
 	}
 }
