@@ -29,7 +29,8 @@ public class EqasimTransitQSimModule extends AbstractQSimModule {
 	public EqasimTransitEngine provideBaselineTransitEngine(EventsManager eventsManager,
 			TransitSchedule transitSchedule, DepartureFinder departureFinder, QSim qsim, EqasimConfigGroup eqasimConfig) {
 		TransitBoardingFinder boardingFinder = new TransitBoardingFinder(departureFinder,
-				eqasimConfig.getTransitBoardingTolerance(), eqasimConfig.getTransitLineFallback());
+				eqasimConfig.getTransitBoardingTolerance(), eqasimConfig.getTransitLineFallback(), transitSchedule,
+				eqasimConfig.getTransitStopPairFallback());
 		return new EqasimTransitEngine(eventsManager, transitSchedule, boardingFinder, qsim.getAgentCounter());
 	}
 
