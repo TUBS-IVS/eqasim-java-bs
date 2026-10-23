@@ -7,6 +7,7 @@ import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.PlanElement;
 import org.matsim.core.config.groups.PlansConfigGroup.ActivityDurationInterpretation;
+import org.matsim.core.utils.misc.OptionalTime;
 
 /**
  * Moves a routed plan earlier as a whole day when its last planned arrival, by
@@ -116,6 +117,20 @@ public class DayEndShift {
 			throw new IllegalStateException("The routed day-end shift replays plans with the activity duration "
 					+ "interpretation tryEndTimeThenDuration, but the config uses " + interpretation
 					+ "; drop --latest-last-arrival or use tryEndTimeThenDuration");
+		}
+	}
+
+	/**
+	 * Refuses a latest last arrival after the end of the simulated day
+	 * ({@code qsim.endTime}, when defined): such a limit would let plans that end
+	 * after the simulation pass as in time, so the shift would be switched off
+	 * without a warning (for example a margin added instead of subtracted).
+	 */
+	public static void checkAgainstSimulationEnd(double latestLastArrival, OptionalTime simulationEndTime) {
+		if (simulationEndTime.isDefined() && latestLastArrival > simulationEndTime.seconds()) {
+			throw new IllegalArgumentException("The latest last arrival " + latestLastArrival
+					+ " s is after the end of the simulation (qsim.endTime " + simulationEndTime.seconds()
+					+ " s); it must leave the margin before the end of the simulated day");
 		}
 	}
 

@@ -70,6 +70,7 @@ public class RunPopulationRouting {
 
 		if (dayEndShift != null) {
 			DayEndShift.checkActivityDurationInterpretation(config.plans().getActivityDurationInterpretation());
+			DayEndShift.checkAgainstSimulationEnd(dayEndShift.getLatestLastArrival(), config.qsim().getEndTime());
 		}
 
 		// TODO: Check what we can remove here

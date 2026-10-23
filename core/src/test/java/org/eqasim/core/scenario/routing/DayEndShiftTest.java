@@ -18,6 +18,7 @@ import org.matsim.core.router.TripRouter;
 import org.matsim.core.router.TripRouterFactoryBuilderWithDefaults;
 import org.matsim.core.router.TripStructureUtils;
 import org.matsim.core.scenario.ScenarioUtils;
+import org.matsim.core.utils.misc.OptionalTime;
 
 /**
  * Verifies the routed day-end shift (eqasim-bs ADR-0160): a plan whose last arrival by its ROUTED travel times
@@ -168,6 +169,17 @@ public class DayEndShiftTest {
 		Assert.assertEquals(27.0 * 3600.0 - Math.ceil(routedArrival - 29.0 * 3600.0), leg.getDepartureTime().seconds(),
 				0.0);
 		Assert.assertTrue(DayEndShift.plannedLastArrival(plan) <= 29.0 * 3600.0);
+	}
+
+	@Test
+	public void latestArrivalAfterTheEndOfTheSimulationIsRejected() {
+		DayEndShift.checkAgainstSimulationEnd(29.0 * 3600.0, OptionalTime.defined(30.0 * 3600.0));
+		DayEndShift.checkAgainstSimulationEnd(31.0 * 3600.0, OptionalTime.undefined());
+		try {
+			DayEndShift.checkAgainstSimulationEnd(31.0 * 3600.0, OptionalTime.defined(30.0 * 3600.0));
+			Assert.fail("expected the limit after qsim.endTime to be rejected");
+		} catch (IllegalArgumentException expected) {
+		}
 	}
 
 	@Test(expected = IllegalArgumentException.class)
