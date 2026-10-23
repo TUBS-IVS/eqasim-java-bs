@@ -24,7 +24,7 @@ public class RunPopulationRouting {
 	static public void main(String[] args) throws ConfigurationException, InterruptedException, ExecutionException {
 		CommandLine cmd = new CommandLine.Builder(args) //
 				.requireOptions("config-path", "output-path") //
-				.allowOptions("threads", "batch-size", "modes", EqasimConfigurator.CONFIGURATOR) //
+				.allowOptions("threads", "batch-size", "modes", "latest-last-arrival", EqasimConfigurator.CONFIGURATOR) //
 				.build();
 
 		EqasimConfigurator configurator = EqasimConfigurator.getInstance(cmd);
@@ -57,9 +57,25 @@ public class RunPopulationRouting {
 			}
 		}
 
+		// eqasim-bs ADR-0160: latest planned arrival (s) by the ROUTED travel times; later plans move earlier as a
+		// whole day and are routed again. Absent: no shift.
+		DayEndShift dayEndShift = cmd.hasOption("latest-last-arrival")
+				? new DayEndShift(Double.parseDouble(cmd.getOptionStrict("latest-last-arrival")))
+				: null;
+
+		if (dayEndShift != null && !modes.isEmpty()) {
+			throw new IllegalArgumentException("--latest-last-arrival cannot be combined with --modes: a shifted plan "
+					+ "must be routed again as a whole");
+		}
+
+		if (dayEndShift != null) {
+			DayEndShift.checkActivityDurationInterpretation(config.plans().getActivityDurationInterpretation());
+			DayEndShift.checkAgainstSimulationEnd(dayEndShift.getLatestLastArrival(), config.qsim().getEndTime());
+		}
+
 		// TODO: Check what we can remove here
 		Injector injector = new InjectorBuilder(scenario, configurator) //
-				.addOverridingModule(new PopulationRouterModule(numberOfThreads, batchSize, true, modes)) //
+				.addOverridingModule(new PopulationRouterModule(numberOfThreads, batchSize, true, modes, dayEndShift)) //
 				.addOverridingModule(new TimeInterpretationModule()).build();
 
 		PopulationRouter populationRouter = injector.getInstance(PopulationRouter.class);

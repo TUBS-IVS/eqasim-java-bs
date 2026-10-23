@@ -181,8 +181,10 @@ public class TestEmissions {
 		// 32528. No clue why this is, but all the previous tests on the events line
 		// length etc. pass without a problem ...
 
-		// eqasim-bs#465: more completed car legs reach more link and hour bins (formerly 42235)
-		assertEquals(42242, features.size());
+		// eqasim-bs#465: more completed car legs reach more link and hour bins (formerly 42235); since a passenger
+		// who missed the planned departure boards another line serving the stop pair (eqasim-bs ADR-0161, 2 of about
+		// 2290 Melun pt departures per iteration), the bins are 42234 (formerly 42242)
+		assertEquals(42234, features.size());
 
 		SimpleFeature feature = features.stream().filter(f -> f.getAttribute("link").toString().equals("163994")
 				& f.getAttribute("time").toString().equals("43200")).findFirst().orElse(null);
