@@ -36,6 +36,7 @@ public class PlanRouter {
 	// Not thread-safe by design: one PlanRouter instance is used by one thread.
 	private final Map<String, Integer> walkFallbackCounts = new HashMap<>();
 	private final Map<String, Integer> routedTripCounts = new HashMap<>();
+	private final Map<String, Integer> keptWalkFallbackCounts = new HashMap<>();
 
 	@Inject
 	public PlanRouter(ActivityFacilities facilities, TripRouter tripRouter) {
@@ -78,10 +79,50 @@ public class PlanRouter {
 					newElements = fixOnlyWalk(mainMode, fromFacility, toFacility, departureTime.seconds(),
 							plan.getPerson(), newElements, trip.getTripAttributes());
 
+					keepWalkFallbackStamp(trip.getLegsOnly(), newElements);
+
 					TripRouter.insertTrip(plan, trip.getOriginActivity(), newElements, trip.getDestinationActivity());
 				}
 			}
 		}
+	}
+
+	/**
+	 * Re-stamps a walk trip that an earlier routing pass had replaced by a walk.
+	 * A later pass (e.g. the final routing of the scenario cutter, which drops the
+	 * routes) sees such a trip as a plain walk and would replace its stamped legs
+	 * by unstamped ones (eqasim-bs#487). The stamp is kept only while the trip is
+	 * still walk-only and was not stamped anew by this pass.
+	 */
+	private void keepWalkFallbackStamp(List<Leg> previousLegs, List<? extends PlanElement> newElements) {
+		Object walkFallbackFrom = null;
+
+		for (Leg leg : previousLegs) {
+			walkFallbackFrom = leg.getAttributes().getAttribute(WALK_FALLBACK_ATTRIBUTE);
+
+			if (walkFallbackFrom != null) {
+				break;
+			}
+		}
+
+		if (walkFallbackFrom == null) {
+			return;
+		}
+
+		List<Leg> newLegs = TripStructureUtils.getLegs(newElements);
+
+		for (Leg leg : newLegs) {
+			if (!leg.getMode().equals(TransportMode.walk)
+					|| leg.getAttributes().getAttribute(WALK_FALLBACK_ATTRIBUTE) != null) {
+				return;
+			}
+		}
+
+		for (Leg leg : newLegs) {
+			leg.getAttributes().putAttribute(WALK_FALLBACK_ATTRIBUTE, walkFallbackFrom);
+		}
+
+		keptWalkFallbackCounts.merge(walkFallbackFrom.toString(), 1, Integer::sum);
 	}
 
 	private List<? extends PlanElement> fixOnlyWalk(String mainMode, Facility fromFacility, Facility toFacility,
@@ -114,6 +155,14 @@ public class PlanRouter {
 	/** Trips replaced by a plain walk so far, per original main mode. */
 	public Map<String, Integer> getWalkFallbackCounts() {
 		return Collections.unmodifiableMap(walkFallbackCounts);
+	}
+
+	/**
+	 * Walk trips re-routed so far that carried the stamp of an earlier routing
+	 * pass and kept it, per stamped (originally requested) mode.
+	 */
+	public Map<String, Integer> getKeptWalkFallbackCounts() {
+		return Collections.unmodifiableMap(keptWalkFallbackCounts);
 	}
 
 	/** Trips routed so far (including replaced ones), per original main mode. */
