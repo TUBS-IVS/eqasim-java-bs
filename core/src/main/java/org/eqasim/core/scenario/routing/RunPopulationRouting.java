@@ -63,6 +63,10 @@ public class RunPopulationRouting {
 				? new DayEndShift(Double.parseDouble(cmd.getOptionStrict("latest-last-arrival")))
 				: null;
 
+		if (dayEndShift != null) {
+			DayEndShift.checkActivityDurationInterpretation(config.plans().getActivityDurationInterpretation());
+		}
+
 		// TODO: Check what we can remove here
 		Injector injector = new InjectorBuilder(scenario, configurator) //
 				.addOverridingModule(new PopulationRouterModule(numberOfThreads, batchSize, true, modes, dayEndShift)) //

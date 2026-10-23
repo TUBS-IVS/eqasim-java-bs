@@ -11,6 +11,7 @@ import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.PlanElement;
+import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.router.TripRouter;
 import org.matsim.core.router.TripStructureUtils;
 import org.matsim.core.router.TripStructureUtils.Trip;
@@ -150,6 +151,73 @@ public class PlanRouter {
 		}
 
 		return replacement;
+	}
+
+	/** The counters of a router at one moment, see {@link #snapshotCounts()}. */
+	static public class CountSnapshot {
+		private final Map<String, Integer> walkFallbackCounts;
+		private final Map<String, Integer> routedTripCounts;
+		private final Map<String, Integer> keptWalkFallbackCounts;
+
+		private CountSnapshot(PlanRouter router) {
+			this.walkFallbackCounts = new HashMap<>(router.walkFallbackCounts);
+			this.routedTripCounts = new HashMap<>(router.routedTripCounts);
+			this.keptWalkFallbackCounts = new HashMap<>(router.keptWalkFallbackCounts);
+		}
+	}
+
+	/**
+	 * The current counters, so that a caller that routes a plan again and keeps
+	 * only the second result (the routed day-end shift, eqasim-bs ADR-0160) can
+	 * {@link #restoreCounts restore} them first: the counts then describe the
+	 * routed population, every trip once.
+	 */
+	public CountSnapshot snapshotCounts() {
+		return new CountSnapshot(this);
+	}
+
+	public void restoreCounts(CountSnapshot snapshot) {
+		walkFallbackCounts.clear();
+		walkFallbackCounts.putAll(snapshot.walkFallbackCounts);
+		routedTripCounts.clear();
+		routedTripCounts.putAll(snapshot.routedTripCounts);
+		keptWalkFallbackCounts.clear();
+		keptWalkFallbackCounts.putAll(snapshot.keptWalkFallbackCounts);
+	}
+
+	/**
+	 * Turns every trip that a routing pass replaced by a walk (legs stamped with
+	 * {@link #WALK_FALLBACK_ATTRIBUTE}) back into one unrouted leg of the
+	 * originally requested mode, so that routing the plan again tries that mode at
+	 * the plan's (possibly new) departure times instead of keeping the walk. Used
+	 * before the routed day-end shift re-routes a plan whose times it moved
+	 * (eqasim-bs ADR-0160).
+	 *
+	 * @return the number of trips restored
+	 */
+	public static int restoreWalkFallbackModes(Plan plan) {
+		int restored = 0;
+
+		for (Trip trip : TripStructureUtils.getTrips(plan)) {
+			Object originalMode = null;
+
+			for (Leg leg : trip.getLegsOnly()) {
+				originalMode = leg.getAttributes().getAttribute(WALK_FALLBACK_ATTRIBUTE);
+
+				if (originalMode != null) {
+					break;
+				}
+			}
+
+			if (originalMode != null) {
+				Leg leg = PopulationUtils.createLeg(originalMode.toString());
+				TripStructureUtils.setRoutingMode(leg, originalMode.toString());
+				TripRouter.insertTrip(plan, trip.getOriginActivity(), List.of(leg), trip.getDestinationActivity());
+				restored++;
+			}
+		}
+
+		return restored;
 	}
 
 	/** Trips replaced by a plain walk so far, per original main mode. */

@@ -33,6 +33,10 @@ public class PopulationRouter {
 	/** Routed day-end shift (eqasim-bs ADR-0160); null when off. */
 	private final DayEndShift dayEndShift;
 
+	private Map<String, Integer> lastRoutedTripCounts = Map.of();
+	private Map<String, Integer> lastWalkFallbackCounts = Map.of();
+	private Map<String, Integer> lastKeptWalkFallbackCounts = Map.of();
+
 	public PopulationRouter(int numberOfThreads, int batchSize, boolean replaceExistingRoutes, Set<String> modes,
 			Provider<PlanRouter> routerProvider) {
 		this(numberOfThreads, batchSize, replaceExistingRoutes, modes, routerProvider, null);
@@ -91,11 +95,20 @@ public class PopulationRouter {
 					PlanRouter router = routerLocal.get();
 					for (Person p : chunk) {
 						for (Plan plan : p.getPlans()) {
+							PlanRouter.CountSnapshot beforeRouting = dayEndShift == null ? null
+									: router.snapshotCounts();
 							router.run(plan, replaceExistingRoutes, modes);
 
 							if (dayEndShift != null) {
-								// the shifted plan is routed again with all its routes replaced
-								dayEndShift.apply(plan, () -> router.run(plan, true, modes));
+								// The shifted plan is routed again with all its routes replaced. The counts of the
+								// first pass are discarded (every trip of the written population counted once),
+								// and trips the first pass replaced by a walk get their requested mode back, so it
+								// is tried at the new departure times (eqasim-bs ADR-0160)
+								dayEndShift.apply(plan, () -> {
+									router.restoreCounts(beforeRouting);
+									PlanRouter.restoreWalkFallbackModes(plan);
+									router.run(plan, true, modes);
+								});
 							}
 						}
 					}
@@ -114,6 +127,9 @@ public class PopulationRouter {
 		progress.close();
 
 		logWalkFallback(allRouters);
+		lastRoutedTripCounts = sumCounts(allRouters, PlanRouter::getRoutedTripCounts);
+		lastWalkFallbackCounts = sumCounts(allRouters, PlanRouter::getWalkFallbackCounts);
+		lastKeptWalkFallbackCounts = sumCounts(allRouters, PlanRouter::getKeptWalkFallbackCounts);
 
 		if (dayEndShift != null) {
 			logDayEndShift(dayEndShift);
@@ -143,6 +159,21 @@ public class PopulationRouter {
 		} else {
 			logger.info(message);
 		}
+	}
+
+	/** Trips routed by the last {@link #run}, per main mode, summed over the routing threads (as logged). */
+	public Map<String, Integer> getRoutedTripCounts() {
+		return lastRoutedTripCounts;
+	}
+
+	/** Trips replaced by a walk in the last {@link #run}, per requested mode (as logged). */
+	public Map<String, Integer> getWalkFallbackCounts() {
+		return lastWalkFallbackCounts;
+	}
+
+	/** Stamped walk trips of an earlier pass kept by the last {@link #run}, per requested mode (as logged). */
+	public Map<String, Integer> getKeptWalkFallbackCounts() {
+		return lastKeptWalkFallbackCounts;
 	}
 
 	/** Sums the per-mode counts of several routers, as selected by the accessor. */

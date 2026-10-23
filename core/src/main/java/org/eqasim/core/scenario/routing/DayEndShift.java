@@ -6,6 +6,7 @@ import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.PlanElement;
+import org.matsim.core.config.groups.PlansConfigGroup.ActivityDurationInterpretation;
 
 /**
  * Moves a routed plan earlier as a whole day when its last planned arrival, by
@@ -98,6 +99,19 @@ public class DayEndShift {
 		}
 
 		return shift;
+	}
+
+	/**
+	 * The replay of {@link #plannedLastArrival} is the QSim's
+	 * {@code tryEndTimeThenDuration}; refuses any other configured interpretation,
+	 * under which the QSim plans other activity end times.
+	 */
+	public static void checkActivityDurationInterpretation(ActivityDurationInterpretation interpretation) {
+		if (interpretation != ActivityDurationInterpretation.tryEndTimeThenDuration) {
+			throw new IllegalStateException("The routed day-end shift replays plans with the activity duration "
+					+ "interpretation tryEndTimeThenDuration, but the config uses " + interpretation
+					+ "; drop --latest-last-arrival or use tryEndTimeThenDuration");
+		}
 	}
 
 	/** Last planned arrival (s), replayed as the QSim plans it; NaN for a plan without legs. */
