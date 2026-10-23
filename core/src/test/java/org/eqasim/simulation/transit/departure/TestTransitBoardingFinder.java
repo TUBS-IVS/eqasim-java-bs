@@ -253,6 +253,24 @@ public class TestTransitBoardingFinder {
 		}
 	}
 
+	@Test
+	public void stopPairFallbackKeepsOtherRoutesOfThePlannedLineOutWhenTheLineFallbackIsOff()
+			throws NoDepartureFoundException {
+		TransitRoute planned = createRoute("planned", stopA, stopB, 600.0, 8.0 * 3600.0);
+		TransitRoute sameLine = createRoute("sameLine", stopA, stopB, 600.0, 8.2 * 3600.0);
+		TransitLine line = createLine("line", planned, sameLine);
+		TransitRoute otherLine = createRoute("otherLine", stopA, stopB, 600.0, 8.4 * 3600.0);
+		TransitSchedule schedule = createSchedule(line, createLine("other", otherLine));
+
+		Boarding withLineFallback = new TransitBoardingFinder(new DefaultDepartureFinder(), 1.0, true, schedule, true)
+				.findBoarding(line, planned, stopA.getId(), stopB.getId(), 8.1 * 3600.0, 8.0 * 3600.0);
+		Assert.assertSame(sameLine, withLineFallback.route);
+
+		Boarding withoutLineFallback = new TransitBoardingFinder(new DefaultDepartureFinder(), 1.0, false, schedule,
+				true).findBoarding(line, planned, stopA.getId(), stopB.getId(), 8.1 * 3600.0, 8.0 * 3600.0);
+		Assert.assertSame(otherLine, withoutLineFallback.route);
+	}
+
 	@Test(expected = IllegalArgumentException.class)
 	public void stopPairFallbackNeedsTheSchedule() {
 		new TransitBoardingFinder(new DefaultDepartureFinder(), 1.0, true, null, true);

@@ -41,7 +41,8 @@ import org.matsim.pt.transitSchedule.api.TransitStopFacility;
  * route has none left): every route of every line that serves the access stop
  * and, later, the egress stop is a candidate, the planned route included, and
  * the earliest arrival at the egress stop wins (ties: the planned route, then
- * the planned line, then line id and route id in lexical order). A passenger who
+ * the planned line, then line id and route id in lexical order); with the line
+ * fallback off, the other routes of the planned line are no candidates. A passenger who
  * missed the last vehicle of one line boards the evening line on the same two
  * stops instead of waiting for the first vehicle of the next day. A passenger on
  * time keeps the planned route, even when another line would arrive earlier,
@@ -231,7 +232,11 @@ public class TransitBoardingFinder {
 		Boarding best = planned;
 
 		for (LineRoute candidate : candidates) {
-			if (candidate.route != plannedRoute && servesInOrder(candidate.route, accessStopId, egressStopId)) {
+			// with the line fallback off, the other routes of the planned line stay excluded, as in step 2
+			boolean excludedSameLine = candidate.line == line && !lineFallbackEnabled;
+
+			if (candidate.route != plannedRoute && !excludedSameLine
+					&& servesInOrder(candidate.route, accessStopId, egressStopId)) {
 				try {
 					Boarding boarding = createBoarding(candidate.line, candidate.route, accessStopId, egressStopId,
 							searchTime, false, candidate.line == line);

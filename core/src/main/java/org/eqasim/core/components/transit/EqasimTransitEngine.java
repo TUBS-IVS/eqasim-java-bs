@@ -145,7 +145,8 @@ public class EqasimTransitEngine implements DepartureHandler, MobsimEngine {
 
 				Id<Link> arrivalLinkId = transitSchedule.getFacilities().get(route.getEgressStopId()).getLinkId();
 
-				// The boarded line and route; the travel distance stays the planned one (same stop pair)
+				// The boarded line and route. The travel distance stays the planned route's: the engine has no
+				// network to measure the boarded route between the stops; the share of such events is logged
 				PublicTransitEvent transitEvent = new PublicTransitEvent(arrivalTime, agent.getId(),
 						boarding.line.getId(), boarding.route.getId(), route.getAccessStopId(), route.getEgressStopId(),
 						boarding.stopDeparture.departure.getId(),
@@ -212,7 +213,8 @@ public class EqasimTransitEngine implements DepartureHandler, MobsimEngine {
 		String message = String.format(Locale.ROOT,
 				"[EqasimTransitEngine] pt departures %d: boarded within the tolerance of %.1f s %s, later departure "
 						+ "than planned %s, another route of the planned line %s (line fallback %s), another line "
-						+ "serving the stop pair %s (stop-pair fallback %s), no departure found (agent stuck) %s",
+						+ "serving the stop pair %s (stop-pair fallback %s; the events of other-route and other-line "
+						+ "boardings carry the planned route's distance), no departure found (agent stuck) %s",
 				numberOfPtDepartures, boardingFinder.getBoardingToleranceSeconds(),
 				share(numberOfToleratedBoardings, numberOfPtDepartures),
 				share(numberOfLaterBoardings, numberOfPtDepartures),

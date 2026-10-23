@@ -83,8 +83,9 @@ public class EqasimConfigGroup extends ReflectiveConfigGroup {
 		map.put(TRANSIT_STOP_PAIR_FALLBACK,
 				"Schedule-based transit (eqasim-bs ADR-0161): whether a passenger who missed the planned departure "
 						+ "boards the vehicle of ANY line serving the access and then the egress stop that arrives "
-						+ "there first (true; replaces the line fallback for missed departures) or keeps the planned "
-						+ "route and line fallback only (false). Passengers on time board as planned either way.");
+						+ "there first (true; other routes of the planned line only with transitLineFallback) or "
+						+ "keeps the planned route and line fallback only (false). Passengers on time board as planned "
+						+ "either way; the transit events of such boardings carry the planned route's distance.");
 
 		return map;
 	}
