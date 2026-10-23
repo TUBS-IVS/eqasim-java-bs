@@ -16,6 +16,7 @@ import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eqasim.core.misc.ParallelProgress;
+import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.Population;
@@ -49,6 +50,12 @@ public class PopulationRouter {
 	 */
 	public PopulationRouter(int numberOfThreads, int batchSize, boolean replaceExistingRoutes, Set<String> modes,
 			Provider<PlanRouter> routerProvider, DayEndShift dayEndShift) {
+		if (dayEndShift != null && !modes.isEmpty()) {
+			// a shifted plan must be routed again as a whole: trips of other modes would keep routes for the old times
+			throw new IllegalArgumentException("The routed day-end shift needs all modes routed; it cannot be "
+					+ "combined with a mode restriction (" + modes + ")");
+		}
+
 		this.numberOfThreads = numberOfThreads;
 		this.batchSize = batchSize;
 		this.routerProvider = routerProvider;
@@ -106,10 +113,14 @@ public class PopulationRouter {
 								// is tried at the new departure times (eqasim-bs ADR-0160)
 								dayEndShift.apply(plan, () -> {
 									router.restoreCounts(beforeRouting);
-									int restored = PlanRouter.restoreWalkFallbackModes(plan, modes);
+									int fallbacksBefore = PlanRouter.countWalkFallbackTrips(plan, modes);
+									List<Activity> restored = PlanRouter.restoreWalkFallbackModes(plan, modes);
 									router.run(plan, true, modes);
-									dayEndShift.recordRestoredTrips(restored,
-											restored - PlanRouter.countWalkFallbackTrips(plan, modes));
+									int restoredStillWalking = PlanRouter.countWalkFallbackTripsFrom(plan, restored);
+									int fallbacksAfter = PlanRouter.countWalkFallbackTrips(plan, modes);
+									dayEndShift.recordRestoredTrips(restored.size(),
+											restored.size() - restoredStillWalking,
+											fallbacksAfter - restoredStillWalking - (fallbacksBefore - restored.size()));
 								});
 							}
 						}
@@ -153,13 +164,16 @@ public class PopulationRouter {
 						+ "earlier as a whole day and routed again: %d, mean shift %.0f s, max %d s; unresolved (no "
 						+ "room before 0 s, or still late after the re-routing): %d; walk-fallback trips of shifted "
 						+ "plans given their requested mode back: %d, of which routed by it after the shift: %d (the "
-						+ "shift is sized by the first-pass routes, so these plans may have moved more than needed)",
+						+ "shift is sized by the first-pass routes, so these plans may have moved more than needed); "
+						+ "trips of shifted plans that newly fell back to walk at the earlier time: %d; legs replayed "
+						+ "without a travel time (counted as 0 s): %d",
 				shift.getLatestLastArrival() / 3600.0, shift.getLatePlans(), total,
 				total == 0 ? 0.0 : 100.0 * shift.getLatePlans() / total, shift.getShiftedPlans(),
 				shift.getMeanShiftSeconds(), shift.getMaxShiftSeconds(), shift.getUnresolvedPlans(),
-				shift.getRestoredTrips(), shift.getRecoveredTrips());
+				shift.getRestoredTrips(), shift.getRecoveredTrips(), shift.getNewWalkFallbackTrips(),
+				shift.getLegsWithoutTravelTime());
 
-		if (shift.getUnresolvedPlans() > 0) {
+		if (shift.getUnresolvedPlans() > 0 || shift.getLegsWithoutTravelTime() > 0) {
 			logger.warn(message);
 		} else {
 			logger.info(message);

@@ -1,5 +1,7 @@
 package org.eqasim.core.scenario.routing;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -7,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.matsim.api.core.v01.TransportMode;
+import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
@@ -195,10 +198,11 @@ public class PlanRouter {
 	 * ({@code modes} empty or containing it) are restored; the others keep their
 	 * routed walk, so no unrouted leg is left behind.
 	 *
-	 * @return the number of trips restored
+	 * @return the origin activities of the restored trips (the re-routing keeps
+	 *         them, so they identify the restored trips afterwards)
 	 */
-	public static int restoreWalkFallbackModes(Plan plan, Set<String> modes) {
-		int restored = 0;
+	public static List<Activity> restoreWalkFallbackModes(Plan plan, Set<String> modes) {
+		List<Activity> restored = new ArrayList<>();
 
 		for (Trip trip : TripStructureUtils.getTrips(plan)) {
 			Object originalMode = walkFallbackMode(trip);
@@ -207,7 +211,7 @@ public class PlanRouter {
 				Leg leg = PopulationUtils.createLeg(originalMode.toString());
 				TripStructureUtils.setRoutingMode(leg, originalMode.toString());
 				TripRouter.insertTrip(plan, trip.getOriginActivity(), List.of(leg), trip.getDestinationActivity());
-				restored++;
+				restored.add(trip.getOriginActivity());
 			}
 		}
 
@@ -222,6 +226,19 @@ public class PlanRouter {
 			Object originalMode = walkFallbackMode(trip);
 
 			if (originalMode != null && (modes.isEmpty() || modes.contains(originalMode.toString()))) {
+				count++;
+			}
+		}
+
+		return count;
+	}
+
+	/** Trips starting at one of the given activities that are stamped walk fallbacks. */
+	public static int countWalkFallbackTripsFrom(Plan plan, Collection<Activity> origins) {
+		int count = 0;
+
+		for (Trip trip : TripStructureUtils.getTrips(plan)) {
+			if (walkFallbackMode(trip) != null && origins.stream().anyMatch(origin -> origin == trip.getOriginActivity())) {
 				count++;
 			}
 		}

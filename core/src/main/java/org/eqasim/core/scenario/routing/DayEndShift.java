@@ -50,6 +50,8 @@ public class DayEndShift {
 	private final AtomicLong shiftMaxSeconds = new AtomicLong();
 	private final AtomicLong restoredTrips = new AtomicLong();
 	private final AtomicLong recoveredTrips = new AtomicLong();
+	private final AtomicLong newWalkFallbackTrips = new AtomicLong();
+	private final AtomicLong legsWithoutTravelTime = new AtomicLong();
 
 	/**
 	 * @param latestLastArrival latest planned arrival (s after midnight of the
@@ -77,6 +79,7 @@ public class DayEndShift {
 	 */
 	public double apply(Plan plan, Runnable reroute) {
 		plans.incrementAndGet();
+		legsWithoutTravelTime.addAndGet(countLegsWithoutTravelTime(plan));
 		double excess = Math.ceil(plannedLastArrival(plan) - latestLastArrival);
 
 		if (!(excess > 0.0)) {
@@ -163,9 +166,31 @@ public class DayEndShift {
 	 * plan whose late walk fallback becomes, say, pt again may have moved more
 	 * than its new routes need; these counts make that visible.
 	 */
-	public void recordRestoredTrips(int restored, int recovered) {
+	public void recordRestoredTrips(int restored, int recovered, int newWalkFallbacks) {
 		restoredTrips.addAndGet(restored);
 		recoveredTrips.addAndGet(recovered);
+		newWalkFallbackTrips.addAndGet(newWalkFallbacks);
+	}
+
+	public long getNewWalkFallbackTrips() {
+		return newWalkFallbackTrips.get();
+	}
+
+	/** Legs of the checked plans without a travel time, which the replay counts as 0 s (before any shift). */
+	public long getLegsWithoutTravelTime() {
+		return legsWithoutTravelTime.get();
+	}
+
+	private static int countLegsWithoutTravelTime(Plan plan) {
+		int count = 0;
+
+		for (PlanElement element : plan.getPlanElements()) {
+			if (element instanceof Leg leg && leg.getTravelTime().isUndefined()) {
+				count++;
+			}
+		}
+
+		return count;
 	}
 
 	public long getRestoredTrips() {

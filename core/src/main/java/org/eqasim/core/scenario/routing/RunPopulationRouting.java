@@ -63,6 +63,11 @@ public class RunPopulationRouting {
 				? new DayEndShift(Double.parseDouble(cmd.getOptionStrict("latest-last-arrival")))
 				: null;
 
+		if (dayEndShift != null && !modes.isEmpty()) {
+			throw new IllegalArgumentException("--latest-last-arrival cannot be combined with --modes: a shifted plan "
+					+ "must be routed again as a whole");
+		}
+
 		if (dayEndShift != null) {
 			DayEndShift.checkActivityDurationInterpretation(config.plans().getActivityDurationInterpretation());
 		}

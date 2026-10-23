@@ -135,6 +135,19 @@ public class DayEndShiftTest {
 	}
 
 	@Test
+	public void legsWithoutATravelTimeAreCounted() {
+		DayEndShift shift = new DayEndShift(29.0 * 3600.0);
+		Plan plan = plan();
+		activity(plan, "home", 0.0, 8.0 * 3600.0);
+		plan.addLeg(factory.createLeg(TransportMode.walk));
+		activity(plan, "work", 1.0, Double.NaN);
+
+		shift.apply(plan, () -> {
+		});
+		Assert.assertEquals(1, shift.getLegsWithoutTravelTime());
+	}
+
+	@Test
 	public void routerShiftsAndReroutesARoutedLatePlan() {
 		TripRouter tripRouter = new TripRouterFactoryBuilderWithDefaults().build(scenario).get();
 		PlanRouter router = new PlanRouter(scenario.getActivityFacilities(), tripRouter);

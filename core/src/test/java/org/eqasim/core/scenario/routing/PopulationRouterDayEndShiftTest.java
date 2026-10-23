@@ -107,6 +107,8 @@ public class PopulationRouterDayEndShiftTest {
 		// the walk fallback of the first pass was given its mode back and routed by pt after the shift
 		Assert.assertEquals(1, shift.getRestoredTrips());
 		Assert.assertEquals(1, shift.getRecoveredTrips());
+		Assert.assertEquals(0, shift.getNewWalkFallbackTrips());
+		Assert.assertEquals(0, shift.getLegsWithoutTravelTime());
 		Assert.assertTrue(home.getEndTime().seconds() <= 8.0 * 3600.0);
 
 		// routed again as pt at the new departure time, not kept as the walk of the first pass
@@ -139,12 +141,20 @@ public class PopulationRouterDayEndShiftTest {
 		Assert.assertEquals(1, PlanRouter.countWalkFallbackTrips(plan, Set.of()));
 
 		// a pass that routes car only would leave a bare pt leg: the trip keeps its routed walk
-		Assert.assertEquals(0, PlanRouter.restoreWalkFallbackModes(plan, Set.of(TransportMode.car)));
+		Assert.assertEquals(0, PlanRouter.restoreWalkFallbackModes(plan, Set.of(TransportMode.car)).size());
 		for (Leg leg : TripStructureUtils.getLegs(plan)) {
 			Assert.assertEquals(TransportMode.walk, leg.getMode());
 			Assert.assertNotNull(leg.getRoute());
 		}
-		Assert.assertEquals(1, PlanRouter.restoreWalkFallbackModes(plan, Set.of(TransportMode.pt)));
+		Assert.assertEquals(1, PlanRouter.restoreWalkFallbackModes(plan, Set.of(TransportMode.pt)).size());
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void dayEndShiftWithAModeRestrictionIsRefused() {
+		Scenario scenario = createScenario();
+		TripRouter tripRouter = new TripRouterFactoryBuilderWithDefaults().build(scenario).get();
+		new PopulationRouter(1, 10, true, Set.of(TransportMode.car),
+				() -> new PlanRouter(scenario.getActivityFacilities(), tripRouter), new DayEndShift(9.5 * 3600.0));
 	}
 
 	@Test(expected = IllegalStateException.class)
