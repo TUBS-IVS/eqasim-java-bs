@@ -4,7 +4,7 @@
         --branch feat/x [--labels a,b] [--draft] [--event-action labeled --event-label x]
     python .github/scripts/claude_review.py cost --execution-file <path> [--tier full] [--model m] [--json out.json]
 
-Copied unchanged in its logic from TUBS-IVS/eqasim-bs scripts/claude_review.py (commit b2242144,
+Copied unchanged in its logic from TUBS-IVS/eqasim-bs scripts/claude_review.py (commit 86d3f16e,
 PR eqasim-bs#497), where its tests live (tests/test_claude_review.py). Change it there first and
 copy it here, so both repositories gate the same way.
 
@@ -195,6 +195,8 @@ def _cmd_classify(args) -> int:
 
 def _cmd_cost(args) -> int:
     try:
+        if not args.execution_file:
+            raise ValueError("empty execution file path (the action set no output)")
         summary = cost_summary(read_result_record(Path(args.execution_file)))
     except (OSError, ValueError) as error:
         print(f"error: no cost record: {error}", file=sys.stderr)
