@@ -13,6 +13,7 @@ public class PopulationRouterModule extends AbstractModule {
 	private final int batchSize;
 	private final boolean replaceExistingRoutes;
 	private final Set<String> modes;
+	private final DayEndShift dayEndShift;
 
 	public PopulationRouterModule(int numberOfThreads, int batchSize, boolean replaceExistingRoute) {
 		this(numberOfThreads, batchSize, replaceExistingRoute, Collections.emptySet());
@@ -20,10 +21,17 @@ public class PopulationRouterModule extends AbstractModule {
 
 	public PopulationRouterModule(int numberOfThreads, int batchSize, boolean replaceExistingRoutes,
 			Set<String> modes) {
+		this(numberOfThreads, batchSize, replaceExistingRoutes, modes, null);
+	}
+
+	/** @param dayEndShift routed day-end shift (eqasim-bs ADR-0160), null for none */
+	public PopulationRouterModule(int numberOfThreads, int batchSize, boolean replaceExistingRoutes,
+			Set<String> modes, DayEndShift dayEndShift) {
 		this.numberOfThreads = numberOfThreads;
 		this.batchSize = batchSize;
 		this.replaceExistingRoutes = replaceExistingRoutes;
 		this.modes = modes;
+		this.dayEndShift = dayEndShift;
 	}
 
 	@Override
@@ -33,6 +41,7 @@ public class PopulationRouterModule extends AbstractModule {
 
 	@Provides
 	public PopulationRouter providePopulationRouter(Provider<PlanRouter> routerProvider) {
-		return new PopulationRouter(numberOfThreads, batchSize, replaceExistingRoutes, modes, routerProvider);
+		return new PopulationRouter(numberOfThreads, batchSize, replaceExistingRoutes, modes, routerProvider,
+				dayEndShift);
 	}
 }
