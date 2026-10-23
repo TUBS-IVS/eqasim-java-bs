@@ -57,7 +57,8 @@ import org.matsim.facilities.ActivityOption;
  * <li><b>Out of scope, or in scope without a usable lot:</b> the single-link rule of ADR-0165, per site: kept when the
  * link of its facility with most activities has the minimum capacity ({@code ADEQUATE}); else every facility of the
  * site and every activity at it moves to the closest link of the minimum capacity within
- * {@link Parameters#singleLinkMaximumDistanceMeters()} ({@code MOVED}); else kept ({@code FALLBACK}).</li>
+ * {@link Parameters#singleLinkMaximumDistanceMeters()} ({@code MOVED}); else kept ({@code FALLBACK}). An adequate
+ * site's facilities on another link join the representative's link (one link per site).</li>
  * </ul>
  * <p>
  * Legs next to a changed activity lose their route (the population is routed afterwards). The activity coordinates do
@@ -508,17 +509,29 @@ public final class LargeSiteAccessAssignment {
 		Link old = representativeLink(site);
 		double oldCapacity = singleLinkSelector.capacityVehiclesPerHour(old);
 		if (singleLinkSelector.hasMinimumCapacity(old)) {
+			// One link per site: facilities of the site on another link join the representative's link.
+			relinkSite(site, old, population, persons, counters);
 			return decision(site, inScope, Outcome.ADEQUATE, old, oldCapacity, null);
 		}
 		Optional<Link> selected = singleLinkSelector.select(site.coord());
 		if (selected.isEmpty()) {
 			return decision(site, inScope, Outcome.FALLBACK, old, oldCapacity, null);
 		}
-		Link link = selected.get();
+		relinkSite(site, selected.get(), population, persons, counters);
+		return decision(site, inScope, Outcome.MOVED, old, oldCapacity, selected.get());
+	}
+
+	/** Puts every facility of the site that is not on {@code link} and every activity at it onto {@code link}. */
+	private static void relinkSite(Site site, Link link, Population population, Set<Id<Person>> persons, Counters counters) {
 		Set<Id<ActivityFacility>> members = new TreeSet<>(Comparator.comparing(Id::toString));
 		for (ActivityFacility facility : site.facilities()) {
-			((ActivityFacilityImpl) facility).setLinkId(link.getId());
-			members.add(facility.getId());
+			if (!link.getId().equals(facility.getLinkId())) {
+				((ActivityFacilityImpl) facility).setLinkId(link.getId());
+				members.add(facility.getId());
+			}
+		}
+		if (members.isEmpty()) {
+			return;
 		}
 		for (Id<Person> personId : persons) {
 			for (Plan plan : population.getPersons().get(personId).getPlans()) {
@@ -532,7 +545,6 @@ public final class LargeSiteAccessAssignment {
 				}
 			}
 		}
-		return decision(site, inScope, Outcome.MOVED, old, oldCapacity, link);
 	}
 
 	private SiteDecision decision(Site site, boolean inScope, Outcome outcome, Link old, double oldCapacity, Link moved) {

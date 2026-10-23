@@ -386,6 +386,24 @@ public class LargeSiteAccessAssignmentTest {
 	}
 
 	@Test
+	public void anAdequateSiteBringsItsOtherFacilitiesOntoItsLink() {
+		// Same point, the main facility on a 1000 veh/h link, a small one on a 600 veh/h lane: one link per site.
+		Layout layout = new Layout();
+		layout.facility("sec_b_mall", new Coord(-390.0, 0.0), "west_secondary", "shop");
+		layout.facility("sec_b_kiosk", new Coord(-390.0, 0.0), "lot_a_lane", "shop");
+		for (int index = 0; index < 8; index++) {
+			layout.person("s" + index, "sec_b_mall", "shop");
+		}
+		for (int index = 0; index < 3; index++) {
+			layout.person("k" + index, "sec_b_kiosk", "shop");
+		}
+		assertEquals(Outcome.ADEQUATE, onlySite(layout.run()).outcome());
+		assertEquals("west_secondary", layout.linkOf("sec_b_kiosk"));
+		assertEquals("west_secondary", layout.siteActivity("k0", "sec_b_kiosk").getLinkId().toString());
+		assertEquals("west_secondary", layout.siteActivity("s0", "sec_b_mall").getLinkId().toString());
+	}
+
+	@Test
 	public void outOfScopeSitesOnAdequateOrIsolatedLinksAreKept() {
 		Layout adequate = new Layout();
 		adequate.facility("sec_b_mall", new Coord(-390.0, 0.0), "west_secondary", "shop");

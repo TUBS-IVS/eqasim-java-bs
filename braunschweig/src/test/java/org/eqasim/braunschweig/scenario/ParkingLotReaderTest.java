@@ -44,6 +44,17 @@ public class ParkingLotReaderTest {
 	}
 
 	@Test
+	public void quotedFieldsWithSemicolonsAreOneField() throws Exception {
+		// pandas quotes a text field that holds the separator: "private;customers" is one access value.
+		List<ParkingLot> lots = ParkingLotReader.read(write(HEADER,
+				"\"way/9\";1.00;2.00;3;area;\"private;customers\";surface;\"Werk \"\"Nord\"\"; P1\""));
+		assertEquals(1, lots.size());
+		assertEquals("way/9", lots.get(0).lotId());
+		assertEquals(3, lots.get(0).spaces());
+		assertEquals(List.of("a", "b;c", "d\"e", ""), ParkingLotReader.splitFields("a;\"b;c\";\"d\"\"e\";"));
+	}
+
+	@Test
 	public void aMissingColumnIsRejected() throws Exception {
 		IllegalStateException error = assertThrows(IllegalStateException.class,
 				() -> ParkingLotReader.read(write("lot_id;x;y", "way/1;1;2")));

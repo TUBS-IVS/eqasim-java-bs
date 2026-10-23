@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -16,7 +15,9 @@ import org.matsim.api.core.v01.Coord;
 /**
  * Reads the parking-lot release of eqasim-bs (data record parking_lots_osm_2026, written by
  * {@code scripts/build_parking_lots_from_osm.py}): a semicolon-separated file with at least the columns
- * {@code lot_id}, {@code x}, {@code y} (EPSG:25832, metres) and {@code spaces}; further columns are ignored.
+ * {@code lot_id}, {@code x}, {@code y} (EPSG:25832, metres) and {@code spaces}; further columns are ignored. A field
+ * may be double-quoted (pandas quotes text that holds the separator, e.g. {@code "private;customers"}); {@code ""}
+ * inside quotes is one quote character.
  *
  * <p>
  * Fails with an {@link IllegalStateException} naming the file and line on a missing column, an empty id, a
@@ -40,7 +41,7 @@ public final class ParkingLotReader {
 		if (lines.isEmpty()) {
 			throw new IllegalStateException("parking-lot file " + path + " is empty");
 		}
-		List<String> header = Arrays.asList(lines.get(0).trim().split(";", -1));
+		List<String> header = splitFields(lines.get(0).trim());
 		int[] columns = new int[REQUIRED_COLUMNS.size()];
 		for (int index = 0; index < REQUIRED_COLUMNS.size(); index++) {
 			columns[index] = header.indexOf(REQUIRED_COLUMNS.get(index));
@@ -57,22 +58,22 @@ public final class ParkingLotReader {
 			if (line.isBlank()) {
 				continue;
 			}
-			String[] fields = line.split(";", -1);
+			List<String> fields = splitFields(line);
 			String where = path + " line " + (lineIndex + 1);
-			if (fields.length < header.size()) {
-				throw new IllegalStateException(where + ": expected " + header.size() + " fields, got " + fields.length);
+			if (fields.size() != header.size()) {
+				throw new IllegalStateException(where + ": expected " + header.size() + " fields, got " + fields.size());
 			}
-			String lotId = fields[columns[0]].trim();
+			String lotId = fields.get(columns[0]).trim();
 			if (lotId.isEmpty()) {
 				throw new IllegalStateException(where + ": empty lot_id");
 			}
-			double x = parseCoordinate(fields[columns[1]], "x", where);
-			double y = parseCoordinate(fields[columns[2]], "y", where);
+			double x = parseCoordinate(fields.get(columns[1]), "x", where);
+			double y = parseCoordinate(fields.get(columns[2]), "y", where);
 			int spaces;
 			try {
-				spaces = Integer.parseInt(fields[columns[3]].trim());
+				spaces = Integer.parseInt(fields.get(columns[3]).trim());
 			} catch (NumberFormatException e) {
-				throw new IllegalStateException(where + ": spaces '" + fields[columns[3]] + "' is not a whole number");
+				throw new IllegalStateException(where + ": spaces '" + fields.get(columns[3]) + "' is not a whole number");
 			}
 			if (spaces < 1) {
 				throw new IllegalStateException(where + ": spaces must be at least 1, got " + spaces);
@@ -86,6 +87,37 @@ public final class ParkingLotReader {
 			throw new IllegalStateException("parking-lot file " + path + " has no lot rows");
 		}
 		return lots;
+	}
+
+	/** The semicolon-separated fields of one line; double-quoted fields may hold separators and doubled quotes. */
+	static List<String> splitFields(String line) {
+		List<String> fields = new ArrayList<>();
+		StringBuilder field = new StringBuilder();
+		boolean quoted = false;
+		for (int index = 0; index < line.length(); index++) {
+			char character = line.charAt(index);
+			if (quoted) {
+				if (character == '"') {
+					if (index + 1 < line.length() && line.charAt(index + 1) == '"') {
+						field.append('"');
+						index++;
+					} else {
+						quoted = false;
+					}
+				} else {
+					field.append(character);
+				}
+			} else if (character == '"') {
+				quoted = true;
+			} else if (character == ';') {
+				fields.add(field.toString());
+				field.setLength(0);
+			} else {
+				field.append(character);
+			}
+		}
+		fields.add(field.toString());
+		return fields;
 	}
 
 	private static double parseCoordinate(String text, String column, String where) {

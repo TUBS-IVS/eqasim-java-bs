@@ -65,6 +65,11 @@ public class RunAdaptLargeFacilityAccessTest {
 
 	/** A work site at (0, 0) with 10 persons, a shop site at (-1000, 0) with 10 persons, lots as given. */
 	private Path scenario(List<String> lotRows) throws Exception {
+		return scenario(lotRows, 0.0);
+	}
+
+	/** As above, with the shop site moved {@code shopNorthMeters} north (far from every 1000 veh/h link). */
+	private Path scenario(List<String> lotRows, double shopNorthMeters) throws Exception {
 		Path directory = temporaryFolder.newFolder().toPath();
 		Network network = NetworkUtils.createNetwork();
 		link(network, "side_street", -100.0, 10.0, 100.0, 10.0, 600.0, "tertiary");
@@ -82,7 +87,7 @@ public class RunAdaptLargeFacilityAccessTest {
 		ActivityFacilities facilities = FacilitiesUtils.createActivityFacilities();
 		Population population = PopulationUtils.createPopulation(ConfigUtils.createConfig());
 		addFacility(facilities, "work_a", new Coord(X0, Y0), "side_street", "work");
-		addFacility(facilities, "sec_b_mall", new Coord(X0 - 1000.0, Y0), "shop_street", "shop");
+		addFacility(facilities, "sec_b_mall", new Coord(X0 - 1000.0, Y0 + shopNorthMeters), "shop_street", "shop");
 		for (int index = 0; index < 10; index++) {
 			addPerson(population, facilities, "w" + index, "work_a", "work");
 			addPerson(population, facilities, "s" + index, "sec_b_mall", "shop");
@@ -221,6 +226,17 @@ public class RunAdaptLargeFacilityAccessTest {
 		Path tolerated = scenario(List.of(lot("way/far", 3000.0, 0.0, 300)));
 		run(tolerated, 1.0, 1.0, 0.01);
 		assertEquals("moved", rows(tolerated.resolve("summary.csv"), RunAdaptLargeFacilityAccess.SUMMARY_HEADER).get(1)
+				.get("outcome"));
+	}
+
+	@Test
+	public void singleLinkFallbacksAboveTheBoundFailTheStep() throws Exception {
+		// The shop site lies 5 km north of the only 1000 veh/h links: no eligible link within 1000 m, a fallback.
+		Path strict = scenario(List.of(lot("way/a", 0.0, 100.0, 300), lot("way/b", 0.0, -200.0, 200)), 5000.0);
+		assertThrows(IllegalStateException.class, () -> run(strict, 1.0, 0.1, 0.01));
+		Path tolerated = scenario(List.of(lot("way/a", 0.0, 100.0, 300), lot("way/b", 0.0, -200.0, 200)), 5000.0);
+		run(tolerated, 1.0, 1.0, 0.01);
+		assertEquals("fallback", rows(tolerated.resolve("summary.csv"), RunAdaptLargeFacilityAccess.SUMMARY_HEADER).get(0)
 				.get("outcome"));
 	}
 

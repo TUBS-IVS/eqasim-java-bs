@@ -193,6 +193,16 @@ public final class RunAdaptLargeFacilityAccess {
 			logger.warn("large facility access: {} in-scope sites found fewer spaces than wanted within the radius and use all "
 					+ "lots in reach (coverage_ratio in the summary file)", partial);
 		}
+		if (result.lotsSkippedNoLink() > 0) {
+			logger.warn("large facility access: {} lots in reach of a site had no eligible link within the lot-link distance "
+					+ "and were skipped ({} lots used; a lot shared by several sites counts once per site)",
+					result.lotsSkippedNoLink(), lotsUsed);
+		}
+		if (result.lotsOnNearestRule() > 0) {
+			logger.warn("large facility access: {} of {} lots used ({} %) found no link of the minimum capacity within the "
+					+ "lot-link distance and use the closest eligible link of any capacity", result.lotsOnNearestRule(),
+					lotsUsed, percent(result.lotsOnNearestRule(), lotsUsed));
+		}
 		if (result.inScopeWithoutLot() > 0) {
 			logger.warn("large facility access: {} in-scope sites found no usable parking lot within the radius and took the "
 					+ "single-link rule", result.inScopeWithoutLot());
