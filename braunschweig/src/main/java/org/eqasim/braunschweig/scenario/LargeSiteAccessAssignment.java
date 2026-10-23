@@ -37,7 +37,7 @@ import org.matsim.facilities.ActivityOption;
  * <p>
  * eqasim attaches every facility to its single nearest link whatever the link's capacity, so all car departures of a
  * large site enter the network on one link. This class works on SITES: all facilities at the same coordinate (key: x,
- * y to 0.01 m), because incommuter workplaces ({@code ic_work_<person>}, one activity each) are exact copies of the
+ * y to 0.01 m, written {@code <x>_<y>}), because incommuter workplaces ({@code ic_work_<person>}, one activity each) are exact copies of the
  * coordinate of their workplace. Facilities whose id starts with an excluded prefix (portals, external centroids,
  * homes) are never part of a site. Size = activities at the site's facilities in the selected plans / sample size
  * (stated at 100 %); a site is large from {@link Parameters#minimumActivities()}.
@@ -336,7 +336,7 @@ public final class LargeSiteAccessAssignment {
 	}
 
 	static String siteKey(Coord coord) {
-		return String.format(Locale.ROOT, "%.2f;%.2f", coord.getX(), coord.getY());
+		return String.format(Locale.ROOT, "%.2f_%.2f", coord.getX(), coord.getY());
 	}
 
 	private boolean isExcluded(String facilityId) {
