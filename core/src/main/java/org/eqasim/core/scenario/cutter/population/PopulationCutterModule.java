@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.eqasim.core.scenario.cutter.population.trips.ModeAwareTripProcessor;
+import org.eqasim.core.scenario.cutter.population.trips.NetworkTripCrossingStatistics;
 import org.eqasim.core.scenario.cutter.population.trips.NetworkTripProcessor;
 import org.eqasim.core.scenario.cutter.population.trips.TeleportationTripProcessor;
 import org.eqasim.core.scenario.cutter.population.trips.TransitTripProcessor;
@@ -150,8 +151,14 @@ public class PopulationCutterModule extends AbstractModule {
 
 	@Provides
 	public NetworkTripProcessor provideNetworkTripProcessor(NetworkTripCrossingPointFinder networkPointFinder,
-			ScenarioExtent extent, TransitRouterConfigGroup routerConfig) {
-		return new NetworkTripProcessor(networkPointFinder, extent);
+			ScenarioExtent extent, TransitRouterConfigGroup routerConfig, NetworkTripCrossingStatistics statistics) {
+		return new NetworkTripProcessor(networkPointFinder, extent, statistics);
+	}
+
+	@Provides
+	@Singleton
+	public NetworkTripCrossingStatistics provideNetworkTripCrossingStatistics() {
+		return new NetworkTripCrossingStatistics();
 	}
 
 	@Provides

@@ -21,6 +21,7 @@ import org.eqasim.core.scenario.cutter.population.CleanHouseholds;
 import org.eqasim.core.scenario.cutter.population.CleanVehicles;
 import org.eqasim.core.scenario.cutter.population.PopulationCutter;
 import org.eqasim.core.scenario.cutter.population.PopulationCutterModule;
+import org.eqasim.core.scenario.cutter.population.trips.NetworkTripCrossingStatistics;
 import org.eqasim.core.scenario.cutter.population.RemoveEmptyPlans;
 import org.eqasim.core.scenario.cutter.transit.DefaultStopSequenceCrossingPointFinder;
 import org.eqasim.core.scenario.cutter.transit.StopSequenceCrossingPointFinder;
@@ -119,6 +120,7 @@ public class RunScenarioCutter {
 
 		PopulationCutter populationCutter = populationCutterInjector.getInstance(PopulationCutter.class);
 		populationCutter.run(scenario.getPopulation());
+		populationCutterInjector.getInstance(NetworkTripCrossingStatistics.class).log();
 
 		// ... and remove empty plans
 		RemoveEmptyPlans removeEmptyPlans = new RemoveEmptyPlans();

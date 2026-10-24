@@ -39,13 +39,14 @@ public class DefaultNetworkTripCrossingPointFinder implements NetworkTripCrossin
 
 			if (element instanceof Leg) {
 				Leg leg = (Leg) element;
+				int tripLegIndex = legIndex - firstLegIndex;
 				Route route = leg.getRoute();
 
 				if (route instanceof NetworkRoute) {
 					result.addAll(networkFinder
 							.findCrossingPoints(personId, legIndex, leg.getMode(), (NetworkRoute) route,
 									leg.getDepartureTime().seconds())
-							.stream().map(p -> new NetworkTripCrossingPoint(p, leg.getMode()))
+							.stream().map(p -> new NetworkTripCrossingPoint(p, leg.getMode(), tripLegIndex))
 							.collect(Collectors.toList()));
 				} else {
 					Coord legStartCoord = (i == 0) ? startCoord : ((Activity) trip.get(i - 1)).getCoord();
@@ -54,7 +55,7 @@ public class DefaultNetworkTripCrossingPointFinder implements NetworkTripCrossin
 					result.addAll(walkFinder
 							.findCrossingPoints(legStartCoord, legEndCoord, leg.getTravelTime().seconds(),
 									leg.getDepartureTime().seconds())
-							.stream().map(p -> new NetworkTripCrossingPoint(p, leg.getMode()))
+							.stream().map(p -> new NetworkTripCrossingPoint(p, leg.getMode(), tripLegIndex))
 							.collect(Collectors.toList()));
 				}
 
