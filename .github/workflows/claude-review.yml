@@ -51,10 +51,10 @@ jobs:
       round: ${{ steps.gate.outputs.round }}
       temporary_model: ${{ steps.temporary_model.outputs.active }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - name: Install gate dependencies
@@ -149,11 +149,11 @@ jobs:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history: the script diffs base...head with local git, as the gate does.
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - name: Install review dependencies
@@ -222,7 +222,7 @@ jobs:
             --record "$RUNNER_TEMP/claude-review-findings.json"
       - name: Upload cost record
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: claude-review-cost-pr${{ github.event.pull_request.number }}-run${{ github.run_id }}-${{ github.run_attempt }}
           path: claude-review-cost.json
@@ -232,7 +232,7 @@ jobs:
       # from confirmed findings; see TUBS-IVS/eqasim-bs docs/codebase/notes/claude-pr-review.md.
       - name: Upload findings record
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: claude-review-findings-pr${{ github.event.pull_request.number }}-run${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/claude-review-findings.json
