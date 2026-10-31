@@ -1,5 +1,50 @@
 # Changelog
 
+## [2.4.0](https://github.com/TUBS-IVS/eqasim-java-bs/compare/v2.3.1...v2.4.0) (2026-10-30)
+
+
+### Features
+
+* Give large facilities a high-capacity access link (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([f91a690](https://github.com/TUBS-IVS/eqasim-java-bs/commit/f91a6909fa0b87bb7187456eaa9e2c17e1b9524b))
+* Give large sites a parking-lot based road access (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([5de5413](https://github.com/TUBS-IVS/eqasim-java-bs/commit/5de5413b6826d7ebc38a6639f3eb165f735e5c96))
+* parking cost zones v2 + v3 - garage options, feasibility, price-weighted options, EV exemption, report v4 ([#436](https://github.com/TUBS-IVS/eqasim-java-bs/issues/436)) ([4c1af4a](https://github.com/TUBS-IVS/eqasim-java-bs/commit/4c1af4a42f3fbe06977999c652a50ec08bc58e8c))
+* price PT with the VRB zone tariff, a day-ticket cap and a long-distance routing cost ([da8b024](https://github.com/TUBS-IVS/eqasim-java-bs/commit/da8b02443f4b822bf356f365609d05f6e1ecdc41))
+* Read parking lots and allocate persons to access groups (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([f19182f](https://github.com/TUBS-IVS/eqasim-java-bs/commit/f19182f48d8ce12cfd5f914acd2c8554644856c1))
+* review PRs in rounds, verify fixes, check the stated intent, cap automatic rounds ([1c4a042](https://github.com/TUBS-IVS/eqasim-java-bs/commit/1c4a0424737478b7b7b24a03d7f4fb52cb2c0c47))
+* Run the large-site access step with parking lots, two summaries and bounds (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([a3b6f47](https://github.com/TUBS-IVS/eqasim-java-bs/commit/a3b6f475d84048f1ce8e171ea8679fbbaed953cc))
+* separate passenger availability from driver car access ([7c1f870](https://github.com/TUBS-IVS/eqasim-java-bs/commit/7c1f8703385e83745a2cc116bb3504f435a557fd))
+* Spread the car access of large work and university sites over their parking lots (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([bcdd8fe](https://github.com/TUBS-IVS/eqasim-java-bs/commit/bcdd8fe1cbd88f40aaf1f292f6f20f1c647ae8ec))
+* write access and egress stop ids per leg in the batch public transport router ([9a21189](https://github.com/TUBS-IVS/eqasim-java-bs/commit/9a21189c3e2cdd46174a2a7b8a8635247c6bdd9a))
+* write access and egress stop ids per pt leg in the batch public transport router ([863c09a](https://github.com/TUBS-IVS/eqasim-java-bs/commit/863c09a34a67ad37fafa1c3caec36f4ee0baf7d4))
+
+
+### Bug Fixes
+
+* board the first vehicle of any line to the egress stop after a missed departure (eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([5446f59](https://github.com/TUBS-IVS/eqasim-java-bs/commit/5446f59fe76f8136db29d221d0b2cc1eaf16820d))
+* classify batch router walk legs by their position among the legs ([e1c76b0](https://github.com/TUBS-IVS/eqasim-java-bs/commit/e1c76b0e9e744681e01332bcd2b846fcfb170487))
+* classify batch router walk legs by their position among the legs ([bf947ec](https://github.com/TUBS-IVS/eqasim-java-bs/commit/bf947ecd8f712a41d1822b47c1c4ff596e00db38))
+* count and mark pt trips that the plan router replaces by a walk ([686048f](https://github.com/TUBS-IVS/eqasim-java-bs/commit/686048f96e5dae14d1c8f3bfa734d3efa05fb891))
+* count and mark pt trips that the plan router replaces by a walk ([83ffec7](https://github.com/TUBS-IVS/eqasim-java-bs/commit/83ffec703d017e1a0dc64343b2b356e5c1835d91))
+* count every model round against the review cap; no verify run for a merge of main ([32e34b2](https://github.com/TUBS-IVS/eqasim-java-bs/commit/32e34b263db9846f6a7aded64f8abe5c9700485a))
+* count failed Claude review runs against the round cap ([17aa053](https://github.com/TUBS-IVS/eqasim-java-bs/commit/17aa053f21778caf2700ad7c7b285b06eef9848f))
+* count failed Claude review runs; remove the temporary model step ([bfbe765](https://github.com/TUBS-IVS/eqasim-java-bs/commit/bfbe7654abe276c331654eda7f880ca7e703e47a))
+* give the review model new-file line numbers ([ca33bf3](https://github.com/TUBS-IVS/eqasim-java-bs/commit/ca33bf3d7a399d6175e14f5972b98cd63a190b1d))
+* give the review model new-file line numbers ([512963b](https://github.com/TUBS-IVS/eqasim-java-bs/commit/512963babfa7cbb4a586a7be529afb058814768b))
+* guard null access and egress stop ids in the batch public transport router ([a1f4494](https://github.com/TUBS-IVS/eqasim-java-bs/commit/a1f44946afd387e2bf5257a1841019fdae094f98))
+* Harden the large-site access step after the final review (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([1e2fcc4](https://github.com/TUBS-IVS/eqasim-java-bs/commit/1e2fcc4b2e16f448020b77822f14e6dbdec874dd))
+* import Function and order imports in PopulationRouter ([9cab440](https://github.com/TUBS-IVS/eqasim-java-bs/commit/9cab44012e8da3ae5449d0fe7e36be703e7db021))
+* Keep a cut car trip a car trip when its access walk crosses the border (eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([7b02f70](https://github.com/TUBS-IVS/eqasim-java-bs/commit/7b02f70a44d81de022b5fc77f8db1c0656d988c3))
+* Keep a cut car trip a car trip when its access walk crosses the border (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([d3bb8cf](https://github.com/TUBS-IVS/eqasim-java-bs/commit/d3bb8cfa8fbf413315f0942be2a0887831b01c45))
+* Keep a facility link that the facilities file already carries (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([4555f58](https://github.com/TUBS-IVS/eqasim-java-bs/commit/4555f58567d2be8c017397a04813e0f5168a4ce0))
+* Keep a facility link that the facilities file already carries (TUBS-IVS/eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([6c26bec](https://github.com/TUBS-IVS/eqasim-java-bs/commit/6c26bec18b0cd4eaa96e7980ca1dc41a37811a96))
+* keep the last inside stop and the timetable when cutting transit routes ([21c1045](https://github.com/TUBS-IVS/eqasim-java-bs/commit/21c1045c4d6ffd55d362927cd485fd09f7cb1d0b))
+* keep the last inside stop when cutting a transit route that leaves the extent ([19fe3d2](https://github.com/TUBS-IVS/eqasim-java-bs/commit/19fe3d24f6225fc28fa20687bbdb54b36aa89a1b))
+* keep the timetable of transit routes that the cutter shortens at their start ([83312f9](https://github.com/TUBS-IVS/eqasim-java-bs/commit/83312f93288bbc137780a4019980b8c620957985))
+* Locale-independent walk fallback log, import order, tests for no-reroute and count summation ([a3873e9](https://github.com/TUBS-IVS/eqasim-java-bs/commit/a3873e9adbf0ddb1f9bd55cbafb0aebedf9a93e4))
+* move a plan earlier when its routed last arrival is too late (eqasim-bs[#465](https://github.com/TUBS-IVS/eqasim-java-bs/issues/465)) ([8fa2184](https://github.com/TUBS-IVS/eqasim-java-bs/commit/8fa2184a0256ed5bfbbfd749c895d50e8b1f6ef4))
+* reject non-integral money and count values in the VRB fare model ([d224ca2](https://github.com/TUBS-IVS/eqasim-java-bs/commit/d224ca2e2e678086d671483628a69333c6e58bbf))
+* remove a stale VRB zone from stop facilities outside every polygon ([a9529a3](https://github.com/TUBS-IVS/eqasim-java-bs/commit/a9529a34cfa063393b0138673cbaf39a011b0a5c))
+
 ## [2.3.1](https://github.com/TUBS-IVS/eqasim-java-bs/compare/v2.3.0...v2.3.1) (2026-08-20)
 
 
