@@ -1,4 +1,4 @@
-# Copied unchanged from TUBS-IVS/eqasim-bs scripts/claude_review.py as last changed in 4e2c236b
+# Copied unchanged from TUBS-IVS/eqasim-bs scripts/claude_review.py as last changed in 0e693202
 # (PR #536 there), where its tests live (tests/test_claude_review.py). Change it there
 # first and copy it here, so every copy gates, reviews and posts the same way.
 """Gate, review run, posting and cost record of the automatic Claude PR review
@@ -447,7 +447,7 @@ def classify(config: dict, entries: list, branch: str, labels: list, draft: bool
         return decide("none", "skipped: nothing changed against main since the last complete round", "none", "none")
     tier, why = _size_tier(config, measured, structure, kind)
     if tier == "none" and context.open_findings:
-        return decide(verify, f"verify: {context.open_findings} open finding(s), no counted change",
+        return decide(verify, f"verify: {context.open_findings} open finding(s), the push itself is not reviewed ({why})",
                       "verify", "interdiff")
     return decide(tier, why, "rereview", "interdiff")
 
