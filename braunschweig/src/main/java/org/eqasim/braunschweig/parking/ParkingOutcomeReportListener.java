@@ -84,8 +84,9 @@ import com.google.inject.Singleton;
  * choice priced, chosen or not: numbers of pricing calls, not of distinct trips or persons. The eqasim car predictor
  * (CarPredictor, a CachedVariablePredictor) calls the cost model whenever it is asked for another trip than on its
  * previous call: it keeps the variables of that one trip only, keyed by the identity of the DiscreteModeChoiceTrip
- * object, not by the route. Before it, the trip estimate cache of the discrete mode choice contrib (CachedTripEstimator,
- * for the cachedModes, which include car in the eqasim and Braunschweig configs) answers a repeated estimate of the same
+ * object, not by the route. Before it, the trip estimate cache of the discrete mode choice (PersonScopedCachedTripEstimator,
+ * same answers as the contrib's CachedTripEstimator, for the cachedModes, which include car in the eqasim and
+ * Braunschweig configs) answers a repeated estimate of the same
  * trip at the same departure second without a call. Replanning happens before the iteration ends, so the iteration-0
  * file, written before any replanning, has no row. Version 1 reports only: no threshold, no failure.
  */
