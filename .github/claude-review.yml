@@ -1,9 +1,9 @@
 # Gate for the automatic Claude PR review (.github/workflows/claude-review.yml).
 #
-# .github/scripts/claude_review.py classify reads this file and the PR diff and decides,
+# The central gate (TUBS-IVS/claude-pr-review, claude_review.py classify) reads this file and the PR diff and decides,
 # without calling any model, whether the review runs and at which tier. Every
 # decision is written with its reason to the job summary, so a skipped review is
-# never silent. Mechanism: TUBS-IVS/eqasim-bs docs/codebase/notes/claude-pr-review.md.
+# never silent. Mechanism: TUBS-IVS/claude-pr-review, docs/how-it-works.md.
 #
 # ASSUMPTION: all thresholds below are starting values, not measured; each block names
 # the date its values were chosen. Re-tune them from the per-run cost records in the job
@@ -28,7 +28,6 @@ critical_paths:
   - ".github/workflows/**"
   - ".github/claude-review.yml"
   - ".github/claude-review-prompt.md"
-  - ".github/scripts/claude_review.py"
 
 # Paths that never count towards the changed-line totals or the file count
 # (generated, machine-written, or upstream region modules the Braunschweig model
@@ -61,7 +60,6 @@ structure_paths:
   - ".github/workflows/**"
   - ".github/claude-review.yml"
   - ".github/claude-review-prompt.md"
-  - ".github/scripts/claude_review.py"
 
 # Branch kinds (prefix before "/") that skip the review unless a critical path is touched.
 skip_kinds:
@@ -100,21 +98,27 @@ rereview:
 # max_budget_usd is a hard per-run cap (claude -p --max-budget-usd): 10 / 50 / 50 USD, the
 # owner's choice (2026-10-30 for light and full, 2026-11-02 for deep); the turn limits are an
 # ASSUMPTION (the budget is the binding limit), re-tune them from the cost records.
+# effort: the reasoning level of each run (claude -p --effort: low, medium, high, xhigh, max;
+# without it the model's default applies, medium on Opus 5.5 and Sonnet 5.5, high on Fable 5.1).
+# Owner's choice (2026-11-04): xhigh on every tier.
 tiers:
   light:
     model: claude-sonnet-5-5
     max_turns: 25
     max_budget_usd: 10.0
+    effort: xhigh
   full:
     model: claude-opus-5-5
     max_turns: 250
     max_budget_usd: 50.0
+    effort: xhigh
   deep:
     model: claude-fable-5-1
     max_turns: 250
     max_budget_usd: 50.0
+    effort: xhigh
 
-# The review run (.github/scripts/claude_review.py review). The model only reads; posting
+# The review run (claude_review.py review, TUBS-IVS/claude-pr-review). The model only reads; posting
 # is done by the script, which also writes the PR diff to a file the model reads (no shell
 # tools). Placeholders in the prompt file: {{REPO}}, {{PR}}, {{TIER}}, {{SHA}}, {{PR_TITLE}},
 # {{FENCE}}, {{PR_BODY}}, {{DIFF_BLOCK}}, {{ROUND_BLOCK}}.
