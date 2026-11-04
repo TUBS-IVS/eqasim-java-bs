@@ -24,6 +24,7 @@ import org.eqasim.core.simulation.mode_choice.EqasimModeChoiceModule;
 import org.eqasim.core.simulation.mode_choice.constraints.leg_time.LegTimeConstraintConfigGroup;
 import org.eqasim.core.simulation.mode_choice.constraints.leg_time.LegTimeConstraintModule;
 import org.eqasim.core.simulation.mode_choice.epsilon.EpsilonModule;
+import org.eqasim.core.simulation.mode_choice.trip_cache.PersonScopedTripCacheModule;
 import org.eqasim.core.simulation.modes.feeder_drt.MultiModeFeederDrtModule;
 import org.eqasim.core.simulation.modes.feeder_drt.config.MultiModeFeederDrtConfigGroup;
 import org.eqasim.core.simulation.modes.feeder_drt.mode_choice.EqasimFeederDrtModeChoiceModule;
@@ -80,6 +81,8 @@ public abstract class EqasimConfigurator {
 		registerModule(new SwissRailRaptorModule());
 		registerModule(new EqasimTransitModule());
 		registerModule(new DiscreteModeChoiceModule());
+		// Overrides the DMC trip estimate cache, whose lookups slow down quadratically within an iteration
+		registerModule(new PersonScopedTripCacheModule());
 		registerModule(new EqasimComponentsModule());
 		registerModule(new EpsilonModule());
 		registerModule(new EqasimRaptorModule());
