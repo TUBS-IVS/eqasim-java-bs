@@ -98,7 +98,8 @@
 			texts, error messages, the module graph) and logs a stack trace once per JVM.
 
 			Keep asm.version at 9.8 or newer (the first release that reads Java 25 class files) and guice.version equal to the
-			Guice version of the MATSim release (guice-grapher and guice-assistedinject come from MATSim's own pin).
+			Guice version of the MATSim release: guice-grapher and guice-assistedinject come from MATSim's own pin, and the
+			enforcer rule in the build section stops the build when the Guice jars differ in version.
 
 			The default jar comes in along every MATSim dependency path, so every dependency that brings MATSim in excludes it:
 			give each MATSim contrib you add the same exclusion. GuiceClasspathTest (braunschweig) and GuiceSourceLinesTest (core)
@@ -244,6 +245,34 @@
 						<goals>
 							<goal>test-jar</goal>
 						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<!--
+				The Guice core classes come from guice.version, guice-grapher and guice-assistedinject from MATSim's own pin (see
+				the comment at the Guice dependency): a MATSim release on another Guice would put extensions of one version next
+				to core classes of another, which fails at injector creation or runs unnoticed. The build stops instead.
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-enforcer-plugin</artifactId>
+				<version>3.5.0</version>
+				<executions>
+					<execution>
+						<id>guice-jars-of-one-version</id>
+						<goals>
+							<goal>enforce</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<requireSameVersions>
+									<dependencies>
+										<dependency>com.google.inject:*</dependency>
+										<dependency>com.google.inject.extensions:*</dependency>
+									</dependencies>
+								</requireSameVersions>
+							</rules>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>
