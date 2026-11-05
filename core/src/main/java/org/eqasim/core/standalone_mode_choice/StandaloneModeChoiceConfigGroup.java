@@ -21,6 +21,12 @@ public class StandaloneModeChoiceConfigGroup extends ReflectiveConfigGroup {
     /**
      * Subpopulations whose persons the standalone mode choice leaves untouched (their selected plan is written as
      * read). Empty by default: every person chooses, as before.
+     * <p>
+     * The random draws of the persons who still choose depend on their position in the list of chosen plans (one
+     * random stream per chunk, consumed plan by plan). Excluding persons shifts those positions, so with the same
+     * seed the remaining persons are re-drawn: their chosen modes can differ from a run without the exclusion by
+     * random variation alone. A before/after comparison of their modes therefore measures sampling noise, not an
+     * effect of the exclusion.
      */
     private Set<String> excludedSubpopulations = Collections.emptySet();
 
@@ -91,7 +97,8 @@ public class StandaloneModeChoiceConfigGroup extends ReflectiveConfigGroup {
         Map<String, String> comments = super.getComments();
         comments.put(EXCLUDED_SUBPOPULATIONS, "Comma-separated subpopulations whose persons keep their selected plan "
                 + "unchanged (no mode choice). Empty: every person chooses. The run fails if the listed "
-                + "subpopulations match no person at all.");
+                + "subpopulations match no person at all. With the same seed, a non-empty list also re-draws the "
+                + "random choices of the persons who still choose (their position in the plan list shifts).");
         return comments;
     }
 }
