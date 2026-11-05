@@ -29,6 +29,13 @@
 			<groupId>org.matsim.contrib</groupId>
 			<artifactId>application</artifactId>
 			<version>${matsim.version}</version>
+			<!-- Guice comes from the unshaded classes jar of the parent pom, see the comment there. -->
+			<exclusions>
+				<exclusion>
+					<groupId>com.google.inject</groupId>
+					<artifactId>guice</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<!--
 			MATSim SimWrapper contrib: lets the run write standard SimWrapper
@@ -43,6 +50,13 @@
 			<groupId>org.matsim.contrib</groupId>
 			<artifactId>simwrapper</artifactId>
 			<version>${matsim.version}</version>
+			<!-- Guice comes from the unshaded classes jar of the parent pom, see the comment there. -->
+			<exclusions>
+				<exclusion>
+					<groupId>com.google.inject</groupId>
+					<artifactId>guice</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 	</dependencies>
 

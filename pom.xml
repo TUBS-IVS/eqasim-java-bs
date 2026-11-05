@@ -23,6 +23,9 @@
 		<maven.compiler.source>25</maven.compiler.source>
 		<maven.compiler.target>25</maven.compiler.target>
 		<matsim.version>2026.0-2026w12</matsim.version>
+		<!-- Guice and ASM: see the comment at the Guice dependency below. -->
+		<guice.version>7.0.0</guice.version>
+		<asm.version>9.10.1</asm.version>
 	</properties>
 
 	<distributionManagement>
@@ -88,28 +91,90 @@
 			<version>3.6.1</version>
 		</dependency>
 
+		<!--
+			Guice runs from the unshaded classes jar of its own release plus the asm jar below, not from the default jar
+			com.google.inject:guice. The default jar embeds an ASM that reads class files up to Java 21 only, while MATSim 2026
+			and this build are compiled for Java 25: Guice then cannot read the source line of any @Provides method (binding
+			texts, error messages, the module graph) and logs a stack trace once per JVM.
+
+			Keep asm.version at 9.8 or newer (the first release that reads Java 25 class files) and guice.version equal to the
+			Guice version of the MATSim release (guice-grapher and guice-assistedinject come from MATSim's own pin).
+
+			The default jar comes in along every MATSim dependency path, so every dependency that brings MATSim in excludes it:
+			give each MATSim contrib you add the same exclusion. GuiceClasspathTest (braunschweig) and GuiceSourceLinesTest (core)
+			fail in their own modules when it comes back or when the ASM cannot read the class files of this build; the other
+			modules and the shaded jar are not tested. Why, the rejected options and what depends on it: ADR-0179 of the eqasim-bs
+			repository.
+		-->
+		<dependency>
+			<groupId>com.google.inject</groupId>
+			<artifactId>guice</artifactId>
+			<version>${guice.version}</version>
+			<classifier>classes</classifier>
+			<!--
+				The Guava request of Guice is excluded: as a direct dependency declared first, Guice would win the version
+				mediation and downgrade the Guava that MATSim and its contribs bring.
+			-->
+			<exclusions>
+				<exclusion>
+					<groupId>com.google.guava</groupId>
+					<artifactId>guava</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<dependency>
+			<groupId>org.ow2.asm</groupId>
+			<artifactId>asm</artifactId>
+			<version>${asm.version}</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.matsim</groupId>
 			<artifactId>matsim</artifactId>
 			<version>${matsim.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.google.inject</groupId>
+					<artifactId>guice</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
 			<groupId>org.matsim.contrib</groupId>
 			<artifactId>discrete_mode_choice</artifactId>
 			<version>${matsim.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.google.inject</groupId>
+					<artifactId>guice</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
 			<groupId>org.matsim.contrib</groupId>
 			<artifactId>emissions</artifactId>
 			<version>${matsim.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.google.inject</groupId>
+					<artifactId>guice</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
 			<groupId>org.matsim.contrib</groupId>
 			<artifactId>drt</artifactId>
 			<version>${matsim.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.google.inject</groupId>
+					<artifactId>guice</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
