@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eqasim.core.misc.Constants;
 import org.junit.Assert;
 import org.junit.Test;
 import org.matsim.api.core.v01.Coord;
@@ -196,5 +197,40 @@ public class PlanRouterWalkFallbackTest {
 		Assert.assertEquals(1, (int) routed.get("walk"));
 		Assert.assertEquals(2, (int) fallback.get("pt"));
 		Assert.assertNull(fallback.get("walk"));
+	}
+
+	@Test
+	public void collapseMarkerIsCarriedOntoEveryInsertedLeg() {
+		// The scenario cutter marks the pt leg of a collapsed trip (eqasim-bs#574); routing replaces the leg
+		buildScenario();
+
+		for (double departure : new double[] { 7.0 * 3600.0 + 3000.0, 20.0 * 3600.0 }) {
+			Plan plan = createPlan("pt", departure);
+			Leg leg = TripStructureUtils.getLegs(plan).get(0);
+			leg.getAttributes().putAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE,
+					"inside_inside");
+			router.run(plan, false, Set.of());
+
+			List<Leg> legs = TripStructureUtils.getLegs(plan);
+			Assert.assertTrue(legs.size() > 1 || legs.get(0) != leg);
+			for (Leg inserted : legs) {
+				Assert.assertEquals("inside_inside",
+						inserted.getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE));
+			}
+		}
+
+		// The served departure is routed by pt, the late one walks; both keep the marker
+		Assert.assertEquals(1, (int) router.getWalkFallbackCounts().get("pt"));
+	}
+
+	@Test
+	public void unmarkedTripGetsNoCollapseMarker() {
+		buildScenario();
+		Plan plan = createPlan("pt", 7.0 * 3600.0 + 3000.0);
+		router.run(plan, false, Set.of());
+
+		for (Leg leg : TripStructureUtils.getLegs(plan)) {
+			Assert.assertNull(leg.getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE));
+		}
 	}
 }

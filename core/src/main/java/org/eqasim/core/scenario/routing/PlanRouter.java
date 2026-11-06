@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eqasim.core.misc.Constants;
 import org.matsim.api.core.v01.TransportMode;
 import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Leg;
@@ -74,6 +75,11 @@ public class PlanRouter {
 					Facility fromFacility = FacilitiesUtils.toFacility(trip.getOriginActivity(), facilities);
 					Facility toFacility = FacilitiesUtils.toFacility(trip.getDestinationActivity(), facilities);
 
+					// The scenario cutter's collapse marker (eqasim-bs#574) lives on the trip's legs, which the
+					// routing replaces
+					Object collapseCase = trip.getLegsOnly().get(0).getAttributes()
+							.getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE);
+
 					List<? extends PlanElement> newElements = tripRouter.calcRoute(mainMode, fromFacility, toFacility,
 							departureTime.seconds(), plan.getPerson(), trip.getTripAttributes());
 
@@ -84,6 +90,12 @@ public class PlanRouter {
 							plan.getPerson(), newElements, trip.getTripAttributes());
 
 					keepWalkFallbackStamp(trip.getLegsOnly(), newElements);
+
+					if (collapseCase != null) {
+						for (Leg leg : TripStructureUtils.getLegs(newElements)) {
+							leg.getAttributes().putAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE, collapseCase);
+						}
+					}
 
 					TripRouter.insertTrip(plan, trip.getOriginActivity(), newElements, trip.getDestinationActivity());
 				}
