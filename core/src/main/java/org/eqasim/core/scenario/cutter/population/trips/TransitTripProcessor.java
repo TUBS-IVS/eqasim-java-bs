@@ -19,6 +19,7 @@ import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.PlanElement;
 import org.matsim.core.population.PopulationUtils;
+import org.matsim.pt.transitSchedule.api.TransitStopFacility;
 
 public class TransitTripProcessor implements TripProcessor {
 	/** Key of {@link #getCollapseCounts()}: trips with at least one crossing point (collapse mode only). */
@@ -57,8 +58,12 @@ public class TransitTripProcessor implements TripProcessor {
 
 	/**
 	 * @param collapseExcursions whether to collapse the crossing points of a trip to at most one per outside end
-	 *                           (kept-stops mode, eqasim-bs#574, design R5); false keeps one outside activity per
-	 *                           crossing point (extent mode, upstream behaviour)
+	 *                           (kept-stops mode, eqasim-bs#574, design R5) and to mark every outside activity built
+	 *                           at a stop (an in-vehicle point, or a walk point that carries a stop facility id) with
+	 *                           the attribute {@link Constants#CUT_TRANSIT_STOP_ATTRIBUTE} (the stop facility id), so
+	 *                           that the outside activity adapter anchors it at the stop; false keeps one outside
+	 *                           activity per crossing point and never sets the attribute (extent mode, upstream
+	 *                           behaviour)
 	 */
 	public TransitTripProcessor(TransitTripCrossingPointFinder transitPointFinder, ScenarioExtent extent,
 			double departureTimeBuffer, boolean collapseExcursions) {
@@ -142,11 +147,13 @@ public class TransitTripProcessor implements TripProcessor {
 					Activity activity = PopulationUtils.createActivityFromCoord("outside",
 							point.transitRoutePoint.insideStop.getStopFacility().getCoord());
 					activity.setEndTime(point.transitRoutePoint.insideDepartureTime - departureTimeBuffer);
+					markStop(activity, point.transitRoutePoint.insideStop.getStopFacility().getId());
 					result.add(activity);
 				} else {
 					Activity activity = PopulationUtils.createActivityFromCoord("outside",
 							point.teleportationPoint.coord);
 					activity.setEndTime(point.teleportationPoint.time);
+					markStop(activity, point.teleportationPoint.stopFacilityId);
 					result.add(activity);
 				}
 
@@ -154,6 +161,16 @@ public class TransitTripProcessor implements TripProcessor {
 			}
 
 			return result;
+		}
+	}
+
+	/**
+	 * Puts the stop attribute on an outside activity built at a stop, in the kept-stops mode only; a point without a
+	 * stop (a crossing of the extent polygon) and the extent mode leave the activity untouched.
+	 */
+	private void markStop(Activity activity, Id<TransitStopFacility> stopId) {
+		if (collapseExcursions && stopId != null) {
+			activity.getAttributes().putAttribute(Constants.CUT_TRANSIT_STOP_ATTRIBUTE, stopId.toString());
 		}
 	}
 

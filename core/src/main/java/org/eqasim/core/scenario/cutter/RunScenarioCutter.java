@@ -184,6 +184,12 @@ public class RunScenarioCutter {
 		OutsideActivityAdapter outsideActivityAdapter = new OutsideActivityAdapter(roadNetwork);
 		outsideActivityAdapter.run(scenario.getPopulation(), scenario.getActivityFacilities());
 
+		if (transitCut.isKeptStops()) {
+			log.info("[RunScenarioCutter] stop-anchored outside activities "
+					+ TransitCutSummary.rate(outsideActivityAdapter.getStopAnchoredActivities(),
+							outsideActivityAdapter.getOutsideActivities()));
+		}
+
 		// ... and make households consistent
 		CleanHouseholds cleanHouseholds = new CleanHouseholds(scenario.getPopulation());
 		cleanHouseholds.run(scenario.getHouseholds());

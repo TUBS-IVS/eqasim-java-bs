@@ -20,6 +20,7 @@ import org.matsim.pt.routes.TransitPassengerRoute;
 import org.matsim.pt.transitSchedule.api.TransitLine;
 import org.matsim.pt.transitSchedule.api.TransitRoute;
 import org.matsim.pt.transitSchedule.api.TransitSchedule;
+import org.matsim.pt.transitSchedule.api.TransitStopFacility;
 
 /**
  * Finds the crossing points of a pt trip at the boundary of the KEPT timetable instead of the extent polygon
@@ -50,6 +51,11 @@ import org.matsim.pt.transitSchedule.api.TransitSchedule;
  * itself: the transition is reported at that stop at the next leg's departure time (or, at the end of the trip, at the
  * last leg's arrival time). Because every pair of consecutive points is tested exactly once, the reported points
  * alternate between outgoing and incoming, starting with outgoing iff the origin is inside the extent.
+ *
+ * A walk transition that lies at a stop (the boarding stop of a ride, the alighting stop of the ride before a walk,
+ * or the boarding stop of the ride after a walk) carries that stop's facility id
+ * ({@link TeleportationCrossingPoint#stopFacilityId}), so that the outside activity built there can be anchored at
+ * the stop; a transition at the origin, the destination or a stage activity between two non-pt legs carries none.
  */
 public class KeptStopsTransitTripCrossingPointFinder implements TransitTripCrossingPointFinder {
 	private final ScenarioExtent extent;
@@ -127,6 +133,14 @@ public class KeptStopsTransitTripCrossingPointFinder implements TransitTripCross
 		return positions.route().getStops().get(positions.egressIndex()).getStopFacility().getCoord();
 	}
 
+	private static Id<TransitStopFacility> accessStopId(RidePositions positions) {
+		return positions.route().getStops().get(positions.accessIndex()).getStopFacility().getId();
+	}
+
+	private static Id<TransitStopFacility> egressStopId(RidePositions positions) {
+		return positions.route().getStops().get(positions.egressIndex()).getStopFacility().getId();
+	}
+
 	private static TransitPassengerRoute transitRoute(PlanElement element) {
 		if (element instanceof Leg leg && leg.getRoute() instanceof TransitPassengerRoute route) {
 			return route;
@@ -161,9 +175,10 @@ public class KeptStopsTransitTripCrossingPointFinder implements TransitTripCross
 			}
 		}
 
-		// The membership and coordinate of the last point passed
+		// The membership, coordinate and stop facility (null for an activity) of the last point passed
 		boolean inWorld = extent.isInside(startCoord);
 		Coord coord = startCoord;
+		Id<TransitStopFacility> stopId = null;
 		double arrivalTime = Double.NaN;
 		boolean endsWithRide = false;
 
@@ -182,18 +197,20 @@ public class KeptStopsTransitTripCrossingPointFinder implements TransitTripCross
 
 				if (boardingInWorld != inWorld) {
 					result.add(new TransitTripCrossingPoint(new TeleportationCrossingPoint(accessCoord(ride),
-							leg.getDepartureTime().seconds(), inWorld)));
+							leg.getDepartureTime().seconds(), inWorld, accessStopId(ride))));
 				}
 
 				routeFinder.findCrossingPoints(ride).forEach(p -> result.add(new TransitTripCrossingPoint(p)));
 
 				inWorld = isKeptEgress(ride);
 				coord = egressCoord(ride);
+				stopId = egressStopId(ride);
 				arrivalTime = leg.getDepartureTime().seconds() + leg.getTravelTime().seconds();
 			} else {
 				int next = nextLegIndex(trip, i);
 				boolean toInWorld;
 				Coord toCoord;
+				Id<TransitStopFacility> toStopId = null;
 
 				if (next < 0) {
 					toInWorld = extent.isInside(endCoord);
@@ -201,6 +218,7 @@ public class KeptStopsTransitTripCrossingPointFinder implements TransitTripCross
 				} else if (rides[next] != null) {
 					toInWorld = isKeptAccess(rides[next]);
 					toCoord = accessCoord(rides[next]);
+					toStopId = accessStopId(rides[next]);
 				} else {
 					toCoord = ((Activity) trip.get(i + 1)).getCoord();
 					toInWorld = extent.isInside(toCoord);
@@ -210,22 +228,25 @@ public class KeptStopsTransitTripCrossingPointFinder implements TransitTripCross
 
 				if (inWorld && !toInWorld) {
 					// Exit: leaves the world at the from-point when the walk departs
-					result.add(new TransitTripCrossingPoint(new TeleportationCrossingPoint(coord, departureTime, true)));
+					result.add(new TransitTripCrossingPoint(
+							new TeleportationCrossingPoint(coord, departureTime, true, stopId)));
 				} else if (!inWorld && toInWorld) {
 					// Entry: enters the world at the to-point when the walk arrives
 					result.add(new TransitTripCrossingPoint(new TeleportationCrossingPoint(toCoord,
-							departureTime + leg.getTravelTime().seconds(), false)));
+							departureTime + leg.getTravelTime().seconds(), false, toStopId)));
 				}
 
 				inWorld = toInWorld;
 				coord = toCoord;
+				stopId = toStopId;
 			}
 		}
 
 		// Ending with a pt leg: the transition to the destination, if any, happens at the alighting stop on arrival
 		// (after a non-pt last leg the membership already is the destination's)
 		if (endsWithRide && extent.isInside(endCoord) != inWorld) {
-			result.add(new TransitTripCrossingPoint(new TeleportationCrossingPoint(coord, arrivalTime, inWorld)));
+			result.add(new TransitTripCrossingPoint(new TeleportationCrossingPoint(coord, arrivalTime, inWorld,
+					stopId)));
 		}
 
 		return result;

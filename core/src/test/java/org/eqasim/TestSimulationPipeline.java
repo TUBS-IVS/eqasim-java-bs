@@ -32,6 +32,7 @@ import org.eqasim.core.components.config.EqasimConfigGroup;
 import org.eqasim.core.components.traffic.AttributeCrossingPenalty;
 import org.eqasim.core.components.traffic.CrossingPenalty;
 import org.eqasim.core.components.traffic.DefaultCrossingPenalty;
+import org.eqasim.core.misc.Constants;
 import org.eqasim.core.scenario.cutter.RunScenarioCutter;
 import org.eqasim.core.scenario.cutter.RunScenarioCutterV2;
 import org.eqasim.core.scenario.cutter.TransitCutSummary;
@@ -70,7 +71,9 @@ import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.events.PersonArrivalEvent;
 import org.matsim.api.core.v01.events.handler.PersonArrivalEventHandler;
 import org.matsim.api.core.v01.network.Link;
+import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Person;
+import org.matsim.api.core.v01.population.Population;
 import org.matsim.contrib.drt.util.DrtEventsReaders;
 import org.matsim.contrib.dvrp.passenger.PassengerDroppedOffEvent;
 import org.matsim.contrib.dvrp.passenger.PassengerDroppedOffEventHandler;
@@ -83,8 +86,10 @@ import org.matsim.core.config.groups.ControllerConfigGroup;
 import org.matsim.core.controler.Controler;
 import org.matsim.core.events.EventsUtils;
 import org.matsim.core.events.MatsimEventsReader;
+import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.scenario.ScenarioUtils;
 import org.matsim.core.utils.misc.CRCChecksum;
+import org.matsim.facilities.MatsimFacilitiesReader;
 
 public class TestSimulationPipeline {
 
@@ -255,8 +260,9 @@ public class TestSimulationPipeline {
     /**
      * The kept-stops transit cut mode (eqasim-bs#574) runs end to end on its primary path: pt trips cross the kept
      * timetable, the processor collapses some of them, and the summary written from the routed population holds the
-     * same collapsed trips as the processor counted (no mismatch warning). The extent mode of {@link #runCutter()}
-     * writes no summary.
+     * same collapsed trips as the processor counted (no mismatch warning), and outside activities of pt crossings are
+     * anchored at their stops (stop facilities {@code outside_stop_*}). The extent mode of {@link #runCutter()} writes
+     * no summary, no stop facility and no stop attribute.
      */
     private void runCutterKeptStops() throws Exception {
         List<String> messages = Collections.synchronizedList(new ArrayList<>());
@@ -319,6 +325,32 @@ public class TestSimulationPipeline {
         }
 
         assertTrue(messages.stream().noneMatch(message -> message.contains("[TransitCutSummary] the cut collapsed")));
+
+        // The outside activities of pt crossings are anchored at their stops (Task 11): logged, and written as
+        // stop facilities
+        String anchoredPrefix = "INFO [RunScenarioCutter] stop-anchored outside activities ";
+        String anchoredLine = messages.stream().filter(message -> message.startsWith(anchoredPrefix)).findFirst()
+                .orElseThrow(() -> new AssertionError("No stop-anchored outside activities logged"));
+        long stopAnchored = Long.parseLong(anchoredLine.substring(anchoredPrefix.length()).split("/")[0]);
+        assertTrue(anchoredLine, stopAnchored > 0);
+        assertTrue(readFacilityIds("melun_test/cutter_kept_stops/center_facilities.xml.gz").stream()
+                .anyMatch(id -> id.startsWith("outside_stop_")));
+
+        // The extent mode of runCutter() is unchanged: no stop facility, no activity carries the stop attribute
+        assertTrue(readFacilityIds("melun_test/cutter/center_facilities.xml.gz").stream()
+                .noneMatch(id -> id.startsWith("outside_stop_")));
+        Population extentPopulation = PopulationUtils.readPopulation("melun_test/cutter/center_population.xml.gz");
+        assertTrue(extentPopulation.getPersons().values().stream().flatMap(person -> person.getPlans().stream())
+                .flatMap(plan -> plan.getPlanElements().stream())
+                .filter(element -> element instanceof Activity)
+                .noneMatch(element -> ((Activity) element).getAttributes()
+                        .getAttribute(Constants.CUT_TRANSIT_STOP_ATTRIBUTE) != null));
+    }
+
+    private static List<String> readFacilityIds(String path) {
+        Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+        new MatsimFacilitiesReader(scenario).readFile(path);
+        return scenario.getActivityFacilities().getFacilities().keySet().stream().map(Object::toString).toList();
     }
 
     public void runCutterV2()

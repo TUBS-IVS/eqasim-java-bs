@@ -340,6 +340,79 @@ public class TestTransitTripProcessor {
 		assertCounts(processor, 0, 0, 0, 0, 0);
 	}
 
+	// Stop anchor of the outside activities (eqasim-bs#574, Task 11)
+
+	private static final TransitScheduleFactory SCHEDULE_FACTORY = new TransitScheduleFactoryImpl();
+
+	private static TransitRouteStop routeStop(String id, double x) {
+		TransitStopFacility facility = SCHEDULE_FACTORY
+				.createTransitStopFacility(Id.create(id, TransitStopFacility.class), new Coord(x, 0.0), false);
+		return SCHEDULE_FACTORY.createTransitRouteStop(facility, 0.0, 0.0);
+	}
+
+	/** An in-vehicle point whose inside stop {@code insideId} lies at x = 1, departing there at 11 s. */
+	private static TransitTripCrossingPoint inVehicle(String insideId, boolean isOutgoing) {
+		return new TransitTripCrossingPoint(new TransitRouteCrossingPoint(null, null, routeStop("X", 9.0),
+				routeStop(insideId, 1.0), 20.0, 11.0, isOutgoing));
+	}
+
+	private static TransitTripCrossingPoint teleportAtStop(double x, double time, boolean isOutgoing, String stopId) {
+		return new TransitTripCrossingPoint(new TeleportationCrossingPoint(new Coord(x, 0.0), time, isOutgoing,
+				Id.create(stopId, TransitStopFacility.class)));
+	}
+
+	private static Object stopAttribute(PlanElement element) {
+		Assert.assertTrue(element instanceof Activity);
+		return ((Activity) element).getAttributes().getAttribute(Constants.CUT_TRANSIT_STOP_ATTRIBUTE);
+	}
+
+	@Test
+	public void anOutsideActivityFromAnInVehiclePointCarriesItsStop() {
+		TransitTripProcessor processor = collapsing(inVehicle("HUB", true));
+		List<PlanElement> result = process(processor, INSIDE_ORIGIN, OUTSIDE_DESTINATION);
+
+		Assert.assertEquals(3, result.size());
+		assertOutsideActivity(result.get(1), 1.0, 10.0);
+		Assert.assertEquals("HUB", stopAttribute(result.get(1)));
+	}
+
+	@Test
+	public void anOutsideActivityFromAWalkAtAStopCarriesTheStop() {
+		TransitTripProcessor processor = collapsing(teleportAtStop(3.0, 30.0, false, "S4"));
+		List<PlanElement> result = process(processor, OUTSIDE_ORIGIN, INSIDE_DESTINATION);
+
+		Assert.assertEquals(3, result.size());
+		assertOutsideActivity(result.get(1), 3.0, 30.0);
+		Assert.assertEquals("S4", stopAttribute(result.get(1)));
+	}
+
+	@Test
+	public void anOutsideActivityFromAPolygonWalkPointCarriesNoStop() {
+		TransitTripProcessor processor = collapsing(teleport(1.0, 10.0, false), teleportAtStop(4.0, 40.0, true, "S4"));
+		List<PlanElement> result = process(processor, OUTSIDE_ORIGIN, OUTSIDE_DESTINATION);
+
+		Assert.assertEquals(5, result.size());
+		Assert.assertNull(stopAttribute(result.get(1)));
+		Assert.assertEquals("S4", stopAttribute(result.get(3)));
+	}
+
+	@Test
+	public void extentModeNeverAnchorsAtAStop() {
+		PublicTransitFinderMock finderMock = new PublicTransitFinderMock();
+		finderMock.add(inVehicle("HUB", true));
+		finderMock.add(teleportAtStop(2.0, 20.0, false, "S4"));
+		TransitTripProcessor processor = new TransitTripProcessor(finderMock, activityExtentMock, 1.0, false);
+
+		List<PlanElement> result = process(processor, INSIDE_ORIGIN, INSIDE_DESTINATION);
+
+		Assert.assertEquals(5, result.size());
+		assertOutsideActivity(result.get(1), 1.0, 10.0);
+		Assert.assertNull(stopAttribute(result.get(1)));
+		Assert.assertNull(stopAttribute(result.get(3)));
+		Assert.assertTrue(((Activity) result.get(1)).getAttributes().isEmpty());
+		Assert.assertTrue(((Activity) result.get(3)).getAttributes().isEmpty());
+	}
+
 	@Test
 	public void anInsideDestinationWithoutEntryFails() {
 		// Inconsistent: origin outside, destination inside, but the only point leaves

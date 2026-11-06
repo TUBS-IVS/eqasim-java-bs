@@ -172,6 +172,8 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertFalse(point.isInVehicle);
 		Assert.assertFalse(point.isOutgoing);
 		Assert.assertEquals(s4.getCoord(), point.teleportationPoint.coord);
+		// The entry lies at the access stop of the next ride: the outside activity is anchored there
+		Assert.assertEquals(s4.getId(), point.teleportationPoint.stopFacilityId);
 		// The walker reaches the stop: the boarding wait is simulated
 		Assert.assertEquals(28000.0 + 600.0, point.teleportationPoint.time, 1e-6);
 	}
@@ -205,6 +207,7 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertFalse(entry.isInVehicle);
 		Assert.assertFalse(entry.isOutgoing);
 		Assert.assertEquals(s4.getCoord(), entry.teleportationPoint.coord);
+		Assert.assertEquals(s4.getId(), entry.teleportationPoint.stopFacilityId);
 		Assert.assertEquals(29300.0 + 120.0, entry.teleportationPoint.time, 1e-6);
 	}
 
@@ -221,6 +224,8 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertFalse(kept.get(0).isInVehicle);
 		Assert.assertTrue(kept.get(0).isOutgoing);
 		Assert.assertEquals(s4.getCoord(), kept.get(0).teleportationPoint.coord);
+		// The exit lies at the egress stop of the previous ride
+		Assert.assertEquals(s4.getId(), kept.get(0).teleportationPoint.stopFacilityId);
 		Assert.assertEquals(29280.0, kept.get(0).teleportationPoint.time, 1e-6);
 
 		// S4 not kept on R: the trip already left in the vehicle, the egress walk gives no point
@@ -247,6 +252,7 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertFalse(exit.isInVehicle);
 		Assert.assertTrue(exit.isOutgoing);
 		Assert.assertEquals(s4.getCoord(), exit.teleportationPoint.coord);
+		Assert.assertEquals(s4.getId(), exit.teleportationPoint.stopFacilityId);
 		// Leaves when the transfer walk departs from the kept position
 		Assert.assertEquals(29280.0, exit.teleportationPoint.time, 1e-6);
 	}
@@ -262,6 +268,8 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertEquals(1, points.size());
 		Assert.assertTrue(points.get(0).isOutgoing);
 		Assert.assertEquals(s4.getCoord(), points.get(0).teleportationPoint.coord);
+		// The boarding stop of the dropped ride
+		Assert.assertEquals(s4.getId(), points.get(0).teleportationPoint.stopFacilityId);
 		Assert.assertEquals(29340.0, points.get(0).teleportationPoint.time, 1e-6);
 
 		// Reverse: enter at the hub S4 of RB from a dropped ride, alight at S2 and end inside: one entry at S4
@@ -271,6 +279,7 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertEquals(1, entry.size());
 		Assert.assertFalse(entry.get(0).isOutgoing);
 		Assert.assertEquals(s4.getCoord(), entry.get(0).teleportationPoint.coord);
+		Assert.assertEquals(s4.getId(), entry.get(0).teleportationPoint.stopFacilityId);
 
 		// A ride on a kept position that ends at an outside destination exits at the alighting stop on arrival
 		List<PlanElement> out = List.of(ride(lineL, routeR, s1, s4, 28760.0, 520.0));
@@ -279,6 +288,8 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertEquals(1, exit.size());
 		Assert.assertTrue(exit.get(0).isOutgoing);
 		Assert.assertEquals(s4.getCoord(), exit.get(0).teleportationPoint.coord);
+		// The alighting stop of the last ride
+		Assert.assertEquals(s4.getId(), exit.get(0).teleportationPoint.stopFacilityId);
 		Assert.assertEquals(28760.0 + 520.0, exit.get(0).teleportationPoint.time, 1e-6);
 	}
 
@@ -299,6 +310,9 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertFalse(points.get(1).isOutgoing);
 		Assert.assertEquals(WORK_INSIDE, points.get(1).teleportationPoint.coord);
 		Assert.assertEquals(28600.0 + 900.0, points.get(1).teleportationPoint.time, 1e-6);
+		// Activity points, no stops: nothing to anchor at
+		Assert.assertNull(points.get(0).teleportationPoint.stopFacilityId);
+		Assert.assertNull(points.get(1).teleportationPoint.stopFacilityId);
 
 		// The same stage activity inside the extent: no crossing
 		List<PlanElement> insideTrip = List.of(walk(28000.0, 600.0),
@@ -367,5 +381,18 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		Assert.assertEquals(s3.getId(), entry.transitRoutePoint.outsideStop.getStopFacility().getId());
 		Assert.assertEquals(FIRST_DEPARTURE + 480.0, entry.transitRoutePoint.insideDepartureTime, 1e-6);
 		Assert.assertEquals(FIRST_DEPARTURE + 300.0, entry.transitRoutePoint.outsideDepartureTime, 1e-6);
+
+		// The polygon crossings of walks carry no stop
+		List<PlanElement> walks = List.of(walk(28000.0, 600.0),
+				PopulationUtils.createActivityFromCoord("pt interaction", new Coord(5000.0, 2000.0)),
+				walk(28600.0, 900.0));
+		List<TransitTripCrossingPoint> walkPoints = extentFinder.findCrossingPoints(HOME_INSIDE, walks, WORK_INSIDE);
+
+		Assert.assertEquals(2, walkPoints.size());
+
+		for (TransitTripCrossingPoint walkPoint : walkPoints) {
+			Assert.assertFalse(walkPoint.isInVehicle);
+			Assert.assertNull(walkPoint.teleportationPoint.stopFacilityId);
+		}
 	}
 }

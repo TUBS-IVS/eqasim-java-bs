@@ -15,6 +15,14 @@ public class Constants {
 	public final static String CUT_TRANSIT_COLLAPSE_ATTRIBUTE = "cutTransitCollapse";
 
 	/**
+	 * String activity attribute that the scenario cutter (kept-stops mode) puts on every {@code outside} activity it
+	 * creates at a public-transport stop (an in-vehicle crossing or a walk transition at a kept stop); the value is the
+	 * id of the stop facility. The outside activity adapter anchors such an activity at the stop's coordinate with one
+	 * facility per stop instead of at the midpoint of the nearest road link (eqasim-bs#574).
+	 */
+	public final static String CUT_TRANSIT_STOP_ATTRIBUTE = "cutTransitStopId";
+
+	/**
 	 * How the scenario cutter cuts pt trips (eqasim-bs#574). {@code EXTENT} (option value {@code extent}, the
 	 * default) cuts at every crossing of the extent polygon, as upstream eqasim does. {@code KEPT_STOPS} (option value
 	 * {@code kept-stops}) cuts at the boundary of the kept timetable (stops inside the extent plus hub anchors),
