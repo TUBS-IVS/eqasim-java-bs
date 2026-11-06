@@ -3,6 +3,7 @@ package org.eqasim.scenario.cutter.population;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.eqasim.core.misc.Constants;
 import org.eqasim.core.scenario.cutter.population.AttributeKeepingMergeOutsideActivities;
 import org.eqasim.core.scenario.cutter.population.DefaultMergeOutsideActivities;
 import org.junit.Assert;
@@ -91,6 +92,35 @@ public class TestAttributeKeepingMergeOutsideActivities {
 		Activity survivor = (Activity) plan.get(2);
 		Assert.assertEquals(new Coord(1.0, 0.0), survivor.getCoord());
 		Assert.assertEquals(2, survivor.getAttributes().getAttribute("b"));
+	}
+
+	/**
+	 * The stop anchor of the outside activities (eqasim-bs#574, Task 11) relies on the merge never handing the
+	 * {@code cutTransitStopId} attribute to an activity at another coordinate: a stop activity always has a leg of the
+	 * routing mode on one side, so it survives the merge with its own stop and coordinate, and only absorbs.
+	 */
+	@Test
+	public void stopActivitiesKeepTheirOwnStopAndCoordinateAroundAnOutsideHome() {
+		Activity exit = activity("outside", 10.0, 200.0, Constants.CUT_TRANSIT_STOP_ATTRIBUTE, "X");
+		Activity outsideHome = activity("outside", 1000.0, 700.0);
+		Activity entry = activity("outside", 20.0, 800.0, Constants.CUT_TRANSIT_STOP_ATTRIBUTE, "Y");
+		List<PlanElement> plan = plan(activity("home", 0.0, 100.0), TransportMode.pt, exit, "outside", outsideHome,
+				"outside", entry, TransportMode.pt, activity("work", 0.0, 900.0));
+
+		new AttributeKeepingMergeOutsideActivities().run(plan);
+
+		Assert.assertEquals(7, plan.size());
+		Assert.assertFalse(plan.contains(outsideHome));
+
+		Assert.assertSame(exit, plan.get(2));
+		Assert.assertEquals("X", exit.getAttributes().getAttribute(Constants.CUT_TRANSIT_STOP_ATTRIBUTE));
+		Assert.assertEquals(new Coord(10.0, 0.0), exit.getCoord());
+		// The exit stop takes the outside home's end time
+		Assert.assertEquals(700.0, exit.getEndTime().seconds(), 1e-6);
+
+		Assert.assertSame(entry, plan.get(4));
+		Assert.assertEquals("Y", entry.getAttributes().getAttribute(Constants.CUT_TRANSIT_STOP_ATTRIBUTE));
+		Assert.assertEquals(new Coord(20.0, 0.0), entry.getCoord());
 	}
 
 	@Test

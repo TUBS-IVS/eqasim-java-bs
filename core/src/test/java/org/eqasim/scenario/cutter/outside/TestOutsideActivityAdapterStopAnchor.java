@@ -119,7 +119,7 @@ public class TestOutsideActivityAdapterStopAnchor {
 		// One facility for the stop plus one for the link, nothing else
 		Assert.assertEquals(2, facilities.getFacilities().size());
 
-		// (5) The counts
+		// (4) The counts
 		Assert.assertEquals(3, adapter.getOutsideActivities());
 		Assert.assertEquals(2, adapter.getStopAnchoredActivities());
 	}

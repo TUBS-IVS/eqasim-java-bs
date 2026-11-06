@@ -19,8 +19,8 @@ import org.matsim.pt.transitSchedule.api.TransitStopFacility;
  * transit cut created at a public-transport stop (attribute {@link Constants#CUT_TRANSIT_STOP_ATTRIBUTE}, kept-stops
  * mode, eqasim-bs#574) keeps its coordinate (the stop's) and gets one facility per stop, so that the re-routed pt piece
  * starts or ends at the stop without an access walk the planned departure did not include; every other outside
- * activity moves to one facility per nearest road link, at the link's midpoint. Both are linked to the nearest road
- * link, from which a car leg is routable.
+ * activity moves to one facility per road link, at the link's midpoint. Both are linked to the activity's road link,
+ * or the nearest road link if it has none, from which a car leg is routable.
  *
  * Runs single-threaded on the main thread after the population cutter joined its workers, so plain maps and counters
  * suffice.
