@@ -1,9 +1,14 @@
 package org.eqasim.core.scenario.cutter.transit;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -29,36 +34,135 @@ public class TransitScheduleCutter {
 	private final static Logger log = LogManager.getLogger(TransitScheduleCutter.class);
 
 	private final ScenarioExtent extent;
-	private final StopSequenceCrossingPointFinder crossingPointFinder;
+	private final Set<Id<TransitStopFacility>> hubStopIds;
 
-	public TransitScheduleCutter(ScenarioExtent extent, StopSequenceCrossingPointFinder crossingPointFinder) {
+	/**
+	 * The index range [first, last] (both inclusive) of the stops that the cut keeps of a route's original stop
+	 * sequence.
+	 */
+	public record KeptRange(int first, int last) {
+	}
+
+	/**
+	 * Counts of stop facilities by why the cut keeps them: inside the extent, a hub outside the extent, or
+	 * another outside stop (kept only because it lies between two anchors of a route).
+	 */
+	public record StopBreakdown(int inside, int hub, int otherOutside) {
+		public int total() {
+			return inside + hub + otherOutside;
+		}
+	}
+
+	/**
+	 * @param extent      the extent a route has to touch to be part of the region
+	 * @param hubStopIds  stop facilities that anchor a route like an inside stop does (may be empty, which gives
+	 *                    the cut that keeps exactly the stops between the first and the last inside stop)
+	 */
+	public TransitScheduleCutter(ScenarioExtent extent, Set<Id<TransitStopFacility>> hubStopIds) {
 		this.extent = extent;
-		this.crossingPointFinder = crossingPointFinder;
+		this.hubStopIds = Set.copyOf(hubStopIds);
+	}
+
+	/**
+	 * The one reduction of a route's stop sequence, shared by the dry pass and the real cut. A route is part of
+	 * the region iff at least one of its stops lies inside the extent. It keeps the stops from its first to its
+	 * last anchor, an anchor being a stop inside the extent or a hub. No range is returned for a route without
+	 * an inside stop or with fewer than two kept stops.
+	 */
+	private Optional<KeptRange> keptRange(List<TransitRouteStop> stops) {
+		boolean anyInside = false;
+		int first = -1;
+		int last = -1;
+
+		for (int i = 0; i < stops.size(); i++) {
+			TransitStopFacility facility = stops.get(i).getStopFacility();
+			boolean inside = extent.isInside(facility.getCoord());
+			anyInside |= inside;
+
+			if (inside || hubStopIds.contains(facility.getId())) {
+				if (first < 0) {
+					first = i;
+				}
+				last = i;
+			}
+		}
+
+		if (!anyInside || last - first < 1) {
+			return Optional.empty();
+		}
+
+		return Optional.of(new KeptRange(first, last));
 	}
 
 	private List<TransitRouteStop> reduceStopSequence(List<TransitRouteStop> originalSequence) {
-		List<StopSequenceCrossingPoint> crossingPoints = crossingPointFinder.findCrossingPoints(originalSequence);
+		return keptRange(originalSequence)
+				.map(range -> originalSequence.subList(range.first(), range.last() + 1))
+				.orElse(Collections.emptyList());
+	}
 
-		if (crossingPoints.size() == 0) {
-			if (!extent.isInside(originalSequence.get(0).getStopFacility().getCoord())) {
-				// The entire route is outside
-				return Collections.emptyList();
-			} else {
-				// The entire route is inside
-				return originalSequence;
+	/**
+	 * The dry pass of the cut: the kept index range per kept route, without changing the schedule. A route that
+	 * is absent from the result is dropped by {@link #run(TransitSchedule)}.
+	 */
+	public Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptStopRanges(TransitSchedule schedule) {
+		Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> result = new LinkedHashMap<>();
+
+		for (TransitLine line : schedule.getTransitLines().values()) {
+			for (TransitRoute route : line.getRoutes().values()) {
+				Optional<KeptRange> range = keptRange(route.getStops());
+
+				if (range.isPresent()) {
+					result.computeIfAbsent(line.getId(), id -> new LinkedHashMap<>()).put(route.getId(), range.get());
+				}
 			}
-		} else {
-			// There is at least one crossing point.
-			StopSequenceCrossingPoint firstCrossingPoint = crossingPoints.get(0);
-			StopSequenceCrossingPoint lastCrossingPoint = crossingPoints.get(crossingPoints.size() - 1);
-
-			int firstIndex = firstCrossingPoint.isOutgoing ? 0 : firstCrossingPoint.index + 1;
-			// An outgoing crossing's index is its inside stop, which the route still serves; subList excludes
-			// its end index, so the end is index + 1 (with index alone, the last inside stop was dropped).
-			int lastIndex = lastCrossingPoint.isOutgoing ? lastCrossingPoint.index + 1 : originalSequence.size();
-
-			return originalSequence.subList(firstIndex, lastIndex);
 		}
+
+		return result;
+	}
+
+	/**
+	 * The stop facilities that the cut keeps: those of the kept sub-sequences of the given ranges, as computed by
+	 * {@link #keptStopRanges(TransitSchedule)} on the same, uncut schedule.
+	 */
+	public static Set<Id<TransitStopFacility>> keptStopFacilityIds(TransitSchedule schedule,
+			Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> ranges) {
+		Set<Id<TransitStopFacility>> facilityIds = new HashSet<>();
+
+		for (Map.Entry<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> lineEntry : ranges.entrySet()) {
+			TransitLine line = schedule.getTransitLines().get(lineEntry.getKey());
+
+			for (Map.Entry<Id<TransitRoute>, KeptRange> routeEntry : lineEntry.getValue().entrySet()) {
+				List<TransitRouteStop> stops = line.getRoutes().get(routeEntry.getKey()).getStops();
+				KeptRange range = routeEntry.getValue();
+
+				for (TransitRouteStop stop : stops.subList(range.first(), range.last() + 1)) {
+					facilityIds.add(stop.getStopFacility().getId());
+				}
+			}
+		}
+
+		return facilityIds;
+	}
+
+	/**
+	 * Classifies stop facilities by why the cut keeps them (inside the extent, hub outside, other outside).
+	 */
+	public StopBreakdown classify(Collection<TransitStopFacility> facilities) {
+		int inside = 0;
+		int hub = 0;
+		int otherOutside = 0;
+
+		for (TransitStopFacility facility : facilities) {
+			if (extent.isInside(facility.getCoord())) {
+				inside++;
+			} else if (hubStopIds.contains(facility.getId())) {
+				hub++;
+			} else {
+				otherOutside++;
+			}
+		}
+
+		return new StopBreakdown(inside, hub, otherOutside);
 	}
 
 	private NetworkRoute reduceNetworkRoute(NetworkRoute originalRoute, Id<Link> startLinkId, Id<Link> endLinkId) {
@@ -196,6 +300,13 @@ public class TransitScheduleCutter {
 		log.info("Finished cutting transit schedule.");
 		log.info("  Before: " + originalInfo);
 		log.info("   After: " + finalInfo);
+
+		StopBreakdown breakdown = classify(schedule.getFacilities().values());
+		log.info(String.format(Locale.ROOT,
+				"[TransitScheduleCutter] kept stops %d: inside %d, hub %d, other outside %d; routes kept %d/%d (%.1f %%)",
+				breakdown.total(), breakdown.inside(), breakdown.hub(), breakdown.otherOutside(),
+				finalInfo.numberOfRoutes, originalInfo.numberOfRoutes,
+				originalInfo.numberOfRoutes == 0 ? 0.0 : 100.0 * finalInfo.numberOfRoutes / originalInfo.numberOfRoutes));
 	}
 
 	private class ScheduleInfo {

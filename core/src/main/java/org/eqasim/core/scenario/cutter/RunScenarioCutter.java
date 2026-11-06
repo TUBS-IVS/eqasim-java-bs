@@ -23,8 +23,6 @@ import org.eqasim.core.scenario.cutter.population.PopulationCutter;
 import org.eqasim.core.scenario.cutter.population.PopulationCutterModule;
 import org.eqasim.core.scenario.cutter.population.trips.NetworkTripCrossingStatistics;
 import org.eqasim.core.scenario.cutter.population.RemoveEmptyPlans;
-import org.eqasim.core.scenario.cutter.transit.DefaultStopSequenceCrossingPointFinder;
-import org.eqasim.core.scenario.cutter.transit.StopSequenceCrossingPointFinder;
 import org.eqasim.core.scenario.cutter.transit.TransitScheduleCutter;
 import org.eqasim.core.scenario.cutter.transit.TransitVehiclesCutter;
 import org.eqasim.core.scenario.routing.PopulationRouter;
@@ -139,10 +137,7 @@ public class RunScenarioCutter {
 		cleanVehicles.run(scenario.getVehicles());
 
 		// Cut transit
-		StopSequenceCrossingPointFinder stopSequenceCrossingPointFinder = new DefaultStopSequenceCrossingPointFinder(
-				extent);
-		TransitScheduleCutter transitScheduleCutter = new TransitScheduleCutter(extent,
-				stopSequenceCrossingPointFinder);
+		TransitScheduleCutter transitScheduleCutter = new TransitScheduleCutter(extent, Set.of());
 		transitScheduleCutter.run(scenario.getTransitSchedule());
 
 		TransitVehiclesCutter transitVehiclesCutter = new TransitVehiclesCutter(scenario.getTransitSchedule());
