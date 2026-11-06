@@ -4,8 +4,10 @@ package org.eqasim.core.standalone_mode_choice;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,6 +31,7 @@ import org.matsim.contribs.discrete_mode_choice.replanning.DiscreteModeChoiceAlg
 import org.matsim.contribs.discrete_mode_choice.replanning.TripListConverter;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.controler.OutputDirectoryHierarchy;
+import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.utils.misc.Counter;
 
 import com.google.inject.Provider;
@@ -45,6 +48,7 @@ public class StandaloneModeChoicePerformer {
     private final int chunkSize;
     private final OutputDirectoryHierarchy outputDirectoryHierarchy;
     private final Scenario scenario;
+    private final Set<String> excludedSubpopulations;
 
     public StandaloneModeChoicePerformer(Provider<DiscreteModeChoiceModel> discreteModeChoiceModelProvider, StandaloneModeChoiceConfigGroup configGroup, Population population, int numberOfThreads, long seed, OutputDirectoryHierarchy outputDirectoryHierarchy, Scenario scenario) {
         this.discreteModeChoiceModelProvider = discreteModeChoiceModelProvider;
@@ -55,6 +59,35 @@ public class StandaloneModeChoicePerformer {
         this.outputDirectoryHierarchy = outputDirectoryHierarchy;
         this.scenario = scenario;
         this.chunkSize = configGroup.getChunkSize();
+        this.excludedSubpopulations = configGroup.getExcludedSubpopulationSet();
+    }
+
+    /**
+     * Logs how many persons each excluded subpopulation kept unchanged. Fails if the exclusion was asked for but
+     * matched no person at all (for example because the subpopulation attribute was lost upstream, eqasim-bs #566):
+     * the excluded persons would then be re-chosen silently. A single listed subpopulation without persons only warns,
+     * because a small sample can legitimately lack one.
+     */
+    private void logExcludedSubpopulations(Map<String, Integer> excludedCounts) {
+        if (excludedCounts.isEmpty()) {
+            return;
+        }
+        int total = population.getPersons().size();
+        int excluded = excludedCounts.values().stream().mapToInt(Integer::intValue).sum();
+        if (excluded == 0) {
+            throw new IllegalStateException(String.format(
+                    "%s.%s lists %s, but no person of the population (%d persons) has one of these subpopulations; "
+                            + "the subpopulation attribute is missing or misspelled",
+                    StandaloneModeChoiceConfigGroup.GROUP_NAME, StandaloneModeChoiceConfigGroup.EXCLUDED_SUBPOPULATIONS,
+                    excludedCounts.keySet(), total));
+        }
+        logger.info(String.format("Excluded subpopulations: %d of %d persons (%.2f %%) keep their plan unchanged: %s",
+                excluded, total, 100.0 * excluded / total, excludedCounts));
+        excludedCounts.forEach((subpopulation, count) -> {
+            if (count == 0) {
+                logger.warn(String.format("Excluded subpopulation %s matches no person", subpopulation));
+            }
+        });
     }
 
     public void run() throws InterruptedException, ExecutionException {
@@ -62,6 +95,8 @@ public class StandaloneModeChoicePerformer {
         
         // we only collect the selected plans to perform mode-choice
         List<Plan> selectedPlans = new ArrayList<>(population.getPersons().size());
+        Map<String, Integer> excludedCounts = new TreeMap<>();
+        excludedSubpopulations.forEach(subpopulation -> excludedCounts.put(subpopulation, 0));
         for (Person person : population.getPersons().values()) {
             // remove unselected plans
             List<Plan> toRemove = new ArrayList<>();
@@ -71,9 +106,16 @@ public class StandaloneModeChoicePerformer {
                 }
             }
             toRemove.forEach(person::removePlan);
-            selectedPlans.add(person.getSelectedPlan());
+            // persons of an excluded subpopulation keep their selected plan as read (no mode choice)
+            String subpopulation = PopulationUtils.getSubpopulation(person);
+            if (subpopulation != null && excludedSubpopulations.contains(subpopulation)) {
+                excludedCounts.merge(subpopulation, 1, Integer::sum);
+            } else {
+                selectedPlans.add(person.getSelectedPlan());
+            }
         }
-        
+        logExcludedSubpopulations(excludedCounts);
+
         ParallelProgress progress = new ParallelProgress("Standalone mode choice", selectedPlans.size());
         progress.start();
 
@@ -137,16 +179,8 @@ public class StandaloneModeChoicePerformer {
         } else {
             Random random = new Random(this.seed);
             PlanAlgoThread planAlgoThread = new PlanAlgoThread(new DiscreteModeChoiceAlgorithm(random, this.discreteModeChoiceModelProvider.get(), this.population.getFactory(), new TripListConverter()), progress, this.removePersonsWithBadPlans);
-            for(Person person: population.getPersons().values()) {
-                List<Plan> unselectedPlans = new ArrayList<>();
-                for(Plan plan: person.getPlans()) {
-                    if(plan != person.getSelectedPlan()) {
-                        unselectedPlans.add(plan);
-                    }
-                }
-                unselectedPlans.forEach(person::removePlan);
-                planAlgoThread.addPlanToThread(person.getSelectedPlan());
-            }
+            // the unselected plans are already removed and the excluded persons left out above
+            selectedPlans.forEach(planAlgoThread::addPlanToThread);
             planAlgoThread.run();
             if(this.removePersonsWithBadPlans) {
                 IdSet<Person> personsToRemove = new IdSet<>(Person.class);
