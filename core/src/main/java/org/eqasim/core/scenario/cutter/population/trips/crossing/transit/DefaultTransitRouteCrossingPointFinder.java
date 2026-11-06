@@ -17,7 +17,8 @@ import org.matsim.pt.transitSchedule.api.TransitSchedule;
 import com.google.inject.Inject;
 
 /*
- * TODO: This class should make use of StopSequenceCrossingPointFinder
+ * Note: this class keeps its own polygon test per stop pair. It does not use the deprecated
+ * StopSequenceCrossingPointFinder, which the schedule cutter has dropped (eqasim-bs#574).
  */
 public class DefaultTransitRouteCrossingPointFinder implements TransitRouteCrossingPointFinder {
 	final private ScenarioExtent extent;

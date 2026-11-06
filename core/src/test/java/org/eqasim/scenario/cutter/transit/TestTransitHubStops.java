@@ -6,7 +6,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -105,9 +107,31 @@ public class TestTransitHubStops {
 	@Test
 	public void readNamesTrimsAndDropsBlankLines() throws IOException {
 		Path file = temporaryFolder.newFile("hubs.txt").toPath();
-		Files.write(file, " Göttingen \n\nHannover Hbf\n   \n".getBytes(StandardCharsets.UTF_8));
+		Files.write(file, " G\u00f6ttingen \n\nHannover Hbf\n   \n".getBytes(StandardCharsets.UTF_8));
 
-		Assert.assertEquals(List.of("Göttingen", "Hannover Hbf"), TransitHubStops.readNames(file));
+		Assert.assertEquals(List.of("G\u00f6ttingen", "Hannover Hbf"), TransitHubStops.readNames(file));
+	}
+
+	@Test
+	public void readNamesIgnoresALeadingByteOrderMark() throws IOException {
+		Path file = temporaryFolder.newFile("hubs_bom.txt").toPath();
+		// Windows editors write a BOM; it must not become part of the first name
+		String bom = String.valueOf((char) 0xFEFF);
+		Files.write(file, (bom + "Hannover Hbf\nG\u00f6ttingen\n").getBytes(StandardCharsets.UTF_8));
+
+		Assert.assertEquals(List.of("Hannover Hbf", "G\u00f6ttingen"), TransitHubStops.readNames(file));
+	}
+
+	@Test
+	public void resolveByNameKeepsTheMatchesPerNameInTheOrderOfTheNames() {
+		TransitSchedule schedule = schedule();
+
+		Map<String, List<TransitStopFacility>> matches = TransitHubStops.resolveByName(schedule,
+				List.of("Hannover Hauptbahnhof/ZOB", "Hannover Hbf", "Hannover Hbf"), insideNothing());
+
+		Assert.assertEquals(List.of("Hannover Hauptbahnhof/ZOB", "Hannover Hbf"), List.copyOf(matches.keySet()));
+		Assert.assertEquals(List.of(id("hbf1"), id("hbf2")),
+				matches.get("Hannover Hbf").stream().map(TransitStopFacility::getId).collect(Collectors.toList()));
 	}
 
 	private static Id<TransitStopFacility> id(String id) {

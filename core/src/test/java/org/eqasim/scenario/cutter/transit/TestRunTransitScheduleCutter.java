@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -36,12 +37,15 @@ import org.matsim.pt.transitSchedule.api.TransitRouteStop;
 import org.matsim.pt.transitSchedule.api.TransitSchedule;
 import org.matsim.pt.transitSchedule.api.TransitScheduleFactory;
 import org.matsim.pt.transitSchedule.api.TransitScheduleReader;
+import org.matsim.pt.transitSchedule.api.TransitScheduleWriter;
 import org.matsim.pt.transitSchedule.api.TransitStopFacility;
 
 public class TestRunTransitScheduleCutter {
 	private static final Id<TransitLine> LINE_ID = Id.create("line", TransitLine.class);
 	private static final Id<TransitRoute> ROUTE_ID = Id.create("route", TransitRoute.class);
 	private static final Id<TransitRoute> OTHER_ROUTE_ID = Id.create("other", TransitRoute.class);
+	// "Goettingen" with the umlaut; the escape keeps this source ASCII
+	private static final String GOETTINGEN = "G" + (char) 0xF6 + "ttingen";
 
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -49,10 +53,10 @@ public class TestRunTransitScheduleCutter {
 	@Test
 	public void cutWritesTheScheduleAndTheHubTable() throws IOException {
 		TransitSchedule schedule = schedule();
-		// the square contains the stops at x = 1 and x = 2 only; "Göttingen" is the hub at x = 5
+		// the square contains the stops at x = 1 and x = 2 only; "G\u00f6ttingen" is the hub at x = 5
 		ScenarioExtent extent = squareExtent(0.5, 2.5);
 
-		CutSummary summary = RunTransitScheduleCutter.cut(schedule, extent, List.of("Göttingen"));
+		CutSummary summary = RunTransitScheduleCutter.cut(schedule, extent, List.of("G\u00f6ttingen"));
 
 		Assert.assertEquals(Set.of(Id.create("fac5", TransitStopFacility.class)), summary.hubStopIds());
 		Assert.assertEquals(2, summary.stopsInside());
@@ -75,7 +79,7 @@ public class TestRunTransitScheduleCutter {
 						.map(stop -> stop.getStopFacility().getId().toString()).collect(Collectors.toList()));
 
 		List<String> lines = Files.readAllLines(hubsFile, StandardCharsets.UTF_8);
-		Assert.assertEquals(List.of("name,stop_id,x,y,inside_extent", "Göttingen,fac5,5.000,0.000,false"), lines);
+		Assert.assertEquals(List.of("name,stop_id,x,y,inside_extent", "G\u00f6ttingen,fac5,5.000,0.000,false"), lines);
 		Assert.assertFalse(new String(Files.readAllBytes(hubsFile), StandardCharsets.UTF_8).contains("\r"));
 	}
 
@@ -85,7 +89,7 @@ public class TestRunTransitScheduleCutter {
 		// fac9 lies on the dropped route "other": it is a matched hub facility nevertheless
 		ScenarioExtent extent = squareExtent(0.5, 2.5);
 
-		CutSummary summary = RunTransitScheduleCutter.cut(schedule, extent, List.of("Göttingen", "Nowhere Hbf"));
+		CutSummary summary = RunTransitScheduleCutter.cut(schedule, extent, List.of("G\u00f6ttingen", "Nowhere Hbf"));
 
 		Assert.assertEquals(2, summary.hubStopIds().size());
 
@@ -94,8 +98,85 @@ public class TestRunTransitScheduleCutter {
 				hubsFile);
 
 		List<String> lines = Files.readAllLines(hubsFile, StandardCharsets.UTF_8);
-		Assert.assertEquals(List.of("name,stop_id,x,y,inside_extent", "Göttingen,fac5,5.000,0.000,false",
+		Assert.assertEquals(List.of("name,stop_id,x,y,inside_extent", "G\u00f6ttingen,fac5,5.000,0.000,false",
 				"Nowhere Hbf,fac9,9.000,0.000,false"), lines);
+	}
+
+	@Test
+	public void runKeepsFacilityAttributesAndMinimalTransferTimesFromReadToWrite() throws IOException {
+		TransitSchedule schedule = schedule();
+		Id<TransitStopFacility> fac1 = Id.create("fac1", TransitStopFacility.class);
+		Id<TransitStopFacility> fac2 = Id.create("fac2", TransitStopFacility.class);
+		Id<TransitStopFacility> fac9 = Id.create("fac9", TransitStopFacility.class);
+		schedule.getFacilities().get(fac1).getAttributes().putAttribute("platform", "3a");
+		schedule.getMinimalTransferTimes().set(fac1, fac2, 120.0);
+		// fac9 only lies on the dropped route: this relation must go with it
+		schedule.getMinimalTransferTimes().set(fac1, fac9, 300.0);
+
+		Path root = temporaryFolder.getRoot().toPath();
+		Path input = root.resolve("input_schedule.xml");
+		new TransitScheduleWriter(schedule).writeFile(input.toString());
+		Path hubNames = root.resolve("hub_stop_names.txt");
+		Files.writeString(hubNames, GOETTINGEN + "\n", StandardCharsets.UTF_8);
+		Path outputSchedule = root.resolve("cut_schedule.xml");
+		Path outputHubs = root.resolve("hub_stops.csv");
+
+		CutSummary summary = RunTransitScheduleCutter.run(input, squareExtent(0.5, 2.5), Optional.of(hubNames),
+				outputSchedule, outputHubs);
+
+		Assert.assertEquals(1, summary.routesKept());
+		Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+		new TransitScheduleReader(scenario).readFile(outputSchedule.toString());
+		TransitSchedule written = scenario.getTransitSchedule();
+
+		Assert.assertEquals("3a", written.getFacilities().get(fac1).getAttributes().getAttribute("platform"));
+		Assert.assertEquals(120.0, written.getMinimalTransferTimes().get(fac1, fac2), 1e-9);
+		Assert.assertTrue(Double.isNaN(written.getMinimalTransferTimes().get(fac1, fac9)));
+		Assert.assertEquals(List.of("name,stop_id,x,y,inside_extent", GOETTINGEN + ",fac5,5.000,0.000,false"),
+				Files.readAllLines(outputHubs, StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void runWithoutHubNamesCutsLikeTheExtentAlone() throws IOException {
+		Path root = temporaryFolder.getRoot().toPath();
+		Path input = root.resolve("input_schedule.xml");
+		new TransitScheduleWriter(schedule()).writeFile(input.toString());
+
+		CutSummary summary = RunTransitScheduleCutter.run(input, squareExtent(0.5, 2.5), Optional.empty(),
+				root.resolve("cut_schedule.xml"), root.resolve("hub_stops.csv"));
+
+		Assert.assertTrue(summary.hubStops().isEmpty());
+		Assert.assertEquals(2, summary.stopsInside());
+		Assert.assertEquals(0, summary.stopsHub());
+		Assert.assertEquals(List.of("name,stop_id,x,y,inside_extent"),
+				Files.readAllLines(root.resolve("hub_stops.csv"), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void runFailsForAMissingInputFile() throws IOException {
+		Path root = temporaryFolder.getRoot().toPath();
+		Path input = root.resolve("input_schedule.xml");
+		new TransitScheduleWriter(schedule()).writeFile(input.toString());
+		ScenarioExtent extent = squareExtent(0.5, 2.5);
+
+		try {
+			RunTransitScheduleCutter.run(root.resolve("missing.xml"), extent, Optional.empty(),
+					root.resolve("a.xml"), root.resolve("a.csv"));
+			Assert.fail("a missing schedule file must fail");
+		} catch (IllegalStateException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("--schedule-path"));
+		}
+
+		try {
+			RunTransitScheduleCutter.run(input, extent, Optional.of(root.resolve("missing.txt")),
+					root.resolve("b.xml"), root.resolve("b.csv"));
+			Assert.fail("a missing hub names file must fail");
+		} catch (IllegalStateException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("--hub-stop-names-path"));
+		}
+
+		Assert.assertFalse("nothing is written on a failed run", Files.exists(root.resolve("a.xml")));
+		Assert.assertFalse("nothing is written on a failed run", Files.exists(root.resolve("b.xml")));
 	}
 
 	@Test
@@ -130,7 +211,7 @@ public class TestRunTransitScheduleCutter {
 	}
 
 	/**
-	 * Route "route" serves x = 1..6 (the hub "Göttingen" at x = 5, x = 6 beyond it), route "other" serves
+	 * Route "route" serves x = 1..6 (the hub "G\u00f6ttingen" at x = 5, x = 6 beyond it), route "other" serves
 	 * x = 7..9 entirely outside; "Nowhere Hbf" is the name of fac9.
 	 */
 	private static TransitSchedule schedule() {
@@ -141,7 +222,7 @@ public class TestRunTransitScheduleCutter {
 			TransitStopFacility facility = factory.createTransitStopFacility(
 					Id.create("fac" + x, TransitStopFacility.class), new Coord(x, 0.0), false);
 			facility.setLinkId(Id.createLinkId("link" + x));
-			facility.setName(x == 5 ? "Göttingen" : x == 9 ? "Nowhere Hbf" : "Stop " + x);
+			facility.setName(x == 5 ? "G\u00f6ttingen" : x == 9 ? "Nowhere Hbf" : "Stop " + x);
 			schedule.addStopFacility(facility);
 		}
 

@@ -122,7 +122,8 @@ public class TransitScheduleCutter {
 
 	/**
 	 * The stop facilities that the cut keeps: those of the kept sub-sequences of the given ranges, as computed by
-	 * {@link #keptStopRanges(TransitSchedule)} on the same, uncut schedule.
+	 * {@link #keptStopRanges(TransitSchedule)} on the same, uncut schedule. Fails with an
+	 * IllegalArgumentException naming the first line or route of the ranges that the schedule lacks.
 	 */
 	public static Set<Id<TransitStopFacility>> keptStopFacilityIds(TransitSchedule schedule,
 			Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> ranges) {
@@ -131,8 +132,21 @@ public class TransitScheduleCutter {
 		for (Map.Entry<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> lineEntry : ranges.entrySet()) {
 			TransitLine line = schedule.getTransitLines().get(lineEntry.getKey());
 
+			if (line == null) {
+				throw new IllegalArgumentException("The kept ranges name the transit line " + lineEntry.getKey()
+						+ ", which the schedule does not contain (a schedule that is already cut?)");
+			}
+
 			for (Map.Entry<Id<TransitRoute>, KeptRange> routeEntry : lineEntry.getValue().entrySet()) {
-				List<TransitRouteStop> stops = line.getRoutes().get(routeEntry.getKey()).getStops();
+				TransitRoute route = line.getRoutes().get(routeEntry.getKey());
+
+				if (route == null) {
+					throw new IllegalArgumentException("The kept ranges name the transit route "
+							+ routeEntry.getKey() + " of line " + lineEntry.getKey()
+							+ ", which the schedule does not contain (a schedule that is already cut?)");
+				}
+
+				List<TransitRouteStop> stops = route.getStops();
 				KeptRange range = routeEntry.getValue();
 
 				for (TransitRouteStop stop : stops.subList(range.first(), range.last() + 1)) {

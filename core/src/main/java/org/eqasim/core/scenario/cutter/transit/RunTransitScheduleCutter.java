@@ -66,27 +66,44 @@ public class RunTransitScheduleCutter {
 	}
 
 	/**
-	 * Cuts the schedule in place. Fails if a hub name matches no facility or if no route is kept.
+	 * Cuts the schedule in place. Fails if a hub name matches no facility, if no route is kept, or if the cut
+	 * differs from what its dry pass announced (kept routes and kept stop facilities).
 	 */
 	public static CutSummary cut(TransitSchedule schedule, ScenarioExtent extent, List<String> hubNames) {
-		Set<Id<TransitStopFacility>> hubStopIds = TransitHubStops.resolve(schedule, hubNames, extent);
+		Map<String, List<TransitStopFacility>> matches = TransitHubStops.resolveByName(schedule, hubNames, extent);
 
 		// Snapshot of the matched facilities before the cut, which removes the facilities of dropped routes
 		List<HubStop> hubStops = new ArrayList<>();
-		for (String name : new LinkedHashSet<>(hubNames)) {
-			schedule.getFacilities().values().stream() //
-					.filter(facility -> name.equals(facility.getName()) && hubStopIds.contains(facility.getId())) //
-					.sorted((a, b) -> a.getId().toString().compareTo(b.getId().toString())) //
-					.forEach(facility -> hubStops.add(new HubStop(name, facility.getId(), facility.getCoord().getX(),
-							facility.getCoord().getY(), extent.isInside(facility.getCoord()))));
-		}
+		Set<Id<TransitStopFacility>> hubStopIds = new LinkedHashSet<>();
+		matches.forEach((name, facilities) -> {
+			for (TransitStopFacility facility : facilities) {
+				hubStopIds.add(facility.getId());
+				hubStops.add(new HubStop(name, facility.getId(), facility.getCoord().getX(),
+						facility.getCoord().getY(), extent.isInside(facility.getCoord())));
+			}
+		});
 
 		TransitScheduleCutter cutter = new TransitScheduleCutter(extent, hubStopIds);
 
 		int routesBefore = countRoutes(schedule);
 		Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> ranges = cutter.keptStopRanges(schedule);
+		Set<Id<TransitStopFacility>> predictedFacilityIds = TransitScheduleCutter.keptStopFacilityIds(schedule,
+				ranges);
+		int predictedRoutes = countRanges(ranges);
+
 		cutter.run(schedule);
 		int routesKept = countRoutes(schedule);
+
+		// The dry pass and the cut share one reduction; this gate keeps it so.
+		if (predictedRoutes != routesKept) {
+			throw new IllegalStateException(String.format(Locale.ROOT,
+					"The dry pass announced %d kept routes, the cut kept %d", predictedRoutes, routesKept));
+		}
+		if (!predictedFacilityIds.equals(schedule.getFacilities().keySet())) {
+			throw new IllegalStateException(String.format(Locale.ROOT,
+					"The dry pass announced %d kept stop facilities, the cut kept %d (or other ones)",
+					predictedFacilityIds.size(), schedule.getFacilities().size()));
+		}
 
 		if (routesKept == 0) {
 			throw new IllegalStateException("The cut keeps no route: the extent contains no stop served by a route");
@@ -96,10 +113,11 @@ public class RunTransitScheduleCutter {
 		CutSummary summary = new CutSummary(hubStops, breakdown.inside(), breakdown.hub(), breakdown.otherOutside(),
 				routesKept, routesBefore - routesKept);
 
+		// The kept-stop breakdown is logged by the cutter itself; only the extras of this tool are logged here.
 		log.info(String.format(Locale.ROOT,
-				"[RunTransitScheduleCutter] kept stops %d: inside %d, hub %d, other outside %d; routes kept %d/%d (%.1f %%), dropped %d; dry pass named %d routes",
-				breakdown.total(), summary.stopsInside(), summary.stopsHub(), summary.stopsOtherOutside(), routesKept,
-				routesBefore, 100.0 * routesKept / routesBefore, summary.routesDropped(), countRanges(ranges)));
+				"[RunTransitScheduleCutter] routes dropped %d/%d (%.1f %%); hub facilities %d for %d names",
+				summary.routesDropped(), routesBefore, 100.0 * summary.routesDropped() / routesBefore,
+				hubStops.size(), matches.size()));
 
 		return summary;
 	}
@@ -143,14 +161,35 @@ public class RunTransitScheduleCutter {
 		return value;
 	}
 
-	private static File requireFile(CommandLine cmd, String option) throws ConfigurationException {
-		File file = new File(cmd.getOptionStrict(option));
-
-		if (!file.isFile()) {
-			throw new IllegalStateException("Input file of --" + option + " does not exist: " + file);
+	private static Path requireFile(Path path, String what) {
+		if (!Files.isRegularFile(path)) {
+			throw new IllegalStateException("Input file of " + what + " does not exist: " + path);
 		}
 
-		return file;
+		return path;
+	}
+
+	/**
+	 * The whole tool without option parsing: reads the schedule and the optional hub names file (both must
+	 * exist), cuts, and writes the cut schedule and the hub table.
+	 */
+	public static CutSummary run(Path schedulePath, ScenarioExtent extent, Optional<Path> hubNamesPath,
+			Path outputSchedulePath, Path outputHubsPath) throws IOException {
+		requireFile(schedulePath, "--schedule-path");
+
+		List<String> hubNames = new ArrayList<>();
+		if (hubNamesPath.isPresent()) {
+			hubNames = TransitHubStops.readNames(requireFile(hubNamesPath.get(), "--hub-stop-names-path"));
+		}
+		log.info(String.format(Locale.ROOT, "[RunTransitScheduleCutter] %d hub stop names", hubNames.size()));
+
+		Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+		new TransitScheduleReader(scenario).readFile(schedulePath.toString());
+		TransitSchedule schedule = scenario.getTransitSchedule();
+
+		CutSummary summary = cut(schedule, extent, hubNames);
+		write(schedule, summary, outputSchedulePath, outputHubsPath);
+		return summary;
 	}
 
 	static public void main(String[] args) throws ConfigurationException, IOException {
@@ -159,26 +198,15 @@ public class RunTransitScheduleCutter {
 				.allowOptions(OPTIONAL_ARGS) //
 				.build();
 
-		File schedulePath = requireFile(cmd, "schedule-path");
-		File extentPath = requireFile(cmd, "extent-path");
+		Path extentPath = requireFile(new File(cmd.getOptionStrict("extent-path")).toPath(), "--extent-path");
 		Optional<String> extentAttribute = cmd.getOption("extent-attribute");
 		Optional<String> extentValue = cmd.getOption("extent-value");
+		ScenarioExtent extent = new ShapeScenarioExtent.Builder(extentPath.toFile(), extentAttribute, extentValue)
+				.build();
 
-		List<String> hubNames = new ArrayList<>();
-		if (cmd.hasOption("hub-stop-names-path")) {
-			hubNames = TransitHubStops.readNames(requireFile(cmd, "hub-stop-names-path").toPath());
-		}
-		log.info(String.format(Locale.ROOT, "[RunTransitScheduleCutter] %d hub stop names", hubNames.size()));
-
-		ScenarioExtent extent = new ShapeScenarioExtent.Builder(extentPath, extentAttribute, extentValue).build();
-
-		Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
-		new TransitScheduleReader(scenario).readFile(schedulePath.getPath());
-		TransitSchedule schedule = scenario.getTransitSchedule();
-
-		CutSummary summary = cut(schedule, extent, hubNames);
-
-		write(schedule, summary, new File(cmd.getOptionStrict("output-schedule-path")).toPath(),
+		run(new File(cmd.getOptionStrict("schedule-path")).toPath(), extent,
+				cmd.getOption("hub-stop-names-path").map(path -> new File(path).toPath()),
+				new File(cmd.getOptionStrict("output-schedule-path")).toPath(),
 				new File(cmd.getOptionStrict("output-hubs-path")).toPath());
 	}
 }

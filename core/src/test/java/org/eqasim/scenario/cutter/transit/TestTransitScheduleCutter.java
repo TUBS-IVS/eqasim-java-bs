@@ -190,6 +190,44 @@ public class TestTransitScheduleCutter {
 		Assert.assertEquals(Set.of("fac2", "fac3", "fac4"), facilityIds(schedule));
 	}
 
+	@Test
+	public void keptStopFacilityIdsNamesTheLineOrRouteThatTheScheduleLacks() {
+		TransitScheduleFactory factory = new TransitScheduleFactoryImpl();
+		TransitSchedule schedule = factory.createTransitSchedule();
+		for (int x = 1; x <= 3; x++) {
+			addFacility(factory, schedule, x);
+		}
+		TransitLine line = factory.createTransitLine(LINE_ID);
+		TransitRoute route = createRoute(factory, schedule, ROUTE_ID, 1, 2, 3);
+		line.addRoute(route);
+		schedule.addTransitLine(line);
+
+		Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> ranges = new TransitScheduleCutter(
+				extentContaining(1, 2), Set.of()).keptStopRanges(schedule);
+		Assert.assertEquals(Set.of(facilityId(1), facilityId(2)),
+				TransitScheduleCutter.keptStopFacilityIds(schedule, ranges));
+
+		// a route missing from the schedule
+		line.removeRoute(route);
+		try {
+			TransitScheduleCutter.keptStopFacilityIds(schedule, ranges);
+			Assert.fail("a route that the schedule lacks must fail");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("route"));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(ROUTE_ID.toString()));
+		}
+
+		// a line missing from the schedule
+		schedule.removeTransitLine(line);
+		try {
+			TransitScheduleCutter.keptStopFacilityIds(schedule, ranges);
+			Assert.fail("a line that the schedule lacks must fail");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("line"));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(LINE_ID.toString()));
+		}
+	}
+
 	private static Id<TransitStopFacility> facilityId(int x) {
 		return Id.create("fac" + x, TransitStopFacility.class);
 	}

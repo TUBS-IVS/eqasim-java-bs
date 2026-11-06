@@ -6,6 +6,12 @@ import java.util.List;
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.matsim.pt.transitSchedule.api.TransitRouteStop;
 
+/**
+ * @deprecated The {@link TransitScheduleCutter} no longer uses crossing points: since eqasim-bs#574 it keeps
+ *             the stops between the first and the last anchor (inside the extent or hub). Kept for parity
+ *             with upstream eqasim.
+ */
+@Deprecated
 public class DefaultStopSequenceCrossingPointFinder implements StopSequenceCrossingPointFinder {
 	private final ScenarioExtent extent;
 
