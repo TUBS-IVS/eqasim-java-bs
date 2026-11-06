@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -351,8 +352,9 @@ public class TestSimulationPipeline {
         Scenario keptStopsFacilities = ScenarioUtils.createScenario(ConfigUtils.createConfig());
         new MatsimFacilitiesReader(keptStopsFacilities)
                 .readFile("melun_test/cutter_kept_stops/center_facilities.xml.gz");
-        assertTrue(keptStopsFacilities.getActivityFacilities().getFacilities().keySet().stream()
-                .anyMatch(id -> id.toString().startsWith("outside_stop_")));
+        assertTrue("No outside_stop_ facility in the kept-stops output",
+                keptStopsFacilities.getActivityFacilities().getFacilities().keySet().stream()
+                        .anyMatch(id -> id.toString().startsWith("outside_stop_")));
 
         // The hub names resolve to four stop facilities (three Chamlys, one Mairie), which the cut without hubs
         // does not keep: they are kept only as hubs
@@ -364,11 +366,13 @@ public class TestSimulationPipeline {
         Set<Id<TransitStopFacility>> hubStopIds = schedule.getFacilities().values().stream()
                 .filter(stop -> hubNames.contains(stop.getName())).map(TransitStopFacility::getId)
                 .collect(Collectors.toSet());
-        assertEquals(4, hubStopIds.size());
+        assertEquals("Hub names Chamlys/Mairie should resolve to 4 stop facilities of the input schedule", 4,
+                hubStopIds.size());
         Set<Id<TransitStopFacility>> keptWithoutHubs = TransitScheduleCutter.keptStopFacilityIds(schedule,
                 new TransitScheduleCutter(extent, Set.of()).keptStopRanges(schedule));
-        assertTrue("A hub stop is kept without hubs: " + hubStopIds,
-                Collections.disjoint(keptWithoutHubs, hubStopIds));
+        Set<Id<TransitStopFacility>> keptHubs = new HashSet<>(hubStopIds);
+        keptHubs.retainAll(keptWithoutHubs);
+        assertTrue("Hub stops kept by the cut without hubs: " + keptHubs, keptHubs.isEmpty());
 
         // Some outside activities are anchored at a hub, outside the extent
         Set<String> hubFacilityIds = hubStopIds.stream().map(id -> "outside_stop_" + id).collect(Collectors.toSet());
