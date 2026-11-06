@@ -7,6 +7,13 @@ import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.PlanElement;
 
 public class DefaultMergeOutsideActivities implements MergeOutsideActivities {
+	/**
+	 * Called right before the merge removes the activity {@code removed}; {@code survivor} is the outside activity
+	 * that takes its place in the plan. Does nothing here (eqasim-bs#574: a subclass passes attributes on).
+	 */
+	protected void absorb(Activity survivor, Activity removed) {
+	}
+
 	@Override
 	public void run(List<PlanElement> plan) {
 		while (plan.size() > 1 && ((Activity) plan.get(0)).getType().equals("outside")
@@ -14,6 +21,7 @@ public class DefaultMergeOutsideActivities implements MergeOutsideActivities {
 				&& ((Activity) plan.get(2)).getType().equals("outside")) {
 			// While the first two activities are outside, remove the first one and the
 			// following leg
+			absorb((Activity) plan.get(2), (Activity) plan.get(0));
 			plan.remove(0);
 			plan.remove(0);
 		}
@@ -23,6 +31,7 @@ public class DefaultMergeOutsideActivities implements MergeOutsideActivities {
 				&& ((Activity) plan.get(plan.size() - 1)).getType().equals("outside")) {
 			// While the last two activities are outside, remove the last one and the
 			// preceeding leg
+			absorb((Activity) plan.get(plan.size() - 3), (Activity) plan.get(plan.size() - 1));
 			plan.remove(plan.size() - 1);
 			plan.remove(plan.size() - 1);
 		}
@@ -46,6 +55,7 @@ public class DefaultMergeOutsideActivities implements MergeOutsideActivities {
 			if (firstActivityIsOutside && firstLegIsOutside && secondActivityIsOutside && secondLegIsOutside
 					&& thirdActivityIsOutside) {
 				// We can delete the one in the middle
+				absorb(firstActivity, secondActivity);
 				plan.remove(i + 1);
 				plan.remove(i + 1);
 
