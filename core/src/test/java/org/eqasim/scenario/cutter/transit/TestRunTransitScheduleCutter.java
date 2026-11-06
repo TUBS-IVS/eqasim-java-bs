@@ -1,6 +1,7 @@
 package org.eqasim.scenario.cutter.transit;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +50,52 @@ public class TestRunTransitScheduleCutter {
 
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+	private static Path melunResource(String name) throws URISyntaxException {
+		return Path.of(TestRunTransitScheduleCutter.class.getClassLoader().getResource("melun/" + name).toURI());
+	}
+
+	@Test
+	public void mainCutsTheMelunScheduleToItsCenterExtent() throws Exception {
+		Path root = temporaryFolder.getRoot().toPath();
+		Path outputSchedule = root.resolve("cut_schedule.xml.gz");
+		Path outputHubs = root.resolve("hub_stops.csv");
+
+		RunTransitScheduleCutter.main(new String[] { //
+				"--schedule-path", melunResource("transit_schedule.xml.gz").toString(), //
+				"--extent-path", melunResource("center.shp").toString(), //
+				"--output-schedule-path", outputSchedule.toString(), //
+				"--output-hubs-path", outputHubs.toString() });
+
+		Scenario original = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+		new TransitScheduleReader(original).readFile(melunResource("transit_schedule.xml.gz").toString());
+		Scenario cut = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+		new TransitScheduleReader(cut).readFile(outputSchedule.toString());
+
+		int routesBefore = original.getTransitSchedule().getTransitLines().values().stream()
+				.mapToInt(line -> line.getRoutes().size()).sum();
+		int routesAfter = cut.getTransitSchedule().getTransitLines().values().stream()
+				.mapToInt(line -> line.getRoutes().size()).sum();
+		Assert.assertTrue(routesAfter > 0);
+		Assert.assertTrue(routesAfter < routesBefore);
+		Assert.assertTrue(cut.getTransitSchedule().getFacilities().size() < original.getTransitSchedule()
+				.getFacilities().size());
+		// No hub names given: the hub table has its header only
+		Assert.assertEquals(List.of("name,stop_id,x,y,inside_extent"),
+				Files.readAllLines(outputHubs, StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void mainRequiresAnExistingExtentFile() throws Exception {
+		Path root = temporaryFolder.getRoot().toPath();
+		IllegalStateException e = Assert.assertThrows(IllegalStateException.class,
+				() -> RunTransitScheduleCutter.main(new String[] { //
+						"--schedule-path", melunResource("transit_schedule.xml.gz").toString(), //
+						"--extent-path", root.resolve("missing.shp").toString(), //
+						"--output-schedule-path", root.resolve("cut.xml.gz").toString(), //
+						"--output-hubs-path", root.resolve("hubs.csv").toString() }));
+		Assert.assertTrue(e.getMessage(), e.getMessage().contains("--extent-path"));
+	}
 
 	@Test
 	public void cutWritesTheScheduleAndTheHubTable() throws IOException {

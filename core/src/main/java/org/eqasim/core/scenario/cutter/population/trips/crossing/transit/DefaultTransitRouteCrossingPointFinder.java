@@ -42,19 +42,27 @@ public class DefaultTransitRouteCrossingPointFinder implements TransitRouteCross
 	final private PositionInclusion inclusion;
 	final private TransitSchedule schedule;
 	final private DepartureFinder departureFinder;
+	final private boolean firstEgressOccurrence;
 
 	@Inject
 	public DefaultTransitRouteCrossingPointFinder(ScenarioExtent extent, TransitSchedule schedule,
 			DepartureFinder departureFinder) {
 		this((line, route, index) -> extent.isInside(route.getStops().get(index).getStopFacility().getCoord()),
-				schedule, departureFinder);
+				schedule, departureFinder, false);
 	}
 
+	/**
+	 * @param firstEgressOccurrence where a route serves the egress facility more than once after boarding: true takes
+	 *                              the first occurrence (the kept-stops mode, eqasim-bs#574, so that a loop route does
+	 *                              not stretch the ride beyond the kept range), false the last one (upstream
+	 *                              behaviour of the extent mode)
+	 */
 	public DefaultTransitRouteCrossingPointFinder(PositionInclusion inclusion, TransitSchedule schedule,
-			DepartureFinder departureFinder) {
+			DepartureFinder departureFinder, boolean firstEgressOccurrence) {
 		this.inclusion = inclusion;
 		this.schedule = schedule;
 		this.departureFinder = departureFinder;
+		this.firstEgressOccurrence = firstEgressOccurrence;
 	}
 
 	@Override
@@ -64,7 +72,8 @@ public class DefaultTransitRouteCrossingPointFinder implements TransitRouteCross
 
 	/**
 	 * The boarding and alighting positions of a pt leg: the next departure of its route at the access stop from the
-	 * leg's departure time on, and the egress stop found by scanning forward from there.
+	 * leg's departure time on, and the egress stop found by scanning forward from there (its first or last occurrence,
+	 * see the constructor).
 	 */
 	public RidePositions findRidePositions(TransitPassengerRoute route, double departureTime) {
 		try {
@@ -80,9 +89,18 @@ public class DefaultTransitRouteCrossingPointFinder implements TransitRouteCross
 			int accessStopIndex = transitRoute.getStops().indexOf(stopDeparture.stop);
 			int egressStopIndex = -1;
 
-			for (int i = accessStopIndex; i < transitRoute.getStops().size(); i++) {
-				if (transitRoute.getStops().get(i).getStopFacility().getId().equals(route.getEgressStopId())) {
-					egressStopIndex = i;
+			if (firstEgressOccurrence) {
+				for (int i = accessStopIndex + 1; i < transitRoute.getStops().size(); i++) {
+					if (transitRoute.getStops().get(i).getStopFacility().getId().equals(route.getEgressStopId())) {
+						egressStopIndex = i;
+						break;
+					}
+				}
+			} else {
+				for (int i = accessStopIndex; i < transitRoute.getStops().size(); i++) {
+					if (transitRoute.getStops().get(i).getStopFacility().getId().equals(route.getEgressStopId())) {
+						egressStopIndex = i;
+					}
 				}
 			}
 

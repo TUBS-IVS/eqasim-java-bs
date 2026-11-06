@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +20,11 @@ import java.util.concurrent.ExecutionException;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
 import org.eqasim.core.analysis.run.RunLegAnalysis;
 import org.eqasim.core.analysis.run.RunPublicTransportLegAnalysis;
 import org.eqasim.core.analysis.run.RunTripAnalysis;
@@ -27,6 +34,7 @@ import org.eqasim.core.components.traffic.CrossingPenalty;
 import org.eqasim.core.components.traffic.DefaultCrossingPenalty;
 import org.eqasim.core.scenario.cutter.RunScenarioCutter;
 import org.eqasim.core.scenario.cutter.RunScenarioCutterV2;
+import org.eqasim.core.scenario.cutter.TransitCutSummary;
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.eqasim.core.scenario.cutter.extent.ShapeScenarioExtent;
 import org.eqasim.core.scenario.routing.RunPopulationRouting;
@@ -245,19 +253,40 @@ public class TestSimulationPipeline {
     }
 
     /**
-     * The kept-stops transit cut mode (eqasim-bs#574) runs end to end and writes the transit cut summary; the
-     * extent mode of {@link #runCutter()} writes none.
+     * The kept-stops transit cut mode (eqasim-bs#574) runs end to end on its primary path: pt trips cross the kept
+     * timetable, the processor collapses some of them, and the summary written from the routed population holds the
+     * same collapsed trips as the processor counted (no mismatch warning). The extent mode of {@link #runCutter()}
+     * writes no summary.
      */
     private void runCutterKeptStops() throws Exception {
-        RunScenarioCutter.main(new String[] {
-                "--config-path", "melun_test/input/config.xml",
-                "--events-path", "melun_test/output/output_events.xml.gz",
-                "--output-path", "melun_test/cutter_kept_stops",
-                "--prefix", "center_",
-                "--extent-path", "melun_test/input/center.shp",
-                "--transit-cut-mode", "kept-stops",
-                "--eqasim-configurator", TestConfigurator.class.getName()
-        });
+        List<String> messages = Collections.synchronizedList(new ArrayList<>());
+        AbstractAppender appender = new AbstractAppender("keptStopsCapture", null, null, true, Property.EMPTY_ARRAY) {
+            @Override
+            public void append(LogEvent event) {
+                messages.add(event.getLevel() + " " + event.getMessage().getFormattedMessage());
+            }
+        };
+        appender.start();
+        // On the root logger, so that the console keeps receiving the cutter's lines
+        LoggerContext context = (LoggerContext) LogManager.getContext(false);
+        context.getConfiguration().getRootLogger().addAppender(appender, Level.INFO, null);
+        context.updateLoggers();
+
+        try {
+            RunScenarioCutter.main(new String[] {
+                    "--config-path", "melun_test/input/config.xml",
+                    "--events-path", "melun_test/output/output_events.xml.gz",
+                    "--output-path", "melun_test/cutter_kept_stops",
+                    "--prefix", "center_",
+                    "--extent-path", "melun_test/input/center.shp",
+                    "--transit-cut-mode", "kept-stops",
+                    "--eqasim-configurator", TestConfigurator.class.getName()
+            });
+        } finally {
+            context.getConfiguration().getRootLogger().removeAppender(appender.getName());
+            context.updateLoggers();
+            appender.stop();
+        }
 
         assertFalse(new File("melun_test/cutter/center_transit_cut_summary.csv").exists());
 
@@ -267,9 +296,29 @@ public class TestSimulationPipeline {
                 "routes_dropped", "pt_trips_with_crossings", "collapsed_inside_inside", "collapsed_inside_inside_walked",
                 "collapsed_outside_origin", "collapsed_outside_origin_walked", "collapsed_outside_destination",
                 "collapsed_outside_destination_walked", "collapsed_through", "collapsed_through_walked"), metrics);
+        Map<String, Long> values = new HashMap<>();
+        lines.stream().skip(1).forEach(line -> values.put(line.split(",")[0], Long.parseLong(line.split(",")[1])));
+
         // No hub names given: no hub stop is kept
-        assertEquals("stops_kept_hub,0", lines.get(2));
-        assertTrue(Integer.parseInt(lines.get(4).split(",")[1]) > 0);
+        assertEquals(0L, (long) values.get("stops_kept_hub"));
+        assertTrue(values.get("routes_kept") > 0);
+
+        // The primary path is taken: trips cross the kept timetable and some are collapsed
+        assertTrue(values.get("pt_trips_with_crossings") > 0);
+        long collapsed = values.get("collapsed_inside_inside") + values.get("collapsed_outside_origin")
+                + values.get("collapsed_outside_destination") + values.get("collapsed_through");
+        assertTrue(collapsed > 0);
+
+        // The processor's counts, logged after the population cut, equal the routed population's per case
+        for (String collapseCase : List.of("inside_inside", "outside_origin", "outside_destination", "through")) {
+            String prefix = "INFO [RunScenarioCutter] collapsed " + collapseCase + " ";
+            String logged = messages.stream().filter(message -> message.startsWith(prefix)).findFirst()
+                    .orElseThrow(() -> new AssertionError("No processor count logged for " + collapseCase));
+            long processorCount = Long.parseLong(logged.substring(prefix.length()).split("/")[0]);
+            assertEquals(collapseCase, processorCount, (long) values.get("collapsed_" + collapseCase));
+        }
+
+        assertTrue(messages.stream().noneMatch(message -> message.contains("[TransitCutSummary] the cut collapsed")));
     }
 
     public void runCutterV2()

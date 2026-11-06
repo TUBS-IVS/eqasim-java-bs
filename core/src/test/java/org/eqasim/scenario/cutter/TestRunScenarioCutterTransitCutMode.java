@@ -11,7 +11,8 @@ import org.matsim.core.config.CommandLine.ConfigurationException;
 public class TestRunScenarioCutterTransitCutMode {
 	private static CommandLine commandLine(String... args) throws ConfigurationException {
 		return new CommandLine.Builder(args) //
-				.allowOptions(RunScenarioCutter.TRANSIT_CUT_MODE, RunScenarioCutter.TRANSIT_HUB_STOP_NAMES_PATH) //
+				.allowOptions(RunScenarioCutter.TRANSIT_CUT_MODE, RunScenarioCutter.TRANSIT_HUB_STOP_NAMES_PATH,
+						RunScenarioCutter.SKIP_ROUTING) //
 				.build();
 	}
 
@@ -34,5 +35,22 @@ public class TestRunScenarioCutterTransitCutMode {
 	@Test(expected = IllegalArgumentException.class)
 	public void anUnknownModeFails() throws ConfigurationException {
 		RunScenarioCutter.parseTransitCutMode(commandLine("--transit-cut-mode", "polygon"));
+	}
+
+	@Test
+	public void skippingTheRoutingIsRefusedInTheKeptStopsMode() throws ConfigurationException {
+		CommandLine cmd = commandLine("--transit-cut-mode", "kept-stops", "--skip-routing", "true");
+		IllegalArgumentException e = Assert.assertThrows(IllegalArgumentException.class,
+				() -> RunScenarioCutter.parseTransitCutMode(cmd));
+		Assert.assertTrue(e.getMessage(), e.getMessage().contains("--skip-routing"));
+		Assert.assertTrue(e.getMessage(), e.getMessage().contains("--transit-cut-mode"));
+	}
+
+	@Test
+	public void skippingTheRoutingStaysAllowedInTheExtentMode() throws ConfigurationException {
+		Assert.assertEquals(TransitCutMode.EXTENT,
+				RunScenarioCutter.parseTransitCutMode(commandLine("--skip-routing", "true")));
+		Assert.assertEquals(TransitCutMode.KEPT_STOPS, RunScenarioCutter
+				.parseTransitCutMode(commandLine("--transit-cut-mode", "kept-stops", "--skip-routing", "false")));
 	}
 }

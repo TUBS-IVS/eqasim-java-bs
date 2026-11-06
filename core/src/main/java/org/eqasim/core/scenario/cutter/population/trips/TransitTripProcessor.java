@@ -37,8 +37,18 @@ public class TransitTripProcessor implements TripProcessor {
 	final private ScenarioExtent extent;
 	final private boolean collapseExcursions;
 
-	// Shared by the threads of the population cutter (the processor is a singleton in the kept-stops mode)
+	// Shared by the threads of the population cutter (the processor is a singleton)
 	final private Map<String, AtomicLong> collapseCounts = new LinkedHashMap<>();
+	final private AtomicLong processedTrips = new AtomicLong();
+
+	/** Thrown by {@link #collapse} for a point list that no consistent finder produces. */
+	static class InconsistentCrossingPointsException extends IllegalStateException {
+		private static final long serialVersionUID = 1L;
+
+		InconsistentCrossingPointsException(String message) {
+			super(message);
+		}
+	}
 
 	public TransitTripProcessor(TransitTripCrossingPointFinder transitPointFinder, ScenarioExtent extent,
 			double departureTimeBuffer) {
@@ -67,12 +77,20 @@ public class TransitTripProcessor implements TripProcessor {
 	@Override
 	public List<PlanElement> process(Id<Person> personId, int firstLegIndex, Activity firstActivity,
 			List<PlanElement> trip, Activity secondActivity, String routingMode) {
-		return process(firstActivity.getCoord(), trip, secondActivity.getCoord(),
-				!extent.isInside(firstActivity.getCoord()) && !extent.isInside(secondActivity.getCoord()), routingMode);
+		try {
+			return process(firstActivity.getCoord(), trip, secondActivity.getCoord(),
+					!extent.isInside(firstActivity.getCoord()) && !extent.isInside(secondActivity.getCoord()),
+					routingMode);
+		} catch (InconsistentCrossingPointsException e) {
+			throw new IllegalStateException(
+					"Person " + personId + ", trip from leg index " + firstLegIndex + ": " + e.getMessage(), e);
+		}
 	}
 
 	public List<PlanElement> process(Coord firstCoord, List<PlanElement> trip, Coord secondCoord, boolean allOutside,
 			String routingMode) {
+		processedTrips.incrementAndGet();
+
 		List<TransitTripCrossingPoint> crossingPoints = transitPointFinder.findCrossingPoints(firstCoord, trip,
 				secondCoord);
 
@@ -182,15 +200,17 @@ public class TransitTripProcessor implements TripProcessor {
 
 		if (destinationInside) {
 			if (lastIncoming < 0) {
-				throw new IllegalStateException("Inconsistent crossing points of a pt trip (" + OUTSIDE_ORIGIN
-						+ "): the destination is inside, but none of the " + points.size() + " points enters");
+				throw new InconsistentCrossingPointsException("Inconsistent crossing points of a pt trip ("
+						+ OUTSIDE_ORIGIN + "): the destination is inside, but none of the " + points.size()
+						+ " points enters");
 			}
 
 			return List.of(points.get(lastIncoming));
 		} else if (originInside) {
 			if (firstOutgoing < 0) {
-				throw new IllegalStateException("Inconsistent crossing points of a pt trip (" + OUTSIDE_DESTINATION
-						+ "): the origin is inside, but none of the " + points.size() + " points leaves");
+				throw new InconsistentCrossingPointsException("Inconsistent crossing points of a pt trip ("
+						+ OUTSIDE_DESTINATION + "): the origin is inside, but none of the " + points.size()
+						+ " points leaves");
 			}
 
 			return List.of(points.get(firstOutgoing));
@@ -210,5 +230,15 @@ public class TransitTripProcessor implements TripProcessor {
 		Map<String, Long> counts = new LinkedHashMap<>();
 		collapseCounts.forEach((key, value) -> counts.put(key, value.get()));
 		return counts;
+	}
+
+	/** The pt trips processed so far (with or without crossing points), the denominator of the collapse counts. */
+	public long getProcessedTrips() {
+		return processedTrips.get();
+	}
+
+	/** Whether this processor collapses excursions (kept-stops mode). */
+	public boolean isCollapseExcursions() {
+		return collapseExcursions;
 	}
 }

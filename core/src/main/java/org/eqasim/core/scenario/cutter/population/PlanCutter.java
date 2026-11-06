@@ -42,6 +42,11 @@ public class PlanCutter {
 		this.copyActivityAttributes = copyActivityAttributes;
 	}
 
+	/** Whether a replaced activity passes its attributes on (kept-stops mode). */
+	public boolean isCopyActivityAttributes() {
+		return copyActivityAttributes;
+	}
+
 	private void addActivity(List<PlanElement> plan, Activity activity) {
 		if (extent.isInside(activity.getCoord())) {
 			plan.add(activity);

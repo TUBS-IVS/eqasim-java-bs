@@ -25,6 +25,7 @@ import org.matsim.api.core.v01.population.PlanElement;
 import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.router.TripStructureUtils;
 import org.matsim.pt.routes.DefaultTransitPassengerRoute;
+import org.matsim.pt.routes.TransitPassengerRoute;
 import org.matsim.pt.transitSchedule.TransitScheduleFactoryImpl;
 import org.matsim.pt.transitSchedule.api.Departure;
 import org.matsim.pt.transitSchedule.api.TransitLine;
@@ -63,6 +64,8 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 	private final Id<TransitRoute> routeR = Id.create("R", TransitRoute.class);
 	private final Id<TransitRoute> routeRB = Id.create("RB", TransitRoute.class);
 	private final Id<TransitRoute> routeQ = Id.create("Q", TransitRoute.class);
+	private final Id<TransitLine> lineP = Id.create("P", TransitLine.class);
+	private final Id<TransitRoute> routeLoop = Id.create("LOOP", TransitRoute.class);
 
 	private final DepartureFinder departureFinder = new DefaultDepartureFinder();
 
@@ -87,6 +90,12 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 		TransitLine m = factory.createTransitLine(lineM);
 		m.addRoute(route(factory, routeQ, List.of(s4, s6), new double[] { 0.0, 300.0 }));
 		schedule.addTransitLine(m);
+
+		// Line P: the loop route LOOP serves S3 twice, once between its anchors S1 and S2 and once beyond them
+		TransitLine p = factory.createTransitLine(lineP);
+		p.addRoute(route(factory, routeLoop, List.of(s1, s3, s2, s4, s3),
+				new double[] { 0.0, 200.0, 400.0, 600.0, 800.0 }));
+		schedule.addTransitLine(p);
 	}
 
 	private TransitStopFacility facility(TransitScheduleFactory factory, String id, double x) {
@@ -297,6 +306,38 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 				walk(28600.0, 900.0));
 		Assert.assertTrue(
 				finder(keptWithHub()).findCrossingPoints(HOME_INSIDE, insideTrip, WORK_INSIDE).isEmpty());
+	}
+
+	@Test
+	public void aLoopRouteDoesNotStretchTheRideBeyondTheKeptRange() {
+		// Inside home, ride LOOP S1 -> S3 (its first S3 lies inside the range [0, 2], the second beyond it), walk to an
+		// inside destination: the whole trip stays in the world
+		List<PlanElement> trip = List.of(walk(28700.0, 60.0), stage(s1), ride(lineP, routeLoop, s1, s3, 28760.0, 200.0),
+				stage(s3), walk(29000.0, 300.0));
+		Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges = ranges(lineP,
+				Map.of(routeLoop, new KeptRange(0, 2)));
+
+		Assert.assertTrue(finder(keptRanges).findCrossingPoints(HOME_INSIDE, trip, WORK_INSIDE).isEmpty());
+
+		// The extent mode keeps the upstream rule: the last occurrence of the egress facility
+		DefaultTransitRouteCrossingPointFinder extentRouteFinder = new DefaultTransitRouteCrossingPointFinder(EXTENT,
+				schedule, departureFinder);
+		Assert.assertEquals(4, extentRouteFinder
+				.findRidePositions((TransitPassengerRoute) ((Leg) trip.get(2)).getRoute(), 28760.0).egressIndex());
+	}
+
+	@Test
+	public void rangesBeyondTheStopSequenceAreRefused() {
+		// R has five stops: a range ending at index 5 belongs to another (uncut) schedule
+		IllegalStateException e = Assert.assertThrows(IllegalStateException.class,
+				() -> finder(ranges(lineL, Map.of(routeR, new KeptRange(0, 5)))));
+		Assert.assertTrue(e.getMessage().contains("R"));
+	}
+
+	@Test
+	public void rangesOfAMissingRouteAreRefused() {
+		Assert.assertThrows(IllegalArgumentException.class,
+				() -> finder(ranges(lineL, Map.of(Id.create("X", TransitRoute.class), new KeptRange(0, 1)))));
 	}
 
 	@Test

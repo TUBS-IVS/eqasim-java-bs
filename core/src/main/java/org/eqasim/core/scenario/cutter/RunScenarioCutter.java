@@ -63,15 +63,17 @@ public class RunScenarioCutter {
 	public static final String TRANSIT_CUT_MODE = "transit-cut-mode";
 	/** UTF-8 file with one hub stop name per line; only with {@code kept-stops}. */
 	public static final String TRANSIT_HUB_STOP_NAMES_PATH = "transit-hub-stop-names-path";
+	public static final String SKIP_ROUTING = "skip-routing";
 
 	public static final Collection<String> REQUIRED_ARGS = Set.of("config-path", "output-path", "extent-path");
 	public static final Collection<String> OPTIONAL_ARGS = Set.of("threads", "prefix", "extent-attribute",
-			"extent-value", "plans-path", "events-path", "skip-routing", TRANSIT_CUT_MODE,
+			"extent-value", "plans-path", "events-path", SKIP_ROUTING, TRANSIT_CUT_MODE,
 			TRANSIT_HUB_STOP_NAMES_PATH, EqasimConfigurator.CONFIGURATOR);
 
 	/**
 	 * The transit cut mode of the command line; refuses a hub stop names file outside the kept-stops mode, which
-	 * would otherwise be ignored silently.
+	 * would otherwise be ignored silently, and skipping the final routing in the kept-stops mode, whose summary would
+	 * then report its walked counts as 0 instead of not measured.
 	 */
 	public static TransitCutMode parseTransitCutMode(CommandLine cmd) {
 		TransitCutMode mode = TransitCutMode.fromOption(cmd.getOption(TRANSIT_CUT_MODE).orElse("extent"));
@@ -79,6 +81,13 @@ public class RunScenarioCutter {
 		if (mode != TransitCutMode.KEPT_STOPS && cmd.hasOption(TRANSIT_HUB_STOP_NAMES_PATH)) {
 			throw new IllegalArgumentException("--" + TRANSIT_HUB_STOP_NAMES_PATH + " needs --" + TRANSIT_CUT_MODE
 					+ " kept-stops (the " + mode.getOption() + " mode cuts without hubs)");
+		}
+
+		// The transit cut summary counts the collapsed trips that the final routing turns into walks
+		if (mode == TransitCutMode.KEPT_STOPS
+				&& Boolean.parseBoolean(cmd.getOption(SKIP_ROUTING).orElse("false"))) {
+			throw new IllegalArgumentException("--" + SKIP_ROUTING + " true cannot be combined with --"
+					+ TRANSIT_CUT_MODE + " kept-stops: its summary needs the final routing");
 		}
 
 		return mode;
@@ -217,7 +226,7 @@ public class RunScenarioCutter {
 				.addOverridingModule(new TimeInterpretationModule()) //
 				.build();
 
-		boolean skipRouting = Boolean.parseBoolean(cmd.getOption("skip-routing").orElse("false"));
+		boolean skipRouting = Boolean.parseBoolean(cmd.getOption(SKIP_ROUTING).orElse("false"));
 
 		if (!skipRouting) {
 			PopulationRouter router = routingInjector.getInstance(PopulationRouter.class);
@@ -231,73 +240,18 @@ public class RunScenarioCutter {
 		scenarioWriter.run(outputDirectory);
 
 		// Summarise the transit cut after the final routing, which decides whether a collapsed trip walks
-		writeTransitCutSummary(transitCut, scenario, skipRouting, outputDirectory, prefix);
+		writeTransitCutSummary(transitCut, scenario, outputDirectory, prefix);
 	}
 
 	/**
-	 * The transit cut of one run: the schedule cutter (with the hubs in the kept-stops mode), the kept stop ranges of
-	 * its dry pass (kept-stops mode only, empty otherwise) and the counts the summary needs.
-	 */
-	static private class TransitCut {
-		final TransitCutMode mode;
-		final TransitScheduleCutter cutter;
-		final Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges;
-
-		Map<String, Long> collapseCounts = Map.of();
-		int routesBeforeCut;
-		int routesKept;
-
-		TransitCut(TransitCutMode mode, TransitScheduleCutter cutter,
-				Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges) {
-			this.mode = mode;
-			this.cutter = cutter;
-			this.keptRanges = keptRanges;
-		}
-
-		boolean isKeptStops() {
-			return mode == TransitCutMode.KEPT_STOPS;
-		}
-
-		/** Logs the processor's collapse counts as rates (kept-stops mode) and keeps them for the summary. */
-		void logCollapseCounts(Injector populationCutterInjector) {
-			if (!isKeptStops()) {
-				return;
-			}
-
-			collapseCounts = populationCutterInjector.getInstance(TransitTripProcessor.class).getCollapseCounts();
-			long withCrossings = collapseCounts.get(TransitTripProcessor.TRIPS_WITH_CROSSINGS);
-			log.info("[RunScenarioCutter] pt trips with crossings of the kept timetable: " + withCrossings);
-
-			for (String collapseCase : TransitTripProcessor.COLLAPSE_CASES) {
-				log.info("[RunScenarioCutter] collapsed " + collapseCase + " "
-						+ TransitCutSummary.rate(collapseCounts.get(collapseCase), withCrossings));
-			}
-		}
-
-		/**
-		 * Cuts the schedule with the same cutter as the dry pass; in the kept-stops mode it fails if the cut keeps a
-		 * different number of routes than the dry pass that the population was cut against.
-		 */
-		void cutSchedule(TransitSchedule schedule) {
-			routesBeforeCut = countRoutes(schedule);
-			cutter.run(schedule);
-			routesKept = countRoutes(schedule);
-
-			if (isKeptStops() && routesKept != countRanges(keptRanges)) {
-				throw new IllegalStateException("The schedule cut kept " + routesKept + " routes, its dry pass "
-						+ countRanges(keptRanges) + ": the population was cut against a different timetable");
-			}
-		}
-	}
-
-	/**
-	 * In the kept-stops mode: reads and resolves the hub stop names (none without the option) and runs the dry pass
-	 * of the schedule cut on the still uncut schedule. In the extent mode: a cutter without hubs and no ranges.
+	 * In the kept-stops mode: reads and resolves the hub stop names (none without the option), runs the dry pass of
+	 * the schedule cut on the still uncut schedule and snapshots the stop facilities it keeps. In the extent mode: a
+	 * cutter without hubs and no ranges.
 	 */
 	private static TransitCut prepareTransitCut(CommandLine cmd, TransitCutMode mode, TransitSchedule schedule,
 			ScenarioExtent extent) throws IOException, ConfigurationException {
 		if (mode != TransitCutMode.KEPT_STOPS) {
-			return new TransitCut(mode, new TransitScheduleCutter(extent, Set.of()), Map.of());
+			return new TransitCut(mode, new TransitScheduleCutter(extent, Set.of()), Map.of(), Set.of());
 		}
 
 		List<String> hubNames = cmd.hasOption(TRANSIT_HUB_STOP_NAMES_PATH)
@@ -307,25 +261,24 @@ public class RunScenarioCutter {
 
 		TransitScheduleCutter cutter = new TransitScheduleCutter(extent, hubStopIds);
 		Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges = cutter.keptStopRanges(schedule);
+		Set<Id<TransitStopFacility>> keptFacilityIds = TransitScheduleCutter.keptStopFacilityIds(schedule,
+				keptRanges);
 		log.info("[RunScenarioCutter] transit cut mode kept-stops: " + hubStopIds.size()
 				+ " hub stop facilities, kept routes "
-				+ TransitCutSummary.rate(countRanges(keptRanges), countRoutes(schedule)));
+				+ TransitCutSummary.rate(countRanges(keptRanges), countRoutes(schedule)) + ", kept stop facilities "
+				+ TransitCutSummary.rate(keptFacilityIds.size(), schedule.getFacilities().size()));
 
-		return new TransitCut(mode, cutter, keptRanges);
+		return new TransitCut(mode, cutter, keptRanges, keptFacilityIds);
 	}
 
 	/**
 	 * In the kept-stops mode: collects the transit cut summary from the routed population, logs it and writes
 	 * {@code <prefix>transit_cut_summary.csv} into the output directory. Nothing in the extent mode.
 	 */
-	private static void writeTransitCutSummary(TransitCut transitCut, Scenario scenario, boolean skipRouting,
-			File outputDirectory, String prefix) throws IOException {
+	private static void writeTransitCutSummary(TransitCut transitCut, Scenario scenario, File outputDirectory,
+			String prefix) throws IOException {
 		if (!transitCut.isKeptStops()) {
 			return;
-		}
-
-		if (skipRouting) {
-			log.warn("[RunScenarioCutter] routing skipped: the walked counts of the transit cut summary are 0");
 		}
 
 		StopBreakdown stops = transitCut.cutter.classify(scenario.getTransitSchedule().getFacilities().values());
@@ -341,5 +294,77 @@ public class RunScenarioCutter {
 
 	private static int countRanges(Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges) {
 		return keptRanges.values().stream().mapToInt(Map::size).sum();
+	}
+
+	/**
+	 * The transit cut of one run: the schedule cutter (with the hubs in the kept-stops mode), the kept stop ranges of
+	 * its dry pass and the stop facilities they keep (kept-stops mode only, empty otherwise), and the counts the
+	 * summary needs.
+	 */
+	private static class TransitCut {
+		final TransitCutMode mode;
+		final TransitScheduleCutter cutter;
+		final Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges;
+		final Set<Id<TransitStopFacility>> keptFacilityIds;
+
+		Map<String, Long> collapseCounts = Map.of();
+		int routesBeforeCut;
+		int routesKept;
+
+		TransitCut(TransitCutMode mode, TransitScheduleCutter cutter,
+				Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges,
+				Set<Id<TransitStopFacility>> keptFacilityIds) {
+			this.mode = mode;
+			this.cutter = cutter;
+			this.keptRanges = keptRanges;
+			this.keptFacilityIds = keptFacilityIds;
+		}
+
+		boolean isKeptStops() {
+			return mode == TransitCutMode.KEPT_STOPS;
+		}
+
+		/** Logs the processor's collapse counts as rates (kept-stops mode) and keeps them for the summary. */
+		void logCollapseCounts(Injector populationCutterInjector) {
+			if (!isKeptStops()) {
+				return;
+			}
+
+			TransitTripProcessor processor = populationCutterInjector.getInstance(TransitTripProcessor.class);
+			collapseCounts = processor.getCollapseCounts();
+			long withCrossings = collapseCounts.get(TransitTripProcessor.TRIPS_WITH_CROSSINGS);
+			log.info("[RunScenarioCutter] pt trips with crossings of the kept timetable: "
+					+ TransitCutSummary.rate(withCrossings, processor.getProcessedTrips()) + " of the pt trips");
+
+			for (String collapseCase : TransitTripProcessor.COLLAPSE_CASES) {
+				log.info("[RunScenarioCutter] collapsed " + collapseCase + " "
+						+ TransitCutSummary.rate(collapseCounts.get(collapseCase), withCrossings));
+			}
+		}
+
+		/**
+		 * Cuts the schedule with the same cutter as the dry pass; in the kept-stops mode it fails if the cut keeps
+		 * other routes or stop facilities than the dry pass that the population was cut against.
+		 */
+		void cutSchedule(TransitSchedule schedule) {
+			routesBeforeCut = countRoutes(schedule);
+			cutter.run(schedule);
+			routesKept = countRoutes(schedule);
+
+			if (!isKeptStops()) {
+				return;
+			}
+
+			if (routesKept != countRanges(keptRanges)) {
+				throw new IllegalStateException("The schedule cut kept " + routesKept + " routes, its dry pass "
+						+ countRanges(keptRanges) + ": the population was cut against a different timetable");
+			}
+
+			if (!keptFacilityIds.equals(schedule.getFacilities().keySet())) {
+				throw new IllegalStateException("The schedule cut kept " + schedule.getFacilities().size()
+						+ " stop facilities, its dry pass " + keptFacilityIds.size()
+						+ " (or other ones): the population was cut against a different timetable");
+			}
+		}
 	}
 }

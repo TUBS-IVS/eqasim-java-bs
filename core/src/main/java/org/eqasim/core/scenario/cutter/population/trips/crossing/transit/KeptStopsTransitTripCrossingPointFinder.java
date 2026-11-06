@@ -9,6 +9,7 @@ import org.eqasim.core.components.transit.departure.DepartureFinder;
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.eqasim.core.scenario.cutter.population.trips.crossing.teleportation.TeleportationCrossingPoint;
 import org.eqasim.core.scenario.cutter.population.trips.crossing.transit.DefaultTransitRouteCrossingPointFinder.RidePositions;
+import org.eqasim.core.scenario.cutter.transit.TransitScheduleCutter;
 import org.eqasim.core.scenario.cutter.transit.TransitScheduleCutter.KeptRange;
 import org.matsim.api.core.v01.Coord;
 import org.matsim.api.core.v01.Id;
@@ -61,12 +62,41 @@ public class KeptStopsTransitTripCrossingPointFinder implements TransitTripCross
 	 * @param extent          the extent that decides the membership of activities
 	 * @param keptRanges      the kept index range per kept route of the pre-cut schedule (the dry pass of the
 	 *                        schedule cut); a route absent from it is dropped by the cut
+	 * @throws IllegalStateException    if a range ends beyond its route's stop sequence (the schedule is already cut)
+	 * @throws IllegalArgumentException if the ranges name a line or route the schedule lacks
 	 */
 	public KeptStopsTransitTripCrossingPointFinder(TransitSchedule preCutSchedule, DepartureFinder departureFinder,
 			ScenarioExtent extent, Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges) {
+		checkPreCutSchedule(preCutSchedule, keptRanges);
 		this.extent = extent;
 		this.keptRanges = Collections.unmodifiableMap(keptRanges);
-		this.routeFinder = new DefaultTransitRouteCrossingPointFinder(this::isKept, preCutSchedule, departureFinder);
+		// A loop route that serves the egress facility again beyond the kept range must not stretch the ride
+		this.routeFinder = new DefaultTransitRouteCrossingPointFinder(this::isKept, preCutSchedule, departureFinder,
+				true);
+	}
+
+	/**
+	 * The ranges index the stop sequences of the UNCUT schedule; a cut schedule (shorter sequences, dropped routes)
+	 * would silently shift every position. Fails if a range ends beyond its route's stops, or (through
+	 * {@link TransitScheduleCutter#keptStopFacilityIds}) if a line or route of the ranges is missing.
+	 */
+	static void checkPreCutSchedule(TransitSchedule schedule,
+			Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> keptRanges) {
+		keptRanges.forEach((lineId, routes) -> {
+			TransitLine line = schedule.getTransitLines().get(lineId);
+
+			routes.forEach((routeId, range) -> {
+				TransitRoute route = line == null ? null : line.getRoutes().get(routeId);
+
+				if (route != null && range.last() >= route.getStops().size()) {
+					throw new IllegalStateException("The kept range " + range + " of route " + routeId + " of line "
+							+ lineId + " ends beyond its " + route.getStops().size()
+							+ " stops: the schedule is not the uncut one the ranges were computed on");
+				}
+			});
+		});
+
+		TransitScheduleCutter.keptStopFacilityIds(schedule, keptRanges);
 	}
 
 	/** Whether the position {@code index} of the route lies in the kept timetable. */

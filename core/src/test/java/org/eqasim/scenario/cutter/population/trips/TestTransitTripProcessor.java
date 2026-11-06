@@ -19,6 +19,7 @@ import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.PlanElement;
+import org.matsim.core.population.PopulationUtils;
 import org.matsim.pt.transitSchedule.TransitScheduleFactoryImpl;
 import org.matsim.pt.transitSchedule.api.TransitRouteStop;
 import org.matsim.pt.transitSchedule.api.TransitScheduleFactory;
@@ -355,5 +356,29 @@ public class TestTransitTripProcessor {
 		IllegalStateException e = Assert.assertThrows(IllegalStateException.class,
 				() -> process(processor, INSIDE_ORIGIN, OUTSIDE_DESTINATION));
 		Assert.assertTrue(e.getMessage().contains("outside_destination"));
+	}
+
+	@Test
+	public void anInconsistentTripNamesThePersonAndTheLegIndex() {
+		TransitTripProcessor processor = collapsing(teleport(1.0, 10.0, true));
+		Activity origin = PopulationUtils.createActivityFromCoord("home", OUTSIDE_ORIGIN);
+		Activity destination = PopulationUtils.createActivityFromCoord("work", INSIDE_DESTINATION);
+
+		IllegalStateException e = Assert.assertThrows(IllegalStateException.class, () -> processor
+				.process(Id.createPersonId("p42"), 3, origin, Collections.emptyList(), destination, "pt"));
+		Assert.assertTrue(e.getMessage(), e.getMessage().contains("p42"));
+		Assert.assertTrue(e.getMessage(), e.getMessage().contains("leg index 3"));
+		Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside_origin"));
+	}
+
+	@Test
+	public void everyProcessedTripIsCounted() {
+		TransitTripProcessor processor = collapsing();
+		process(processor, INSIDE_ORIGIN, INSIDE_DESTINATION);
+		process(processor, OUTSIDE_ORIGIN, OUTSIDE_DESTINATION);
+
+		Assert.assertEquals(2, processor.getProcessedTrips());
+		Assert.assertTrue(processor.isCollapseExcursions());
+		Assert.assertEquals(0, (long) processor.getCollapseCounts().get("trips_with_crossings"));
 	}
 }
