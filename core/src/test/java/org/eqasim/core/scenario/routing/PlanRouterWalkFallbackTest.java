@@ -226,6 +226,55 @@ public class PlanRouterWalkFallbackTest {
 	}
 
 	@Test
+	public void collapseMarkerSurvivesTheRestoreOfAWalkFallback() {
+		// A collapsed pt trip without service becomes a walk fallback; the routed day-end shift
+		// (eqasim-bs ADR-0160) restores it to one pt leg and routes it again (eqasim-bs#574)
+		buildScenario();
+		Plan plan = createPlan("pt", 20.0 * 3600.0);
+		TripStructureUtils.getLegs(plan).get(0).getAttributes()
+				.putAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE, "outside_origin");
+		router.run(plan, false, Set.of());
+
+		List<Leg> fallbackLegs = TripStructureUtils.getLegs(plan);
+		Assert.assertFalse(fallbackLegs.isEmpty());
+		for (Leg leg : fallbackLegs) {
+			Assert.assertEquals("pt", leg.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+			Assert.assertEquals("outside_origin",
+					leg.getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE));
+		}
+
+		// Restored: one unrouted pt leg that still carries the marker
+		Assert.assertEquals(1, PlanRouter.restoreWalkFallbackModes(plan, Set.of("pt")).size());
+		List<Leg> restoredLegs = TripStructureUtils.getLegs(plan);
+		Assert.assertEquals(1, restoredLegs.size());
+		Assert.assertEquals("pt", restoredLegs.get(0).getMode());
+		Assert.assertEquals("outside_origin",
+				restoredLegs.get(0).getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE));
+
+		// Routed again: every inserted leg carries the marker
+		router.run(plan, false, Set.of());
+		List<Leg> reroutedLegs = TripStructureUtils.getLegs(plan);
+		Assert.assertFalse(reroutedLegs.isEmpty());
+		for (Leg leg : reroutedLegs) {
+			Assert.assertEquals("outside_origin",
+					leg.getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE));
+		}
+	}
+
+	@Test
+	public void restoredWalkFallbackWithoutMarkerGetsNone() {
+		buildScenario();
+		Plan plan = createPlan("pt", 20.0 * 3600.0);
+		router.run(plan, false, Set.of());
+
+		Assert.assertEquals(1, PlanRouter.restoreWalkFallbackModes(plan, Set.of("pt")).size());
+		List<Leg> restoredLegs = TripStructureUtils.getLegs(plan);
+		Assert.assertEquals(1, restoredLegs.size());
+		Assert.assertEquals("pt", restoredLegs.get(0).getMode());
+		Assert.assertNull(restoredLegs.get(0).getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE));
+	}
+
+	@Test
 	public void unmarkedTripGetsNoCollapseMarker() {
 		buildScenario();
 		Plan plan = createPlan("pt", 7.0 * 3600.0 + 3000.0);
