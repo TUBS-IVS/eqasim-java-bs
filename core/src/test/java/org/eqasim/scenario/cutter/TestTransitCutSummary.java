@@ -129,6 +129,43 @@ public class TestTransitCutSummary {
 	}
 
 	@Test
+	public void everyPlanCountsAndAnyStampedLegMakesTheTripWalked() {
+		Population population = PopulationUtils.createPopulation(ConfigUtils.createConfig());
+		PopulationFactory factory = population.getFactory();
+		Person person = factory.createPerson(Id.createPersonId("q"));
+
+		// Selected plan: an unmarked pt trip
+		Plan selected = factory.createPlan();
+		selected.addActivity(factory.createActivityFromCoord("home", new Coord(0.0, 0.0)));
+		selected.addLeg(leg(factory, TransportMode.pt, null, null));
+		selected.addActivity(factory.createActivityFromCoord("work", new Coord(1000.0, 0.0)));
+		person.addPlan(selected);
+
+		// Non-selected plan: a marked through trip of three legs whose stamp sits on the last leg only
+		Plan other = factory.createPlan();
+		other.addActivity(factory.createActivityFromCoord("outside", new Coord(0.0, 0.0)));
+		other.addLeg(leg(factory, TransportMode.walk, "through", null));
+		other.addActivity(factory.createActivityFromCoord("pt interaction", new Coord(100.0, 0.0)));
+		other.addLeg(leg(factory, TransportMode.walk, "through", null));
+		other.addActivity(factory.createActivityFromCoord("pt interaction", new Coord(200.0, 0.0)));
+		other.addLeg(leg(factory, TransportMode.walk, "through", "pt"));
+		other.addActivity(factory.createActivityFromCoord("outside", new Coord(1000.0, 0.0)));
+		person.addPlan(other);
+
+		person.setSelectedPlan(selected);
+		population.addPerson(person);
+
+		Map<String, Long> counts = collapseCounts();
+		counts.put("inside_inside", 0L);
+		counts.put("through", 1L);
+		TransitCutSummary summary = TransitCutSummary.collect(population, counts, 0, 0, 0, 0, 0);
+
+		Assert.assertEquals(1, summary.collapsedThrough());
+		Assert.assertEquals(1, summary.collapsedThroughWalked());
+		Assert.assertEquals(0, summary.collapsedInsideInside());
+	}
+
+	@Test
 	public void ratesAreFormattedWithTheirDenominator() {
 		Assert.assertEquals("1/4 (25.0 %)", TransitCutSummary.rate(1, 4));
 		Assert.assertEquals("0/0 (0.0 %)", TransitCutSummary.rate(0, 0));

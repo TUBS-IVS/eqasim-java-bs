@@ -155,8 +155,9 @@ public class TransitTripProcessor implements TripProcessor {
 	 * Keeps at most one crossing point per outside end of the trip (design R5): both ends inside the extent: none
 	 * (the trip is one leg of the routing mode, re-routed on the cut timetable); origin outside: the LAST incoming
 	 * point; destination outside: the FIRST outgoing point; both outside: the first incoming and the last outgoing
-	 * point after it (none if there is no such pair, which leaves the trip an outside leg). A list without the point
-	 * a case needs (not produced by a consistent finder) is returned unchanged.
+	 * point after it (none if there is no such pair, which leaves the trip an outside leg). A non-empty list without
+	 * the point that a case with one end inside needs cannot come from a consistent finder (the points alternate,
+	 * starting with outgoing iff the origin is inside) and fails with an IllegalStateException.
 	 */
 	static List<TransitTripCrossingPoint> collapse(List<TransitTripCrossingPoint> points, boolean originInside,
 			boolean destinationInside) {
@@ -180,9 +181,19 @@ public class TransitTripProcessor implements TripProcessor {
 		}
 
 		if (destinationInside) {
-			return lastIncoming < 0 ? points : List.of(points.get(lastIncoming));
+			if (lastIncoming < 0) {
+				throw new IllegalStateException("Inconsistent crossing points of a pt trip (" + OUTSIDE_ORIGIN
+						+ "): the destination is inside, but none of the " + points.size() + " points enters");
+			}
+
+			return List.of(points.get(lastIncoming));
 		} else if (originInside) {
-			return firstOutgoing < 0 ? points : List.of(points.get(firstOutgoing));
+			if (firstOutgoing < 0) {
+				throw new IllegalStateException("Inconsistent crossing points of a pt trip (" + OUTSIDE_DESTINATION
+						+ "): the origin is inside, but none of the " + points.size() + " points leaves");
+			}
+
+			return List.of(points.get(firstOutgoing));
 		} else if (firstIncoming < 0 || lastOutgoing < firstIncoming) {
 			return Collections.emptyList();
 		} else {

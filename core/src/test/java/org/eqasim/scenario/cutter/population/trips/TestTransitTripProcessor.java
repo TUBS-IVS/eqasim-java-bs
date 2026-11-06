@@ -338,4 +338,22 @@ public class TestTransitTripProcessor {
 		assertLeg(result.get(4), "pt", null);
 		assertCounts(processor, 0, 0, 0, 0, 0);
 	}
+
+	@Test
+	public void anInsideDestinationWithoutEntryFails() {
+		// Inconsistent: origin outside, destination inside, but the only point leaves
+		TransitTripProcessor processor = collapsing(teleport(1.0, 10.0, true));
+		IllegalStateException e = Assert.assertThrows(IllegalStateException.class,
+				() -> process(processor, OUTSIDE_ORIGIN, INSIDE_DESTINATION));
+		Assert.assertTrue(e.getMessage().contains("outside_origin"));
+	}
+
+	@Test
+	public void anInsideOriginWithoutExitFails() {
+		// Inconsistent: origin inside, destination outside, but the only point enters
+		TransitTripProcessor processor = collapsing(teleport(1.0, 10.0, false));
+		IllegalStateException e = Assert.assertThrows(IllegalStateException.class,
+				() -> process(processor, INSIDE_ORIGIN, OUTSIDE_DESTINATION));
+		Assert.assertTrue(e.getMessage().contains("outside_destination"));
+	}
 }

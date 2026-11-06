@@ -211,15 +211,17 @@ public class PlanRouterWalkFallbackTest {
 					"inside_inside");
 			router.run(plan, false, Set.of());
 
+			// Re-routed: the marked leg is gone and every inserted leg carries the marker
 			List<Leg> legs = TripStructureUtils.getLegs(plan);
-			Assert.assertTrue(legs.size() > 1 || legs.get(0) != leg);
+			Assert.assertFalse(legs.stream().anyMatch(inserted -> inserted == leg));
 			for (Leg inserted : legs) {
 				Assert.assertEquals("inside_inside",
 						inserted.getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE));
 			}
 		}
 
-		// The served departure is routed by pt, the late one walks; both keep the marker
+		// Both trips were routed; the served departure by pt, the late one as a walk fallback
+		Assert.assertEquals(2, (int) router.getRoutedTripCounts().get("pt"));
 		Assert.assertEquals(1, (int) router.getWalkFallbackCounts().get("pt"));
 	}
 

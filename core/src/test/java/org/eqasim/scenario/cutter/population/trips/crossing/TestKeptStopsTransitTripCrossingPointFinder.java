@@ -274,6 +274,32 @@ public class TestKeptStopsTransitTripCrossingPointFinder {
 	}
 
 	@Test
+	public void aPointBetweenTwoWalksIsTestedWithTheExtent() {
+		// Inside home, walk to a stage activity outside the extent, walk on to an inside destination
+		Coord outsideStage = new Coord(5000.0, 2000.0);
+		List<PlanElement> trip = List.of(walk(28000.0, 600.0),
+				PopulationUtils.createActivityFromCoord("pt interaction", outsideStage), walk(28600.0, 900.0));
+
+		List<TransitTripCrossingPoint> points = finder(keptWithHub()).findCrossingPoints(HOME_INSIDE, trip,
+				WORK_INSIDE);
+
+		Assert.assertEquals(2, points.size());
+		Assert.assertTrue(points.get(0).isOutgoing);
+		Assert.assertEquals(HOME_INSIDE, points.get(0).teleportationPoint.coord);
+		Assert.assertEquals(28000.0, points.get(0).teleportationPoint.time, 1e-6);
+		Assert.assertFalse(points.get(1).isOutgoing);
+		Assert.assertEquals(WORK_INSIDE, points.get(1).teleportationPoint.coord);
+		Assert.assertEquals(28600.0 + 900.0, points.get(1).teleportationPoint.time, 1e-6);
+
+		// The same stage activity inside the extent: no crossing
+		List<PlanElement> insideTrip = List.of(walk(28000.0, 600.0),
+				PopulationUtils.createActivityFromCoord("pt interaction", new Coord(1000.0, 0.0)),
+				walk(28600.0, 900.0));
+		Assert.assertTrue(
+				finder(keptWithHub()).findCrossingPoints(HOME_INSIDE, insideTrip, WORK_INSIDE).isEmpty());
+	}
+
+	@Test
 	public void anInsideTripOnKeptPositionsHasNoCrossing() {
 		List<PlanElement> trip = List.of(walk(28700.0, 60.0), stage(s1), ride(lineL, routeR, s1, s2, 28760.0, 160.0),
 				stage(s2), walk(28920.0, 120.0));
