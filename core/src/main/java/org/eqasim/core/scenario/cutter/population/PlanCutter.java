@@ -21,13 +21,30 @@ public class PlanCutter {
 	private final ScenarioExtent extent;
 	private final TripProcessor tripProcessor;
 	private final MergeOutsideActivities mergeOutsideActivities;
+	private final boolean copyActivityAttributes;
 
 	@Inject
 	public PlanCutter(TripProcessor tripProcessor, ScenarioExtent extent,
 			MergeOutsideActivities mergeOutsideActivities) {
+		this(tripProcessor, extent, mergeOutsideActivities, false);
+	}
+
+	/**
+	 * @param copyActivityAttributes whether an activity outside the extent passes all its attributes to the outside
+	 *                               activity that replaces it (kept-stops mode, eqasim-bs#574, design R6); false sets
+	 *                               only {@code typeBeforeCutting} (extent mode, upstream behaviour)
+	 */
+	public PlanCutter(TripProcessor tripProcessor, ScenarioExtent extent, MergeOutsideActivities mergeOutsideActivities,
+			boolean copyActivityAttributes) {
 		this.extent = extent;
 		this.tripProcessor = tripProcessor;
 		this.mergeOutsideActivities = mergeOutsideActivities;
+		this.copyActivityAttributes = copyActivityAttributes;
+	}
+
+	/** Whether a replaced activity passes its attributes on (kept-stops mode). */
+	public boolean isCopyActivityAttributes() {
+		return copyActivityAttributes;
 	}
 
 	private void addActivity(List<PlanElement> plan, Activity activity) {
@@ -41,6 +58,11 @@ public class PlanCutter {
 				virtualActivity.setEndTime(activity.getEndTime().seconds());
 			} else {
 				virtualActivity.setEndTimeUndefined();
+			}
+
+			if (copyActivityAttributes) {
+				activity.getAttributes().getAsMap()
+						.forEach((key, value) -> virtualActivity.getAttributes().putAttribute(key, value));
 			}
 
 			virtualActivity.getAttributes().putAttribute(Constants.TYPE_BEFORE_CUTTING_ATTRIBUTE, activity.getType());

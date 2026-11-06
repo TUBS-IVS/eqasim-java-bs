@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eqasim.core.misc.Constants;
 import org.matsim.api.core.v01.TransportMode;
 import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Leg;
@@ -74,6 +75,11 @@ public class PlanRouter {
 					Facility fromFacility = FacilitiesUtils.toFacility(trip.getOriginActivity(), facilities);
 					Facility toFacility = FacilitiesUtils.toFacility(trip.getDestinationActivity(), facilities);
 
+					// The scenario cutter's collapse marker (eqasim-bs#574) lives on the trip's legs, which the
+					// routing replaces
+					Object collapseCase = trip.getLegsOnly().get(0).getAttributes()
+							.getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE);
+
 					List<? extends PlanElement> newElements = tripRouter.calcRoute(mainMode, fromFacility, toFacility,
 							departureTime.seconds(), plan.getPerson(), trip.getTripAttributes());
 
@@ -84,6 +90,12 @@ public class PlanRouter {
 							plan.getPerson(), newElements, trip.getTripAttributes());
 
 					keepWalkFallbackStamp(trip.getLegsOnly(), newElements);
+
+					if (collapseCase != null) {
+						for (Leg leg : TripStructureUtils.getLegs(newElements)) {
+							leg.getAttributes().putAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE, collapseCase);
+						}
+					}
 
 					TripRouter.insertTrip(plan, trip.getOriginActivity(), newElements, trip.getDestinationActivity());
 				}
@@ -196,7 +208,10 @@ public class PlanRouter {
 	 * before the routed day-end shift re-routes a plan whose times it moved
 	 * (eqasim-bs ADR-0160). Only trips whose requested mode the next pass routes
 	 * ({@code modes} empty or containing it) are restored; the others keep their
-	 * routed walk, so no unrouted leg is left behind.
+	 * routed walk, so no unrouted leg is left behind. The restored leg keeps the
+	 * scenario cutter's collapse marker
+	 * ({@link Constants#CUT_TRANSIT_COLLAPSE_ATTRIBUTE}, eqasim-bs#574) of the
+	 * trip's legs, so the re-routing carries it onto the new legs again.
 	 *
 	 * @return the origin activities of the restored trips (the re-routing keeps
 	 *         them, so they identify the restored trips afterwards)
@@ -210,6 +225,12 @@ public class PlanRouter {
 			if (originalMode != null && (modes.isEmpty() || modes.contains(originalMode.toString()))) {
 				Leg leg = PopulationUtils.createLeg(originalMode.toString());
 				TripStructureUtils.setRoutingMode(leg, originalMode.toString());
+				Object collapseCase = collapseCase(trip);
+
+				if (collapseCase != null) {
+					leg.getAttributes().putAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE, collapseCase);
+				}
+
 				TripRouter.insertTrip(plan, trip.getOriginActivity(), List.of(leg), trip.getDestinationActivity());
 				restored.add(trip.getOriginActivity());
 			}
@@ -244,6 +265,22 @@ public class PlanRouter {
 		}
 
 		return count;
+	}
+
+	/**
+	 * The collapse marker of the trip: that of its first leg carrying one (all legs
+	 * of a routed trip carry the same value), or null if none does.
+	 */
+	private static Object collapseCase(Trip trip) {
+		for (Leg leg : trip.getLegsOnly()) {
+			Object collapseCase = leg.getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE);
+
+			if (collapseCase != null) {
+				return collapseCase;
+			}
+		}
+
+		return null;
 	}
 
 	private static Object walkFallbackMode(Trip trip) {

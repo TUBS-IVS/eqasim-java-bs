@@ -3,12 +3,13 @@ package org.eqasim.scenario.cutter.transit;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
-import org.eqasim.core.scenario.cutter.transit.DefaultStopSequenceCrossingPointFinder;
 import org.eqasim.core.scenario.cutter.transit.TransitScheduleCutter;
+import org.eqasim.core.scenario.cutter.transit.TransitScheduleCutter.KeptRange;
 import org.junit.Assert;
 import org.junit.Test;
 import org.matsim.api.core.v01.Coord;
@@ -96,18 +97,154 @@ public class TestTransitScheduleCutter {
 		Assert.assertTrue(schedule.getFacilities().isEmpty());
 	}
 
-	private static TransitSchedule cut(int[] stopXs, int... insideXs) {
+	@Test
+	public void keepsTheRouteUpToAHubBeyondTheExtent() {
+		// inside, inside, outside, outside, hub
+		TransitSchedule schedule = cutWithHubs(new int[] { 1, 2, 3, 4, 5 }, new int[] { 5 }, 1, 2);
+
+		Assert.assertEquals(List.of("fac1", "fac2", "fac3", "fac4", "fac5"), stopIds(cutRoute(schedule)));
+		Assert.assertEquals(Id.createLinkId("link5"), cutRoute(schedule).getRoute().getEndLinkId());
+	}
+
+	@Test
+	public void keepsTheRouteFromAHubBeforeTheExtent() {
+		// hub, outside, inside, inside
+		TransitSchedule schedule = cutWithHubs(new int[] { 1, 2, 3, 4 }, new int[] { 1 }, 3, 4);
+
+		Assert.assertEquals(List.of("fac1", "fac2", "fac3", "fac4"), stopIds(cutRoute(schedule)));
+	}
+
+	@Test
+	public void keepsTheOutsideStopsBetweenTwoAnchors() {
+		// outside, inside, outside, outside, hub, outside: fac3 and fac4 are outside but between two anchors
+		TransitSchedule schedule = cutWithHubs(new int[] { 1, 2, 3, 4, 5, 6 }, new int[] { 5 }, 2);
+
+		Assert.assertEquals(List.of("fac2", "fac3", "fac4", "fac5"), stopIds(cutRoute(schedule)));
+	}
+
+	@Test
+	public void dropsARouteThatServesOnlyHubsAndNoInsideStop() {
+		// hub, outside, hub: no stop inside the extent, so the route is not part of the region
+		TransitSchedule schedule = cutWithHubs(new int[] { 1, 2, 3 }, new int[] { 1, 3 });
+
+		Assert.assertNull(schedule.getTransitLines().get(LINE_ID));
+		Assert.assertTrue(schedule.getFacilities().isEmpty());
+	}
+
+	@Test
+	public void anEmptyHubSetGivesTodaysCut() {
+		// the hub-free overload of the builder uses an empty hub set; compare with an explicit empty set
+		TransitSchedule withoutHubs = cutWithHubs(new int[] { 1, 2, 3, 4 }, new int[] {}, 2, 3);
+
+		Assert.assertEquals(List.of("fac2", "fac3"), stopIds(cutRoute(withoutHubs)));
+	}
+
+	@Test
+	public void dryPassEqualsTheRoutesOfTheCutSchedule() {
+		// three routes: "kept" (outside stop between two anchors, a hub beyond the extent), "single" (only one
+		// stop inside, dropped) and "far" (entirely outside)
 		TransitScheduleFactory factory = new TransitScheduleFactoryImpl();
 		TransitSchedule schedule = factory.createTransitSchedule();
+		for (int x = 1; x <= 12; x++) {
+			addFacility(factory, schedule, x);
+		}
 
+		TransitLine line = factory.createTransitLine(LINE_ID);
+		Id<TransitRoute> keptId = Id.create("kept", TransitRoute.class);
+		Id<TransitRoute> singleId = Id.create("single", TransitRoute.class);
+		Id<TransitRoute> farId = Id.create("far", TransitRoute.class);
+		line.addRoute(createRoute(factory, schedule, keptId, 1, 2, 3, 4, 5));
+		line.addRoute(createRoute(factory, schedule, singleId, 6, 7, 8));
+		line.addRoute(createRoute(factory, schedule, farId, 9, 10, 11, 12));
+		schedule.addTransitLine(line);
+
+		// inside {2, 7}; hub {4}: the kept route is [2..4] (fac1, fac5 outside), single has one inside stop only
+		ScenarioExtent extent = extentContaining(2, 7);
+		TransitScheduleCutter cutter = new TransitScheduleCutter(extent, Set.of(facilityId(4)));
+
+		Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> ranges = cutter.keptStopRanges(schedule);
+		Set<Id<TransitStopFacility>> predictedFacilities = TransitScheduleCutter.keptStopFacilityIds(schedule, ranges);
+
+		// the dry pass does not mutate the schedule
+		Assert.assertEquals(3, schedule.getTransitLines().get(LINE_ID).getRoutes().size());
+		Assert.assertEquals(12, schedule.getFacilities().size());
+
+		// the cut must name the stops of the original route by the range
+		List<TransitRouteStop> originalKeptStops = new LinkedList<>(
+				schedule.getTransitLines().get(LINE_ID).getRoutes().get(keptId).getStops());
+
+		cutter.run(schedule);
+
+		Assert.assertEquals(Set.of(LINE_ID), ranges.keySet());
+		Assert.assertEquals(Set.of(keptId), ranges.get(LINE_ID).keySet());
+		Assert.assertEquals(Set.of(keptId), schedule.getTransitLines().get(LINE_ID).getRoutes().keySet());
+
+		KeptRange range = ranges.get(LINE_ID).get(keptId);
+		Assert.assertEquals(new KeptRange(1, 3), range);
+		List<String> rangeStops = originalKeptStops.subList(range.first(), range.last() + 1).stream()
+				.map(stop -> stop.getStopFacility().getId().toString()).collect(Collectors.toList());
+		Assert.assertEquals(rangeStops, stopIds(schedule.getTransitLines().get(LINE_ID).getRoutes().get(keptId)));
+		Assert.assertEquals(List.of("fac2", "fac3", "fac4"), rangeStops);
+
+		Assert.assertEquals(schedule.getFacilities().keySet(), predictedFacilities);
+		Assert.assertEquals(Set.of("fac2", "fac3", "fac4"), facilityIds(schedule));
+	}
+
+	@Test
+	public void keptStopFacilityIdsNamesTheLineOrRouteThatTheScheduleLacks() {
+		TransitScheduleFactory factory = new TransitScheduleFactoryImpl();
+		TransitSchedule schedule = factory.createTransitSchedule();
+		for (int x = 1; x <= 3; x++) {
+			addFacility(factory, schedule, x);
+		}
+		TransitLine line = factory.createTransitLine(LINE_ID);
+		TransitRoute route = createRoute(factory, schedule, ROUTE_ID, 1, 2, 3);
+		line.addRoute(route);
+		schedule.addTransitLine(line);
+
+		Map<Id<TransitLine>, Map<Id<TransitRoute>, KeptRange>> ranges = new TransitScheduleCutter(
+				extentContaining(1, 2), Set.of()).keptStopRanges(schedule);
+		Assert.assertEquals(Set.of(facilityId(1), facilityId(2)),
+				TransitScheduleCutter.keptStopFacilityIds(schedule, ranges));
+
+		// a route missing from the schedule
+		line.removeRoute(route);
+		try {
+			TransitScheduleCutter.keptStopFacilityIds(schedule, ranges);
+			Assert.fail("a route that the schedule lacks must fail");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("route"));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(ROUTE_ID.toString()));
+		}
+
+		// a line missing from the schedule
+		schedule.removeTransitLine(line);
+		try {
+			TransitScheduleCutter.keptStopFacilityIds(schedule, ranges);
+			Assert.fail("a line that the schedule lacks must fail");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("line"));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(LINE_ID.toString()));
+		}
+	}
+
+	private static Id<TransitStopFacility> facilityId(int x) {
+		return Id.create("fac" + x, TransitStopFacility.class);
+	}
+
+	private static void addFacility(TransitScheduleFactory factory, TransitSchedule schedule, int x) {
+		TransitStopFacility facility = factory.createTransitStopFacility(facilityId(x), new Coord(x, 0.0), false);
+		facility.setLinkId(Id.createLinkId("link" + x));
+		schedule.addStopFacility(facility);
+	}
+
+	private static TransitRoute createRoute(TransitScheduleFactory factory, TransitSchedule schedule,
+			Id<TransitRoute> routeId, int... stopXs) {
 		List<TransitRouteStop> stops = new LinkedList<>();
 		List<Id<Link>> linkIds = new LinkedList<>();
 		for (int k = 0; k < stopXs.length; k++) {
 			Id<Link> linkId = Id.createLinkId("link" + stopXs[k]);
-			TransitStopFacility facility = factory.createTransitStopFacility(
-					Id.create("fac" + stopXs[k], TransitStopFacility.class), new Coord(stopXs[k], 0.0), false);
-			facility.setLinkId(linkId);
-			schedule.addStopFacility(facility);
+			TransitStopFacility facility = schedule.getFacilities().get(facilityId(stopXs[k]));
 			// Arrive DWELL_S before departing (except at the first stop), as stops of a GTFS-converted
 			// schedule may, so the timetable tests cover arrival and departure offsets separately.
 			TransitRouteStop stop = factory.createTransitRouteStop(facility,
@@ -121,14 +258,34 @@ public class TestTransitScheduleCutter {
 				linkIds.get(linkIds.size() - 1));
 		networkRoute.setLinkIds(linkIds.get(0), linkIds.subList(1, linkIds.size() - 1), linkIds.get(linkIds.size() - 1));
 
-		TransitRoute route = factory.createTransitRoute(ROUTE_ID, networkRoute, stops, "rail");
+		TransitRoute route = factory.createTransitRoute(routeId, networkRoute, stops, "rail");
 		route.addDeparture(factory.createDeparture(Id.create("departure", Departure.class), DEPARTURE_TIME_S));
+		return route;
+	}
+
+	private static TransitSchedule cut(int[] stopXs, int... insideXs) {
+		return cutWithHubs(stopXs, new int[] {}, insideXs);
+	}
+
+	private static TransitSchedule cutWithHubs(int[] stopXs, int[] hubXs, int... insideXs) {
+		TransitScheduleFactory factory = new TransitScheduleFactoryImpl();
+		TransitSchedule schedule = factory.createTransitSchedule();
+
+		for (int x : stopXs) {
+			addFacility(factory, schedule, x);
+		}
+
+		TransitRoute route = createRoute(factory, schedule, ROUTE_ID, stopXs);
 		TransitLine line = factory.createTransitLine(LINE_ID);
 		line.addRoute(route);
 		schedule.addTransitLine(line);
 
-		ScenarioExtent extent = extentContaining(insideXs);
-		new TransitScheduleCutter(extent, new DefaultStopSequenceCrossingPointFinder(extent)).run(schedule);
+		Set<Id<TransitStopFacility>> hubStopIds = new HashSet<>();
+		for (int x : hubXs) {
+			hubStopIds.add(facilityId(x));
+		}
+
+		new TransitScheduleCutter(extentContaining(insideXs), hubStopIds).run(schedule);
 		return schedule;
 	}
 

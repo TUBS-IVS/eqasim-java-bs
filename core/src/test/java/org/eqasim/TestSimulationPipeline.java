@@ -1,18 +1,34 @@
 package org.eqasim;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
 import org.eqasim.core.analysis.run.RunLegAnalysis;
 import org.eqasim.core.analysis.run.RunPublicTransportLegAnalysis;
 import org.eqasim.core.analysis.run.RunTripAnalysis;
@@ -20,10 +36,13 @@ import org.eqasim.core.components.config.EqasimConfigGroup;
 import org.eqasim.core.components.traffic.AttributeCrossingPenalty;
 import org.eqasim.core.components.traffic.CrossingPenalty;
 import org.eqasim.core.components.traffic.DefaultCrossingPenalty;
+import org.eqasim.core.misc.Constants;
 import org.eqasim.core.scenario.cutter.RunScenarioCutter;
 import org.eqasim.core.scenario.cutter.RunScenarioCutterV2;
+import org.eqasim.core.scenario.cutter.TransitCutSummary;
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.eqasim.core.scenario.cutter.extent.ShapeScenarioExtent;
+import org.eqasim.core.scenario.cutter.transit.TransitScheduleCutter;
 import org.eqasim.core.scenario.routing.RunPopulationRouting;
 import org.eqasim.core.simulation.EqasimConfigurator;
 import org.eqasim.core.simulation.mode_choice.epsilon.AdaptConfigForEpsilon;
@@ -57,7 +76,9 @@ import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.events.PersonArrivalEvent;
 import org.matsim.api.core.v01.events.handler.PersonArrivalEventHandler;
 import org.matsim.api.core.v01.network.Link;
+import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Person;
+import org.matsim.api.core.v01.population.Population;
 import org.matsim.contrib.drt.util.DrtEventsReaders;
 import org.matsim.contrib.dvrp.passenger.PassengerDroppedOffEvent;
 import org.matsim.contrib.dvrp.passenger.PassengerDroppedOffEventHandler;
@@ -70,8 +91,13 @@ import org.matsim.core.config.groups.ControllerConfigGroup;
 import org.matsim.core.controler.Controler;
 import org.matsim.core.events.EventsUtils;
 import org.matsim.core.events.MatsimEventsReader;
+import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.scenario.ScenarioUtils;
 import org.matsim.core.utils.misc.CRCChecksum;
+import org.matsim.facilities.MatsimFacilitiesReader;
+import org.matsim.pt.transitSchedule.api.TransitSchedule;
+import org.matsim.pt.transitSchedule.api.TransitScheduleReader;
+import org.matsim.pt.transitSchedule.api.TransitStopFacility;
 
 public class TestSimulationPipeline {
 
@@ -237,6 +263,142 @@ public class TestSimulationPipeline {
         });
 
         runMelunSimulation("melun_test/cutter/center_config.xml", "melun_test/output_cutter");
+    }
+
+    /**
+     * The kept-stops transit cut mode (eqasim-bs#574) runs end to end on its primary path, with two Melun hub stops
+     * outside the extent ({@code Chamlys}, {@code Mairie}; written to {@code melun_test/input/hub_stop_names.txt}):
+     * the hubs are kept, pt trips cross the kept timetable, the processor collapses some of them, and the summary
+     * written from the routed population holds the same collapsed trips as the processor counted (no mismatch
+     * warning), and outside activities of pt crossings are anchored at their stops (stop facilities
+     * {@code outside_stop_*}), some at hubs outside the extent. The cut scenario is then simulated (output in
+     * {@code melun_test/output_cutter_kept_stops}), so an artefact QSim rejects fails the test. The extent mode of
+     * {@link #runCutter()} writes no summary, no stop facility and no stop attribute.
+     */
+    private void runCutterKeptStops() throws Exception {
+        // Two Melun stop names outside the extent, on routes that enter it (Chamlys: three facilities, Mairie: one)
+        List<String> hubNames = List.of("Chamlys", "Mairie");
+        Files.write(Path.of("melun_test/input/hub_stop_names.txt"), hubNames, StandardCharsets.UTF_8);
+
+        List<String> messages = Collections.synchronizedList(new ArrayList<>());
+        AbstractAppender appender = new AbstractAppender("keptStopsCapture", null, null, true, Property.EMPTY_ARRAY) {
+            @Override
+            public void append(LogEvent event) {
+                messages.add(event.getLevel() + " " + event.getMessage().getFormattedMessage());
+            }
+        };
+        appender.start();
+        // On the root logger, so that the console keeps receiving the cutter's lines
+        LoggerContext context = (LoggerContext) LogManager.getContext(false);
+        context.getConfiguration().getRootLogger().addAppender(appender, Level.INFO, null);
+        context.updateLoggers();
+
+        try {
+            RunScenarioCutter.main(new String[] {
+                    "--config-path", "melun_test/input/config.xml",
+                    "--events-path", "melun_test/output/output_events.xml.gz",
+                    "--output-path", "melun_test/cutter_kept_stops",
+                    "--prefix", "center_",
+                    "--extent-path", "melun_test/input/center.shp",
+                    "--transit-cut-mode", "kept-stops",
+                    "--transit-hub-stop-names-path", "melun_test/input/hub_stop_names.txt",
+                    "--eqasim-configurator", TestConfigurator.class.getName()
+            });
+        } finally {
+            context.getConfiguration().getRootLogger().removeAppender(appender.getName());
+            context.updateLoggers();
+            appender.stop();
+        }
+
+        assertFalse(new File("melun_test/cutter/center_transit_cut_summary.csv").exists());
+
+        List<String> lines = Files.readAllLines(Path.of("melun_test/cutter_kept_stops/center_transit_cut_summary.csv"));
+        List<String> metrics = lines.stream().map(line -> line.split(",")[0]).toList();
+        assertEquals(List.of("metric", "stops_kept_inside", "stops_kept_hub", "stops_kept_other_outside", "routes_kept",
+                "routes_dropped", "pt_trips_with_crossings", "collapsed_inside_inside", "collapsed_inside_inside_walked",
+                "collapsed_outside_origin", "collapsed_outside_origin_walked", "collapsed_outside_destination",
+                "collapsed_outside_destination_walked", "collapsed_through", "collapsed_through_walked"), metrics);
+        Map<String, Long> values = new HashMap<>();
+        lines.stream().skip(1).forEach(line -> values.put(line.split(",")[0], Long.parseLong(line.split(",")[1])));
+
+        // The hub stops are kept: the three Chamlys facilities and the one Mairie facility
+        assertEquals(4L, (long) values.get("stops_kept_hub"));
+        assertTrue(values.get("routes_kept") > 0);
+
+        // The primary path is taken: trips cross the kept timetable and some are collapsed
+        assertTrue(values.get("pt_trips_with_crossings") > 0);
+        long collapsed = values.get("collapsed_inside_inside") + values.get("collapsed_outside_origin")
+                + values.get("collapsed_outside_destination") + values.get("collapsed_through");
+        assertTrue(collapsed > 0);
+
+        // The processor's counts, logged after the population cut, equal the routed population's per case
+        for (String collapseCase : List.of("inside_inside", "outside_origin", "outside_destination", "through")) {
+            String prefix = "INFO [RunScenarioCutter] collapsed " + collapseCase + " ";
+            String logged = messages.stream().filter(message -> message.startsWith(prefix)).findFirst()
+                    .orElseThrow(() -> new AssertionError("No processor count logged for " + collapseCase));
+            long processorCount = Long.parseLong(logged.substring(prefix.length()).split("/")[0]);
+            assertEquals(collapseCase, processorCount, (long) values.get("collapsed_" + collapseCase));
+        }
+
+        assertTrue(messages.stream().noneMatch(message -> message.contains("[TransitCutSummary] the cut collapsed")));
+
+        // The outside activities of pt crossings are anchored at their stops (Task 11): logged, and written as
+        // stop facilities
+        String anchoredPrefix = "INFO [RunScenarioCutter] stop-anchored outside activities ";
+        String anchoredLine = messages.stream().filter(message -> message.startsWith(anchoredPrefix)).findFirst()
+                .orElseThrow(() -> new AssertionError("No stop-anchored outside activities logged"));
+        long stopAnchored = Long.parseLong(anchoredLine.substring(anchoredPrefix.length()).split("/")[0]);
+        assertTrue(anchoredLine, stopAnchored > 0);
+        Scenario keptStopsFacilities = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+        new MatsimFacilitiesReader(keptStopsFacilities)
+                .readFile("melun_test/cutter_kept_stops/center_facilities.xml.gz");
+        assertTrue("No outside_stop_ facility in the kept-stops output",
+                keptStopsFacilities.getActivityFacilities().getFacilities().keySet().stream()
+                        .anyMatch(id -> id.toString().startsWith("outside_stop_")));
+
+        // The hub names resolve to four stop facilities (three Chamlys, one Mairie), which the cut without hubs
+        // does not keep: they are kept only as hubs
+        ScenarioExtent extent = new ShapeScenarioExtent.Builder(new File("melun_test/input/center.shp"),
+                Optional.empty(), Optional.empty()).build();
+        Scenario inputSchedule = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+        new TransitScheduleReader(inputSchedule).readFile("melun_test/input/transit_schedule.xml.gz");
+        TransitSchedule schedule = inputSchedule.getTransitSchedule();
+        Set<Id<TransitStopFacility>> hubStopIds = schedule.getFacilities().values().stream()
+                .filter(stop -> hubNames.contains(stop.getName())).map(TransitStopFacility::getId)
+                .collect(Collectors.toSet());
+        assertEquals("Hub names Chamlys/Mairie should resolve to 4 stop facilities of the input schedule", 4,
+                hubStopIds.size());
+        Set<Id<TransitStopFacility>> keptWithoutHubs = TransitScheduleCutter.keptStopFacilityIds(schedule,
+                new TransitScheduleCutter(extent, Set.of()).keptStopRanges(schedule));
+        Set<Id<TransitStopFacility>> keptHubs = new HashSet<>(hubStopIds);
+        keptHubs.retainAll(keptWithoutHubs);
+        assertTrue("Hub stops kept by the cut without hubs: " + keptHubs, keptHubs.isEmpty());
+
+        // Some outside activities are anchored at a hub, outside the extent
+        Set<String> hubFacilityIds = hubStopIds.stream().map(id -> "outside_stop_" + id).collect(Collectors.toSet());
+        assertTrue("No outside_stop_ facility at a hub (Chamlys, Mairie) outside the extent",
+                keptStopsFacilities.getActivityFacilities().getFacilities().values().stream()
+                        .filter(facility -> hubFacilityIds.contains(facility.getId().toString()))
+                        .anyMatch(facility -> !extent.isInside(facility.getCoord())));
+
+        // The extent mode of runCutter() is unchanged: no stop facility, no activity carries the stop attribute
+        assertTrue(readFacilityIds("melun_test/cutter/center_facilities.xml.gz").stream()
+                .noneMatch(id -> id.startsWith("outside_stop_")));
+        Population extentPopulation = PopulationUtils.readPopulation("melun_test/cutter/center_population.xml.gz");
+        assertTrue(extentPopulation.getPersons().values().stream().flatMap(person -> person.getPlans().stream())
+                .flatMap(plan -> plan.getPlanElements().stream())
+                .filter(element -> element instanceof Activity)
+                .noneMatch(element -> ((Activity) element).getAttributes()
+                        .getAttribute(Constants.CUT_TRANSIT_STOP_ATTRIBUTE) != null));
+
+        // The cut scenario, with its hub-anchored outside activities, runs in QSim
+        runMelunSimulation("melun_test/cutter_kept_stops/center_config.xml", "melun_test/output_cutter_kept_stops");
+    }
+
+    private static List<String> readFacilityIds(String path) {
+        Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+        new MatsimFacilitiesReader(scenario).readFile(path);
+        return scenario.getActivityFacilities().getFacilities().keySet().stream().map(Object::toString).toList();
     }
 
     public void runCutterV2()
@@ -583,6 +745,7 @@ public class TestSimulationPipeline {
         runAnalyses();
         runExports();
         runCutter();
+        runCutterKeptStops();
         runCutterV2();
     }
 
