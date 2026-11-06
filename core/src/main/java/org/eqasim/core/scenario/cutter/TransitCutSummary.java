@@ -39,7 +39,7 @@ public record TransitCutSummary(long stopsKeptInside, long stopsKeptHub, long st
 	private final static Logger log = LogManager.getLogger(TransitCutSummary.class);
 
 	/**
-	 * Joins the collapse markers with the walk-fallback stamps of the selected plans of the population. Warns per
+	 * Joins the collapse markers with the walk-fallback stamps of all plans of the population. Warns per
 	 * case when the population holds a different number of collapsed trips than the processor counted at the cut
 	 * (e.g. when plans were removed in between).
 	 */
@@ -51,33 +51,10 @@ public record TransitCutSummary(long stopsKeptInside, long stopsKeptHub, long st
 			perCase.put(collapseCase, new long[2]);
 		}
 
+		// Every plan, like the population cutter and the router, so that the counts match the processor's
 		for (Person person : population.getPersons().values()) {
-			Plan plan = person.getSelectedPlan();
-
-			if (plan == null) {
-				continue;
-			}
-
-			for (Trip trip : TripStructureUtils.getTrips(plan)) {
-				List<Leg> legs = trip.getLegsOnly();
-				Object collapseCase = legs.get(0).getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE);
-
-				if (collapseCase == null) {
-					continue;
-				}
-
-				long[] counts = perCase.get(collapseCase.toString());
-
-				if (counts == null) {
-					throw new IllegalStateException("Unknown value '" + collapseCase + "' of the leg attribute "
-							+ Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE + " for person " + person.getId());
-				}
-
-				counts[0]++;
-
-				if (legs.stream().anyMatch(leg -> leg.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE) != null)) {
-					counts[1]++;
-				}
+			for (Plan plan : person.getPlans()) {
+				collectPlan(person, plan, perCase);
 			}
 		}
 
@@ -98,6 +75,32 @@ public record TransitCutSummary(long stopsKeptInside, long stopsKeptHub, long st
 				perCase.get(TransitTripProcessor.OUTSIDE_DESTINATION)[0],
 				perCase.get(TransitTripProcessor.OUTSIDE_DESTINATION)[1],
 				perCase.get(TransitTripProcessor.THROUGH)[0], perCase.get(TransitTripProcessor.THROUGH)[1]);
+	}
+
+	/** Adds the collapsed (index 0) and the walked (index 1) trips of one plan to the per-case counts. */
+	private static void collectPlan(Person person, Plan plan, Map<String, long[]> perCase) {
+		for (Trip trip : TripStructureUtils.getTrips(plan)) {
+			List<Leg> legs = trip.getLegsOnly();
+			Object collapseCase = legs.get(0).getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE);
+
+			if (collapseCase == null) {
+				continue;
+			}
+
+			long[] counts = perCase.get(collapseCase.toString());
+
+			if (counts == null) {
+				throw new IllegalStateException("Unknown value '" + collapseCase + "' of the leg attribute "
+						+ Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE + " for person " + person.getId());
+			}
+
+			counts[0]++;
+
+			if (legs.stream()
+					.anyMatch(leg -> leg.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE) != null)) {
+				counts[1]++;
+			}
+		}
 	}
 
 	/** The metrics by name, in the order of the CSV file. */

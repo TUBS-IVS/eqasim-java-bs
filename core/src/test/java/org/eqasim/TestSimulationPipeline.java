@@ -1,11 +1,16 @@
 package org.eqasim;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -237,6 +242,34 @@ public class TestSimulationPipeline {
         });
 
         runMelunSimulation("melun_test/cutter/center_config.xml", "melun_test/output_cutter");
+    }
+
+    /**
+     * The kept-stops transit cut mode (eqasim-bs#574) runs end to end and writes the transit cut summary; the
+     * extent mode of {@link #runCutter()} writes none.
+     */
+    private void runCutterKeptStops() throws Exception {
+        RunScenarioCutter.main(new String[] {
+                "--config-path", "melun_test/input/config.xml",
+                "--events-path", "melun_test/output/output_events.xml.gz",
+                "--output-path", "melun_test/cutter_kept_stops",
+                "--prefix", "center_",
+                "--extent-path", "melun_test/input/center.shp",
+                "--transit-cut-mode", "kept-stops",
+                "--eqasim-configurator", TestConfigurator.class.getName()
+        });
+
+        assertFalse(new File("melun_test/cutter/center_transit_cut_summary.csv").exists());
+
+        List<String> lines = Files.readAllLines(Path.of("melun_test/cutter_kept_stops/center_transit_cut_summary.csv"));
+        List<String> metrics = lines.stream().map(line -> line.split(",")[0]).toList();
+        assertEquals(List.of("metric", "stops_kept_inside", "stops_kept_hub", "stops_kept_other_outside", "routes_kept",
+                "routes_dropped", "pt_trips_with_crossings", "collapsed_inside_inside", "collapsed_inside_inside_walked",
+                "collapsed_outside_origin", "collapsed_outside_origin_walked", "collapsed_outside_destination",
+                "collapsed_outside_destination_walked", "collapsed_through", "collapsed_through_walked"), metrics);
+        // No hub names given: no hub stop is kept
+        assertEquals("stops_kept_hub,0", lines.get(2));
+        assertTrue(Integer.parseInt(lines.get(4).split(",")[1]) > 0);
     }
 
     public void runCutterV2()
@@ -583,6 +616,7 @@ public class TestSimulationPipeline {
         runAnalyses();
         runExports();
         runCutter();
+        runCutterKeptStops();
         runCutterV2();
     }
 
