@@ -41,6 +41,7 @@ import org.eqasim.core.scenario.cutter.RunScenarioCutterV2;
 import org.eqasim.core.scenario.cutter.TransitCutSummary;
 import org.eqasim.core.scenario.cutter.extent.ScenarioExtent;
 import org.eqasim.core.scenario.cutter.extent.ShapeScenarioExtent;
+import org.eqasim.core.scenario.cutter.transit.TransitScheduleCutter;
 import org.eqasim.core.scenario.routing.RunPopulationRouting;
 import org.eqasim.core.simulation.EqasimConfigurator;
 import org.eqasim.core.simulation.mode_choice.epsilon.AdaptConfigForEpsilon;
@@ -93,7 +94,9 @@ import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.scenario.ScenarioUtils;
 import org.matsim.core.utils.misc.CRCChecksum;
 import org.matsim.facilities.MatsimFacilitiesReader;
+import org.matsim.pt.transitSchedule.api.TransitSchedule;
 import org.matsim.pt.transitSchedule.api.TransitScheduleReader;
+import org.matsim.pt.transitSchedule.api.TransitStopFacility;
 
 public class TestSimulationPipeline {
 
@@ -273,8 +276,8 @@ public class TestSimulationPipeline {
      */
     private void runCutterKeptStops() throws Exception {
         // Two Melun stop names outside the extent, on routes that enter it (Chamlys: three facilities, Mairie: one)
-        Files.write(Path.of("melun_test/input/hub_stop_names.txt"), List.of("Chamlys", "Mairie"),
-                StandardCharsets.UTF_8);
+        List<String> hubNames = List.of("Chamlys", "Mairie");
+        Files.write(Path.of("melun_test/input/hub_stop_names.txt"), hubNames, StandardCharsets.UTF_8);
 
         List<String> messages = Collections.synchronizedList(new ArrayList<>());
         AbstractAppender appender = new AbstractAppender("keptStopsCapture", null, null, true, Property.EMPTY_ARRAY) {
@@ -345,23 +348,34 @@ public class TestSimulationPipeline {
                 .orElseThrow(() -> new AssertionError("No stop-anchored outside activities logged"));
         long stopAnchored = Long.parseLong(anchoredLine.substring(anchoredPrefix.length()).split("/")[0]);
         assertTrue(anchoredLine, stopAnchored > 0);
-        assertTrue(readFacilityIds("melun_test/cutter_kept_stops/center_facilities.xml.gz").stream()
-                .anyMatch(id -> id.startsWith("outside_stop_")));
+        Scenario keptStopsFacilities = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+        new MatsimFacilitiesReader(keptStopsFacilities)
+                .readFile("melun_test/cutter_kept_stops/center_facilities.xml.gz");
+        assertTrue(keptStopsFacilities.getActivityFacilities().getFacilities().keySet().stream()
+                .anyMatch(id -> id.toString().startsWith("outside_stop_")));
 
-        // Some of them are anchored at a hub: at a stop outside the extent that carries a hub name
+        // The hub names resolve to four stop facilities (three Chamlys, one Mairie), which the cut without hubs
+        // does not keep: they are kept only as hubs
         ScenarioExtent extent = new ShapeScenarioExtent.Builder(new File("melun_test/input/center.shp"),
                 Optional.empty(), Optional.empty()).build();
         Scenario inputSchedule = ScenarioUtils.createScenario(ConfigUtils.createConfig());
         new TransitScheduleReader(inputSchedule).readFile("melun_test/input/transit_schedule.xml.gz");
-        Set<String> hubFacilityIds = inputSchedule.getTransitSchedule().getFacilities().values().stream()
-                .filter(stop -> Set.of("Chamlys", "Mairie").contains(stop.getName()))
-                .map(stop -> "outside_stop_" + stop.getId()).collect(Collectors.toSet());
-        Scenario keptStopsFacilities = ScenarioUtils.createScenario(ConfigUtils.createConfig());
-        new MatsimFacilitiesReader(keptStopsFacilities)
-                .readFile("melun_test/cutter_kept_stops/center_facilities.xml.gz");
-        assertTrue(keptStopsFacilities.getActivityFacilities().getFacilities().values().stream()
-                .filter(facility -> hubFacilityIds.contains(facility.getId().toString()))
-                .anyMatch(facility -> !extent.isInside(facility.getCoord())));
+        TransitSchedule schedule = inputSchedule.getTransitSchedule();
+        Set<Id<TransitStopFacility>> hubStopIds = schedule.getFacilities().values().stream()
+                .filter(stop -> hubNames.contains(stop.getName())).map(TransitStopFacility::getId)
+                .collect(Collectors.toSet());
+        assertEquals(4, hubStopIds.size());
+        Set<Id<TransitStopFacility>> keptWithoutHubs = TransitScheduleCutter.keptStopFacilityIds(schedule,
+                new TransitScheduleCutter(extent, Set.of()).keptStopRanges(schedule));
+        assertTrue("A hub stop is kept without hubs: " + hubStopIds,
+                Collections.disjoint(keptWithoutHubs, hubStopIds));
+
+        // Some outside activities are anchored at a hub, outside the extent
+        Set<String> hubFacilityIds = hubStopIds.stream().map(id -> "outside_stop_" + id).collect(Collectors.toSet());
+        assertTrue("No outside_stop_ facility at a hub (Chamlys, Mairie) outside the extent",
+                keptStopsFacilities.getActivityFacilities().getFacilities().values().stream()
+                        .filter(facility -> hubFacilityIds.contains(facility.getId().toString()))
+                        .anyMatch(facility -> !extent.isInside(facility.getCoord())));
 
         // The extent mode of runCutter() is unchanged: no stop facility, no activity carries the stop attribute
         assertTrue(readFacilityIds("melun_test/cutter/center_facilities.xml.gz").stream()
