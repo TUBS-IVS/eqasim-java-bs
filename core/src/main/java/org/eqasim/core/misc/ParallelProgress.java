@@ -22,7 +22,12 @@ public class ParallelProgress {
 	private int interval = 10000;
 
 	public ParallelProgress(String description, long totalCount) {
-		thread = new Thread(this::run);
+		thread = new Thread(this::run, "ParallelProgress: " + description);
+
+		// The thread only logs progress. As a daemon it never keeps the JVM alive when a caller fails before
+		// close(): it would otherwise run until the count is reached, which a failed run never does
+		// (eqasim-bs#678, a worker exception of the standalone mode choice hung the JVM).
+		thread.setDaemon(true);
 
 		this.totalCount = totalCount;
 		this.description = description;

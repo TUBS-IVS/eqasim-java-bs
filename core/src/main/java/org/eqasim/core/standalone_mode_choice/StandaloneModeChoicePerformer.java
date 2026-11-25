@@ -119,6 +119,20 @@ public class StandaloneModeChoicePerformer {
         ParallelProgress progress = new ParallelProgress("Standalone mode choice", selectedPlans.size());
         progress.start();
 
+        // A worker exception propagates (ExecutionException from Future.get, or the exception itself without a
+        // thread pool); the progress is closed on every path so a failed run ends instead of hanging (eqasim-bs#678)
+        try {
+            choose(selectedPlans, progress);
+        } finally {
+            progress.close();
+        }
+
+        String outputPlansName = outputDirectoryHierarchy.getOutputFilename("output_plans.xml.gz");
+        new PopulationWriter(population).write(outputPlansName);
+        ConfigUtils.writeConfig(scenario.getConfig(), this.outputDirectoryHierarchy.getOutputFilename("output_config.xml"));
+    }
+
+    private void choose(List<Plan> selectedPlans, ParallelProgress progress) throws InterruptedException, ExecutionException {
         if(numberOfThreads > 0 && !selectedPlans.isEmpty()) {
         	ExecutorService exec = Executors.newFixedThreadPool(numberOfThreads);
             List<Future<Set<Id<Person>>>> futures = new ArrayList<>();
@@ -190,12 +204,6 @@ public class StandaloneModeChoicePerformer {
                 personsToRemove.forEach(population::removePerson);
             }
         }
-
-        progress.close();
-
-        String outputPlansName = outputDirectoryHierarchy.getOutputFilename("output_plans.xml.gz");
-        new PopulationWriter(population).write(outputPlansName);
-        ConfigUtils.writeConfig(scenario.getConfig(), this.outputDirectoryHierarchy.getOutputFilename("output_config.xml"));
     }
 
 
