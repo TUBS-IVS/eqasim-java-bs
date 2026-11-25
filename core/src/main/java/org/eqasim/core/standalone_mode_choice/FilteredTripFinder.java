@@ -19,7 +19,20 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TripFilter;
  * re-routed by the plain trip router, which drops eqasim's walk-fallback stamp ({@code PlanRouter.WALK_FALLBACK_ATTRIBUTE})
  * and can turn a routed pt trip into a walk-only one (eqasim-bs#678). The standalone mode choice uses this finder to put
  * these trips back exactly as they came in. It applies the same tour finder and filter the model applies to the same
- * trip list, so it rejects exactly the tours the model rejects; the filters only look at the activities of a tour.
+ * trip list, so it rejects exactly the tours the model rejects.
+ * </p>
+ *
+ * <p>
+ * Contract: the tour and trip filters must not depend on the departure times of the trips. The model sets the
+ * departure times before it filters; this finder does not, so a time-dependent filter could judge a tour differently
+ * here than in the model. eqasim's {@code OutsideFilter} (activity types) and the contrib's {@code TourLengthFilter}
+ * (number of trips) satisfy it.
+ * </p>
+ *
+ * <p>
+ * Not covered: a person whose choice fails and whose model falls back to the initial modes (fallback behaviour
+ * {@code INITIAL_CHOICE} or {@code IGNORE_AGENT}) is still re-routed by the contrib. Production uses {@code EXCEPTION}:
+ * such a person fails the choice or is removed ({@code removePersonsWithNoValidAlternatives}).
  * </p>
  */
 public interface FilteredTripFinder {

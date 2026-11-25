@@ -67,7 +67,9 @@ public class StandaloneModeChoiceModule extends AbstractModule {
 
     /**
      * The trips the configured model does not re-choose: those of tours (tour-based models) or the trips (trip-based
-     * model) its filter rejects. Uses the model's own tour finder and filter (eqasim-bs#678).
+     * model) its filter rejects. Uses the model's own tour finder and filter (eqasim-bs#678). The filters must not
+     * depend on trip departure times, which the model sets before filtering and the finder does not; eqasim's
+     * OutsideFilter and the contrib's TourLengthFilter satisfy this (see {@link FilteredTripFinder}).
      */
     @Provides
     public FilteredTripFinder provideFilteredTripFinder(DiscreteModeChoiceConfigGroup dmcConfig,

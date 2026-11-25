@@ -145,7 +145,8 @@ public class StandaloneModeChoicePerformer {
         long trips = numberOfTrips.get();
         long kept = numberOfKeptTrips.get();
         logger.info(String.format(Locale.ROOT,
-                "Standalone mode choice: %d of %d trips (%.2f %%) belong to tours the model's filter rejects and are kept unchanged",
+                "Standalone mode choice: %d of %d trips (%.2f %%) are rejected by the model's filter, not re-chosen and kept unchanged"
+                        + " (counted over all chosen plans, including persons removed afterwards for lack of a valid alternative)",
                 kept, trips, trips == 0 ? 0.0 : 100.0 * kept / trips));
 
         String outputPlansName = outputDirectoryHierarchy.getOutputFilename("output_plans.xml.gz");
