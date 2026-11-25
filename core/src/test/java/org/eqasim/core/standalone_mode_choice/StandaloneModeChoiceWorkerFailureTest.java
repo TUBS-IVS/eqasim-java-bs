@@ -36,6 +36,8 @@ import org.matsim.core.controler.OutputDirectoryHierarchy;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 import org.matsim.core.scenario.ScenarioUtils;
 
+import com.google.inject.Provider;
+
 /**
  * A worker exception of the standalone mode choice must end the run: the exception reaches the caller and no
  * non-daemon thread (the {@link org.eqasim.core.misc.ParallelProgress} thread in particular) is left alive to keep
@@ -50,6 +52,18 @@ public class StandaloneModeChoiceWorkerFailureTest {
 	private static final class FailingModel implements DiscreteModeChoiceModel {
 		@Override
 		public List<TripCandidate> chooseModes(Person person, List<DiscreteModeChoiceTrip> trips, Random random) {
+			throw new NullPointerException("worker failure of " + person.getId());
+		}
+	}
+
+	/**
+	 * A model that interrupts its own thread and then fails: without a thread pool the worker runs on the caller's
+	 * thread, so ParallelProgress.close() in the performer's finally block is interrupted while joining.
+	 */
+	private static final class InterruptingFailingModel implements DiscreteModeChoiceModel {
+		@Override
+		public List<TripCandidate> chooseModes(Person person, List<DiscreteModeChoiceTrip> trips, Random random) {
+			Thread.currentThread().interrupt();
 			throw new NullPointerException("worker failure of " + person.getId());
 		}
 	}
@@ -73,13 +87,17 @@ public class StandaloneModeChoiceWorkerFailureTest {
 	}
 
 	private void perform(int threads) throws Exception {
+		perform(threads, FailingModel::new);
+	}
+
+	private void perform(int threads, Provider<DiscreteModeChoiceModel> model) throws Exception {
 		Scenario scenario = scenario();
 		StandaloneModeChoiceConfigGroup configGroup = new StandaloneModeChoiceConfigGroup();
 		configGroup.setChunkSize(1);
 		String output = new File(temporaryFolder.getRoot(), "output_" + threads).getAbsolutePath();
 		OutputDirectoryHierarchy hierarchy = new OutputDirectoryHierarchy(output, null,
 				OverwriteFileSetting.deleteDirectoryIfExists, CompressionType.gzip);
-		new StandaloneModeChoicePerformer(FailingModel::new, configGroup, scenario.getPopulation(), threads, 1L,
+		new StandaloneModeChoicePerformer(model, configGroup, scenario.getPopulation(), threads, 1L,
 				hierarchy, scenario).run();
 	}
 
@@ -157,5 +175,27 @@ public class StandaloneModeChoiceWorkerFailureTest {
 		assertTrue(error.getCause() instanceof NullPointerException);
 		assertEquals(List.of(), leftoverProgressThreads(before));
 		assertEquals(List.of(), leftoverNonDaemonThreads(before));
+	}
+
+	@Test(timeout = 60000)
+	public void anInterruptionWhileClosingTheProgressKeepsTheWorkerFailure() throws Throwable {
+		Throwable[] failure = new Throwable[1];
+		boolean[] interrupted = new boolean[1];
+		Thread runner = new Thread(() -> {
+			try {
+				perform(0, InterruptingFailingModel::new);
+			} catch (Throwable error) {
+				failure[0] = error;
+				interrupted[0] = Thread.interrupted();
+			}
+		}, "standalone-mode-choice-test-main");
+		runner.setDaemon(false);
+		runner.start();
+		runner.join();
+
+		assertTrue(String.valueOf(failure[0]), failure[0] instanceof NullPointerException);
+		assertEquals(1, failure[0].getSuppressed().length);
+		assertTrue(failure[0].getSuppressed()[0] instanceof InterruptedException);
+		assertTrue("the interrupt flag is restored", interrupted[0]);
 	}
 }

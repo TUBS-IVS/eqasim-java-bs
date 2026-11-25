@@ -120,11 +120,25 @@ public class StandaloneModeChoicePerformer {
         progress.start();
 
         // A worker exception propagates (ExecutionException from Future.get, or the exception itself without a
-        // thread pool); the progress is closed on every path so a failed run ends instead of hanging (eqasim-bs#678)
+        // thread pool); the progress is closed on every path so a failed run ends instead of hanging (eqasim-bs#678).
+        // An interruption while closing never replaces the worker's exception: it is attached as suppressed.
+        Throwable primary = null;
         try {
             choose(selectedPlans, progress);
+        } catch (Throwable e) {
+            primary = e;
+            throw e;
         } finally {
-            progress.close();
+            try {
+                progress.close();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                if (primary != null) {
+                    primary.addSuppressed(e);
+                } else {
+                    throw e;
+                }
+            }
         }
 
         String outputPlansName = outputDirectoryHierarchy.getOutputFilename("output_plans.xml.gz");

@@ -3,9 +3,9 @@ package org.eqasim.core.misc;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.junit.Test;
@@ -16,22 +16,26 @@ import org.junit.Test;
  * leave a non-daemon thread running until the reported count is reached, which never happens.
  */
 public class ParallelProgressTest {
-	/** The live threads currently executing {@code ParallelProgress.run}. */
-	private static List<Thread> progressThreads() {
-		return Thread.getAllStackTraces().entrySet().stream()
-				.filter(entry -> entry.getKey().isAlive())
-				.filter(entry -> Arrays.stream(entry.getValue())
-						.anyMatch(frame -> frame.getClassName().equals(ParallelProgress.class.getName())))
-				.map(Map.Entry::getKey).collect(Collectors.toList());
+	/**
+	 * The live progress threads of this test: started after {@code before} and named after the test's own unique
+	 * description. Other test classes in the reused surefire fork may have left progress threads of their own.
+	 */
+	private static List<Thread> progressThreads(Set<Thread> before, String description) {
+		String name = "ParallelProgress: " + description;
+		return Thread.getAllStackTraces().keySet().stream()
+				.filter(thread -> !before.contains(thread) && thread.isAlive() && thread.getName().equals(name))
+				.collect(Collectors.toList());
 	}
 
 	@Test(timeout = 60000)
 	public void theProgressThreadIsADaemonEvenWhenCreatedByANonDaemonThread() throws Throwable {
 		// A thread inherits the daemon flag of the thread that constructs it. JUnit's timeout thread is a daemon, the
 		// JVM main thread of the runners is not, so construct and start the progress from a non-daemon thread.
+		String description = "ParallelProgressTest daemon";
+		Set<Thread> before = new HashSet<>(Thread.getAllStackTraces().keySet());
 		ParallelProgress[] progress = new ParallelProgress[1];
 		Thread creator = new Thread(() -> {
-			progress[0] = new ParallelProgress("Test progress", 10);
+			progress[0] = new ParallelProgress(description, 10);
 			progress[0].start();
 		}, "parallel-progress-test-main");
 		creator.setDaemon(false);
@@ -39,12 +43,7 @@ public class ParallelProgressTest {
 		creator.join();
 
 		try {
-			// a just-started thread shows an empty stack until it is scheduled
-			List<Thread> threads = progressThreads();
-			for (int attempt = 0; attempt < 100 && threads.isEmpty(); attempt++) {
-				Thread.sleep(50);
-				threads = progressThreads();
-			}
+			List<Thread> threads = progressThreads(before, description);
 			assertEquals(1, threads.size());
 			assertTrue(threads.get(0).isDaemon());
 		} finally {
@@ -54,11 +53,14 @@ public class ParallelProgressTest {
 
 	@Test(timeout = 60000)
 	public void closeEndsTheProgressThreadBeforeTheCountIsReached() throws Throwable {
-		ParallelProgress progress = new ParallelProgress("Test progress", 10);
+		String description = "ParallelProgressTest close";
+		Set<Thread> before = new HashSet<>(Thread.getAllStackTraces().keySet());
+		ParallelProgress progress = new ParallelProgress(description, 10);
 		progress.start();
 		progress.update(3);
+		assertEquals(1, progressThreads(before, description).size());
 		progress.close();
 
-		assertEquals(List.of(), progressThreads());
+		assertEquals(List.of(), progressThreads(before, description));
 	}
 }

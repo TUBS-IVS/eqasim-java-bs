@@ -73,7 +73,7 @@ public class FacilityPlacement {
 
 		// As in PopulationRouter: a worker catches its exception and records it, the stage fails after the join
 		// instead of carrying on with the facilities of the failed worker left without a link (eqasim-bs#678).
-		AtomicReference<Exception> workerError = new AtomicReference<>();
+		AtomicReference<Throwable> workerError = new AtomicReference<>();
 
 		ParallelProgress progress = new ParallelProgress("Assigning links to facilities ...",
 				facilities.getFacilities().size());
@@ -112,10 +112,10 @@ public class FacilityPlacement {
 	private class Worker implements Runnable {
 		private final Iterator<? extends ActivityFacility> iterator;
 		private final ParallelProgress progress;
-		private final AtomicReference<Exception> workerError;
+		private final AtomicReference<Throwable> workerError;
 
 		Worker(Iterator<? extends ActivityFacility> iterator, ParallelProgress progress,
-				AtomicReference<Exception> workerError) {
+				AtomicReference<Throwable> workerError) {
 			this.iterator = iterator;
 			this.progress = progress;
 			this.workerError = workerError;
@@ -125,7 +125,9 @@ public class FacilityPlacement {
 		public void run() {
 			try {
 				placeFacilities();
-			} catch (Exception e) {
+			} catch (Throwable e) {
+				// Throwable, not Exception: an Error (OutOfMemoryError, StackOverflowError, AssertionError) must fail the
+				// stage too instead of ending only this worker
 				logger.error("Facility placement worker failed", e);
 				workerError.compareAndSet(null, e);
 			}

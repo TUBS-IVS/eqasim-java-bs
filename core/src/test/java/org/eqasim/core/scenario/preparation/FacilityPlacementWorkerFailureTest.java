@@ -2,8 +2,11 @@ package org.eqasim.core.scenario.preparation;
 
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.Set;
+import java.util.function.Supplier;
 
 import org.eqasim.core.scenario.cutter.network.RoadNetwork;
 import org.junit.Test;
@@ -47,11 +50,26 @@ public class FacilityPlacementWorkerFailureTest {
 	 * Runs the placement in a non-daemon thread, like the JVM main thread of the preparation runner (a JUnit timeout
 	 * runs the test in a daemon thread), and rethrows its failure.
 	 */
+	/** A facility whose coordinate lookup throws an Error (not an Exception) inside the worker. */
+	private static ActivityFacilities facilitiesFailingWithAnError() {
+		ActivityFacilities facilities = FacilitiesUtils.createActivityFacilities();
+		ActivityFacility facility = mock(ActivityFacility.class);
+		when(facility.getId()).thenReturn(Id.create("facility_error", ActivityFacility.class));
+		when(facility.getLinkId()).thenReturn(null);
+		when(facility.getCoord()).thenThrow(new AssertionError("worker error"));
+		facilities.addActivityFacility(facility);
+		return facilities;
+	}
+
 	private static void placeInNonDaemonThread(int threads) throws Throwable {
+		placeInNonDaemonThread(threads, FacilityPlacementWorkerFailureTest::facilitiesWithoutCoordinates);
+	}
+
+	private static void placeInNonDaemonThread(int threads, Supplier<ActivityFacilities> facilities) throws Throwable {
 		Throwable[] failure = new Throwable[1];
 		Thread runner = new Thread(() -> {
 			try {
-				new FacilityPlacement(threads, 1, network(), link -> true).run(facilitiesWithoutCoordinates());
+				new FacilityPlacement(threads, 1, network(), link -> true).run(facilities.get());
 			} catch (Throwable error) {
 				failure[0] = error;
 			}
@@ -74,5 +92,12 @@ public class FacilityPlacementWorkerFailureTest {
 	public void aWorkerFailureWithSeveralThreadsFailsThePlacement() {
 		RuntimeException error = assertThrows(RuntimeException.class, () -> placeInNonDaemonThread(2));
 		assertTrue(String.valueOf(error.getCause()), error.getCause() instanceof NullPointerException);
+	}
+
+	@Test(timeout = 60000)
+	public void anErrorInAWorkerFailsThePlacement() {
+		RuntimeException error = assertThrows(RuntimeException.class,
+				() -> placeInNonDaemonThread(1, FacilityPlacementWorkerFailureTest::facilitiesFailingWithAnError));
+		assertTrue(String.valueOf(error.getCause()), error.getCause() instanceof AssertionError);
 	}
 }
