@@ -16,6 +16,7 @@ import org.eqasim.braunschweig.fares.zonal.LongDistanceSurchargeContext;
 import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.fares.zonal.VrbFareModule;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
+import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleConstraint;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigCarCostModel;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigPtCostModel;
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigCostParameters;
@@ -34,6 +35,7 @@ import org.eqasim.braunschweig.parking.ParkingModule;
 import org.eqasim.braunschweig.parking.ParkingSearchTime;
 import org.eqasim.braunschweig.parking.ZoneParkingCarCostModel;
 import org.matsim.contribs.discrete_mode_choice.components.tour_finder.ActivityTourFinder;
+import org.matsim.contribs.discrete_mode_choice.components.utils.home_finder.HomeFinder;
 import org.matsim.contribs.discrete_mode_choice.modules.config.ActivityTourFinderConfigGroup;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
 import org.matsim.core.config.CommandLine;
@@ -63,6 +65,12 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	static public final String BICYCLE = "bicycle";
 
 	public static final String ISOLATED_OUTSIDE_TOUR_FINDER_NAME = "IsolatedOutsideTrips";
+
+	/**
+	 * Vehicle rule for border tours (eqasim-bs#678): pairs with {@link #ISOLATED_OUTSIDE_TOUR_FINDER_NAME}. Always
+	 * bound; nothing changes until a config selects the name as a tour constraint.
+	 */
+	public static final String BORDER_TOUR_VEHICLE_CONSTRAINT_NAME = "BorderTourVehicleContinuity";
 
 	/** VRB zone fare model (ADR-0133): bound only when the vrbFare config module is enabled. */
 	public static final String VRB_FARE_PT_COST_MODEL_NAME = "VrbZoneFareCostModel";
@@ -129,6 +137,7 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		bind(ModeParameters.class).to(BraunschweigModeParameters.class);
 
 		bindTourFinder(ISOLATED_OUTSIDE_TOUR_FINDER_NAME).to(ActivityTourFinderWithExcludedActivities.class);
+		bindTourConstraintFactory(BORDER_TOUR_VEHICLE_CONSTRAINT_NAME).to(BorderTourVehicleConstraint.Factory.class);
 	}
 
 	@Provides
@@ -165,5 +174,14 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		ActivityTourFinderConfigGroup config = dmcConfig.getActivityTourFinderConfigGroup();
 		return new ActivityTourFinderWithExcludedActivities(List.of("outside"),
 				new ActivityTourFinder(config.getActivityTypes()));
+	}
+
+	/** Same restricted modes and home finder as the contrib's stock {@code VehicleTourConstraint.Factory}. */
+	@Provides
+	@Singleton
+	public BorderTourVehicleConstraint.Factory provideBorderTourVehicleConstraintFactory(
+			DiscreteModeChoiceConfigGroup dmcConfig, HomeFinder homeFinder) {
+		return new BorderTourVehicleConstraint.Factory(dmcConfig.getVehicleTourConstraintConfig().getRestrictedModes(),
+				homeFinder);
 	}
 }
