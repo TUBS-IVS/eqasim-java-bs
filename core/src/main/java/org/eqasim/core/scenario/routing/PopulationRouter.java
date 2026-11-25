@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import org.apache.logging.log4j.LogManager;
@@ -72,7 +72,9 @@ public class PopulationRouter {
 		progress.start();
 
 		ExecutorService exec = Executors.newFixedThreadPool(numberOfThreads);
-		AtomicBoolean errorOccurred = new AtomicBoolean(false);
+		// A worker catches every failure, Error included, and records the first one; the stage fails with it as the
+		// cause after the join (eqasim-bs#678; the same pattern as FacilityPlacement)
+		AtomicReference<Throwable> workerError = new AtomicReference<>();
 
 		final Object lock = new Object();
 
@@ -127,9 +129,9 @@ public class PopulationRouter {
 					}
 					progress.update(chunk.size());
 
-				} catch (Exception e) {
-					e.printStackTrace();
-					errorOccurred.set(true);
+				} catch (Throwable e) {
+					logger.error("Population routing worker failed", e);
+					workerError.compareAndSet(null, e);
 				}
 			});
 		}
@@ -148,8 +150,8 @@ public class PopulationRouter {
 			logDayEndShift(dayEndShift);
 		}
 
-		if (errorOccurred.get()) {
-			throw new RuntimeException("Found errors in routing threads");
+		if (workerError.get() != null) {
+			throw new RuntimeException("Found errors in routing threads", workerError.get());
 		}
 	}
 

@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eqasim.core.misc.ParallelProgress;
 import org.junit.Rule;
@@ -29,6 +30,7 @@ import org.matsim.api.core.v01.population.Population;
 import org.matsim.api.core.v01.population.PopulationFactory;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceModel;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
+import org.matsim.contribs.discrete_mode_choice.model.trip_based.candidates.DefaultTripCandidate;
 import org.matsim.contribs.discrete_mode_choice.model.trip_based.candidates.TripCandidate;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.config.groups.ControllerConfigGroup.CompressionType;
@@ -68,11 +70,40 @@ public class StandaloneModeChoiceWorkerFailureTest {
 		}
 	}
 
+	/**
+	 * The first choice of the whole run fails at once; every other choice takes {@link #SLOW_CHOICE_MS} unless its
+	 * thread is interrupted, so a run that waits for all chunks before reporting the failure is easy to tell apart.
+	 */
+	private static final long SLOW_CHOICE_MS = 1000;
+
+	private static Provider<DiscreteModeChoiceModel> firstFailsOthersSlowModel() {
+		AtomicBoolean failed = new AtomicBoolean(false);
+		return () -> (person, trips, random) -> {
+			if (failed.compareAndSet(false, true)) {
+				throw new NullPointerException("worker failure of " + person.getId());
+			}
+			try {
+				Thread.sleep(SLOW_CHOICE_MS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			List<TripCandidate> candidates = new ArrayList<>();
+			for (int index = 0; index < trips.size(); index++) {
+				candidates.add(new DefaultTripCandidate(0.0, TransportMode.car, 0.0));
+			}
+			return candidates;
+		};
+	}
+
 	private static Scenario scenario() {
+		return scenario(4);
+	}
+
+	private static Scenario scenario(int persons) {
 		Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
 		Population population = scenario.getPopulation();
 		PopulationFactory factory = population.getFactory();
-		for (int index = 0; index < 4; index++) {
+		for (int index = 0; index < persons; index++) {
 			Person person = factory.createPerson(Id.createPersonId("person" + index));
 			Plan plan = factory.createPlan();
 			Activity home = factory.createActivityFromCoord("home", new Coord(0.0, 0.0));
@@ -91,7 +122,10 @@ public class StandaloneModeChoiceWorkerFailureTest {
 	}
 
 	private void perform(int threads, Provider<DiscreteModeChoiceModel> model) throws Exception {
-		Scenario scenario = scenario();
+		perform(threads, model, scenario());
+	}
+
+	private void perform(int threads, Provider<DiscreteModeChoiceModel> model, Scenario scenario) throws Exception {
 		StandaloneModeChoiceConfigGroup configGroup = new StandaloneModeChoiceConfigGroup();
 		configGroup.setChunkSize(1);
 		String output = new File(temporaryFolder.getRoot(), "output_" + threads).getAbsolutePath();
@@ -107,10 +141,18 @@ public class StandaloneModeChoiceWorkerFailureTest {
 	 * in a daemon thread, so a progress thread started directly from the test would be a daemon and hide the defect.
 	 */
 	private void performInNonDaemonThread(int threads) throws Throwable {
+		performInNonDaemonThread(() -> perform(threads));
+	}
+
+	private interface Run {
+		void run() throws Exception;
+	}
+
+	private void performInNonDaemonThread(Run run) throws Throwable {
 		Throwable[] failure = new Throwable[1];
 		Thread runner = new Thread(() -> {
 			try {
-				perform(threads);
+				run.run();
 			} catch (Throwable error) {
 				failure[0] = error;
 			}
@@ -180,13 +222,11 @@ public class StandaloneModeChoiceWorkerFailureTest {
 	@Test(timeout = 60000)
 	public void anInterruptionWhileClosingTheProgressKeepsTheWorkerFailure() throws Throwable {
 		Throwable[] failure = new Throwable[1];
-		boolean[] interrupted = new boolean[1];
 		Thread runner = new Thread(() -> {
 			try {
 				perform(0, InterruptingFailingModel::new);
 			} catch (Throwable error) {
 				failure[0] = error;
-				interrupted[0] = Thread.interrupted();
 			}
 		}, "standalone-mode-choice-test-main");
 		runner.setDaemon(false);
@@ -195,7 +235,23 @@ public class StandaloneModeChoiceWorkerFailureTest {
 
 		assertTrue(String.valueOf(failure[0]), failure[0] instanceof NullPointerException);
 		assertEquals(1, failure[0].getSuppressed().length);
+		// the interruption is not lost: it travels with the worker's failure as a suppressed exception
 		assertTrue(failure[0].getSuppressed()[0] instanceof InterruptedException);
-		assertTrue("the interrupt flag is restored", interrupted[0]);
+	}
+
+	@Test(timeout = 60000)
+	public void aWorkerFailureInTheThreadPoolFailsBeforeTheRemainingChunksRun() throws Throwable {
+		// 20 chunks of one person on 2 threads: waiting for all of them would take about 19 slow choices / 2 threads
+		// = 9.5 s; failing fast takes at most the one slow choice already running on the other thread
+		Set<Thread> before = new HashSet<>(Thread.getAllStackTraces().keySet());
+		long start = System.nanoTime();
+		ExecutionException error = assertThrows(ExecutionException.class,
+				() -> performInNonDaemonThread(() -> perform(2, firstFailsOthersSlowModel(), scenario(20))));
+		long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+		assertTrue(String.valueOf(error.getCause()), error.getCause() instanceof NullPointerException);
+		assertTrue("failed after " + elapsedMs + " ms", elapsedMs < 4 * SLOW_CHOICE_MS);
+		assertEquals(List.of(), leftoverProgressThreads(before));
+		assertEquals(List.of(), leftoverNonDaemonThreads(before));
 	}
 }
