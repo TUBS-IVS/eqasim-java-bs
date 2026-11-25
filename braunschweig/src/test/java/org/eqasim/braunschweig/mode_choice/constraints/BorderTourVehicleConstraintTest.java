@@ -27,6 +27,7 @@ import org.matsim.utils.objectattributes.attributable.AttributesImpl;
  */
 public class BorderTourVehicleConstraintTest {
 	private static final List<String> RESTRICTED_MODES = List.of("car", "bicycle");
+	private static final List<String> ALL_MODES = List.of("car", "bicycle", "pt", "walk", "car_passenger");
 	private static final Id<ActivityFacility> HOME_ID = Id.create("home", ActivityFacility.class);
 
 	@Test
@@ -97,11 +98,52 @@ public class BorderTourVehicleConstraintTest {
 		assertFalse(constraint.validateBeforeEstimation(tour, List.of("pt"), List.of()));
 	}
 
+	@Test
+	public void borderTour_vehicleLegWithoutAvailabilityIsAFreeLegAndCounted() {
+		// The initial plan has a car leg in a border tour, but car is not an available mode of the person.
+		List<DiscreteModeChoiceTrip> trips = plan("HABOH", "car", "walk", "pt", "pt");
+		BorderTourVehicleConstraint.Factory factory = createFactory();
+		TourConstraint constraint = factory.createConstraint(person(), trips,
+				List.of("bicycle", "pt", "walk", "car_passenger"));
+		List<DiscreteModeChoiceTrip> tour = trips.subList(0, 2);
+
+		assertTrue(constraint.validateBeforeEstimation(tour, List.of("walk", "walk"), List.of()));
+		assertTrue(constraint.validateBeforeEstimation(tour, List.of("pt", "walk"), List.of()));
+		assertTrue(constraint.validateBeforeEstimation(tour, List.of("car_passenger", "walk"), List.of()));
+
+		assertFalse(constraint.validateBeforeEstimation(tour, List.of("car", "walk"), List.of()));
+		assertFalse(constraint.validateBeforeEstimation(tour, List.of("bicycle", "walk"), List.of()));
+
+		assertEquals(1, factory.getBorderTourVehicleTrips());
+		assertEquals(1, factory.getRelaxedVehicleTrips());
+	}
+
+	@Test
+	public void borderTour_vehicleLegWithAvailabilityIsUnchanged() {
+		List<DiscreteModeChoiceTrip> trips = plan("HABOH", "car", "walk", "pt", "pt");
+		BorderTourVehicleConstraint.Factory factory = createFactory();
+		TourConstraint constraint = factory.createConstraint(person(), trips, ALL_MODES);
+		List<DiscreteModeChoiceTrip> tour = trips.subList(0, 2);
+
+		assertTrue(constraint.validateBeforeEstimation(tour, List.of("car", "walk"), List.of()));
+		assertFalse(constraint.validateBeforeEstimation(tour, List.of("walk", "walk"), List.of()));
+		assertFalse(constraint.validateBeforeEstimation(tour, List.of("pt", "walk"), List.of()));
+		assertFalse(constraint.validateBeforeEstimation(tour, List.of("bicycle", "walk"), List.of()));
+
+		assertEquals(1, factory.getBorderTourVehicleTrips());
+		assertEquals(0, factory.getRelaxedVehicleTrips());
+	}
+
+	private static BorderTourVehicleConstraint.Factory createFactory() {
+		return new BorderTourVehicleConstraint.Factory(RESTRICTED_MODES, planTrips -> HOME_ID);
+	}
+
+	private static Person person() {
+		return PopulationUtils.getFactory().createPerson(Id.createPersonId("person"));
+	}
+
 	private static TourConstraint createConstraint(List<DiscreteModeChoiceTrip> trips) {
-		Person person = PopulationUtils.getFactory().createPerson(Id.createPersonId("person"));
-		BorderTourVehicleConstraint.Factory factory = new BorderTourVehicleConstraint.Factory(RESTRICTED_MODES,
-				planTrips -> HOME_ID);
-		return factory.createConstraint(person, trips, List.of("car", "bicycle", "pt", "walk", "car_passenger"));
+		return createFactory().createConstraint(person(), trips, ALL_MODES);
 	}
 
 	/**

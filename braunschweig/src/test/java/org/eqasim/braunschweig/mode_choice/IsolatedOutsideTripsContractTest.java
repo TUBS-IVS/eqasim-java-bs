@@ -45,6 +45,7 @@ public class IsolatedOutsideTripsContractTest {
 
 	@Test
 	public void insideTripCutInTwo() {
+		assertEquals("outside", plan("HAOOBH").get(2).getInitialMode());
 		assertEquals(Set.of(0, 4), openTrips(isolatedFinder(), "HAOOBH"));
 	}
 
@@ -78,13 +79,19 @@ public class IsolatedOutsideTripsContractTest {
 		return open;
 	}
 
-	/** One walk trip between consecutive activities; H = home, O = outside, other letters inside activities. */
+	/**
+	 * One trip between consecutive activities; H = home, O = outside, other letters inside activities. A trip from
+	 * outside to outside has mode {@code outside} (as in the synthetic population, spec section 7 case 4), every
+	 * other trip walk.
+	 */
 	private static List<DiscreteModeChoiceTrip> plan(String activities) {
 		List<DiscreteModeChoiceTrip> trips = new ArrayList<>();
 		Activity origin = activity(activities.charAt(0), 0);
 		for (int index = 1; index < activities.length(); index++) {
 			Activity destination = activity(activities.charAt(index), index);
-			trips.add(new DiscreteModeChoiceTrip(origin, destination, "walk", List.of(), 0, index - 1, index - 1,
+			boolean outsideToOutside = activities.charAt(index - 1) == 'O' && activities.charAt(index) == 'O';
+			String mode = outsideToOutside ? "outside" : "walk";
+			trips.add(new DiscreteModeChoiceTrip(origin, destination, mode, List.of(), 0, index - 1, index - 1,
 					new AttributesImpl()));
 			origin = destination;
 		}

@@ -2,7 +2,12 @@ package org.eqasim.braunschweig.mode_choice.constraints;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.contribs.discrete_mode_choice.components.constraints.VehicleTourConstraint;
 import org.matsim.contribs.discrete_mode_choice.components.utils.home_finder.HomeFinder;
@@ -21,15 +26,16 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourConstraintF
  * trips. This constraint therefore decides in two ways:
  * <ul>
  * <li>A tour none of whose trips lies in a border tour: the stock {@link VehicleTourConstraint} decides, unchanged.</li>
- * <li>A tour with a trip in a border tour: a candidate is valid exactly when, for every trip, the candidate mode
- * equals the initial mode wherever the initial mode or the candidate mode is a restricted (vehicle) mode. Vehicle legs
- * keep their mode, no other trip takes a vehicle mode, the remaining modes are free.</li>
+ * <li>A tour with a trip in a border tour: a candidate is valid exactly when every vehicle leg keeps its initial mode
+ * and no other trip takes a restricted (vehicle) mode. A vehicle leg is a trip whose initial mode is a restricted mode
+ * that is available to the person; the remaining modes are free.</li>
  * </ul>
  *
  * <p>
  * A border tour is a home-based tour of the plan, cut after every trip that ends at an activity of type {@code home},
  * with at least one trip whose origin or destination activity is of type {@code outside}. Trips before the first home
- * activity form the first such tour.
+ * activity form the first such tour. The activity types are fixed: the rule assumes the tour finder works on the
+ * activity types {@code [home, outside]} (the Braunschweig setting of {@code IsolatedOutsideTrips}).
  *
  * <p>
  * ASSUMPTION (spec section 5.2): keeping vehicle legs fixed gives up only tours that could drop the vehicle
@@ -38,8 +44,16 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourConstraintF
  * drops a person whose initial chain is rejected (fallback behaviour EXCEPTION).
  *
  * <p>
+ * Vehicle legs without availability: the mode choice only builds chains from the person's available modes, and
+ * {@code BraunschweigModeAvailability} offers {@code car} only with car availability and a licence and
+ * {@code bicycle} only with bicycle availability. A diary leg in a vehicle mode the person does not have could never
+ * be kept, so every chain would be rejected and the person would fail. Such a leg is therefore treated like a
+ * non-vehicle leg of the border tour: free among the non-restricted modes, never a vehicle mode. The factory counts
+ * these relaxed legs against all vehicle legs of border tours and logs the rate (no silent fallback).
+ *
+ * <p>
  * "Initial mode" is {@link DiscreteModeChoiceTrip#getInitialMode()}, the mode of the trip in the plan being
- * replanned. The constraint has no fallback path and logs nothing: it is evaluated for every candidate of every tour.
+ * replanned.
  */
 public class BorderTourVehicleConstraint implements TourConstraint {
 	static final String HOME_ACTIVITY_TYPE = "home";
@@ -47,12 +61,14 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 
 	private final Collection<String> restrictedModes;
 	private final boolean[] borderTourFlags;
+	private final boolean[] fixedVehicleLegs;
 	private final TourConstraint delegate;
 
 	BorderTourVehicleConstraint(Collection<String> restrictedModes, boolean[] borderTourFlags,
-			TourConstraint delegate) {
+			boolean[] fixedVehicleLegs, TourConstraint delegate) {
 		this.restrictedModes = restrictedModes;
 		this.borderTourFlags = borderTourFlags;
+		this.fixedVehicleLegs = fixedVehicleLegs;
 		this.delegate = delegate;
 	}
 
@@ -99,14 +115,26 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 		}
 
 		for (int index = 0; index < tour.size(); index++) {
-			String initialMode = tour.get(index).getInitialMode();
+			DiscreteModeChoiceTrip trip = tour.get(index);
 			String mode = modes.get(index);
 
-			if (restrictedModes.contains(initialMode) || restrictedModes.contains(mode)) {
-				if (!mode.equals(initialMode)) {
-					return false;
+			if (fixedVehicleLegs[trip.getIndex()]) {
+				if (!mode.equals(trip.getInitialMode())) {
+					return false; // a vehicle leg changed its mode
 				}
+			} else if (restrictedModes.contains(mode)) {
+				return false; // a new vehicle leg
 			}
+		}
+
+		return true;
+	}
+
+	@Override
+	public boolean validateAfterEstimation(List<DiscreteModeChoiceTrip> tour, TourCandidate candidate,
+			List<TourCandidate> previousCandidates) {
+		if (!isInBorderTour(tour)) {
+			return delegate.validateAfterEstimation(tour, candidate, previousCandidates);
 		}
 
 		return true;
@@ -122,19 +150,21 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 		return false;
 	}
 
-	@Override
-	public boolean validateAfterEstimation(List<DiscreteModeChoiceTrip> tour, TourCandidate candidate,
-			List<TourCandidate> previousCandidates) {
-		return true;
-	}
-
 	/**
-	 * Builds the constraint per plan: the border tour flags from all trips of the plan and the stock
-	 * {@link VehicleTourConstraint} at the home location as the delegate.
+	 * Builds the constraint per plan: the border tour flags and the fixed vehicle legs from all trips of the plan and
+	 * the stock {@link VehicleTourConstraint} at the home location as the delegate. Bound as a singleton; the counters
+	 * are thread-safe and count per constraint creation (one per replanned plan), not per distinct person.
 	 */
 	public static class Factory implements TourConstraintFactory {
+		private static final Logger logger = LogManager.getLogger(BorderTourVehicleConstraint.class);
+		private static final int MAXIMUM_PERSON_WARNINGS = 10;
+
 		private final Collection<String> restrictedModes;
 		private final HomeFinder homeFinder;
+
+		private final AtomicLong borderTourVehicleTrips = new AtomicLong();
+		private final AtomicLong relaxedVehicleTrips = new AtomicLong();
+		private final AtomicInteger warnedPersons = new AtomicInteger();
 
 		public Factory(Collection<String> restrictedModes, HomeFinder homeFinder) {
 			this.restrictedModes = restrictedModes;
@@ -144,8 +174,64 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 		@Override
 		public TourConstraint createConstraint(Person person, List<DiscreteModeChoiceTrip> planTrips,
 				Collection<String> availableModes) {
-			return new BorderTourVehicleConstraint(restrictedModes, borderTourFlags(planTrips),
+			boolean[] borderTourFlags = borderTourFlags(planTrips);
+			boolean[] fixedVehicleLegs = new boolean[planTrips.size()];
+
+			int vehicleTrips = 0;
+			int relaxedTrips = 0;
+
+			for (int index = 0; index < planTrips.size(); index++) {
+				String initialMode = planTrips.get(index).getInitialMode();
+
+				if (borderTourFlags[index] && restrictedModes.contains(initialMode)) {
+					vehicleTrips++;
+
+					if (availableModes.contains(initialMode)) {
+						fixedVehicleLegs[index] = true;
+					} else {
+						relaxedTrips++;
+					}
+				}
+			}
+
+			record(person, vehicleTrips, relaxedTrips);
+
+			return new BorderTourVehicleConstraint(restrictedModes, borderTourFlags, fixedVehicleLegs,
 					new VehicleTourConstraint(restrictedModes, homeFinder.getHomeLocationId(planTrips)));
+		}
+
+		private void record(Person person, int vehicleTrips, int relaxedTrips) {
+			long totalVehicle = borderTourVehicleTrips.addAndGet(vehicleTrips);
+
+			if (relaxedTrips == 0) {
+				return;
+			}
+
+			long previousRelaxed = relaxedVehicleTrips.getAndAdd(relaxedTrips);
+			long totalRelaxed = previousRelaxed + relaxedTrips;
+
+			if (warnedPersons.getAndIncrement() < MAXIMUM_PERSON_WARNINGS) {
+				logger.warn(String.format(Locale.ROOT,
+						"Person %s has %d border-tour vehicle leg(s) in a mode that is not available to them; "
+								+ "they are treated as free non-vehicle legs",
+						person.getId(), relaxedTrips));
+			}
+
+			// Summary whenever the relaxed count reaches (or passes) a power of two.
+			if (Long.highestOneBit(totalRelaxed) > previousRelaxed) {
+				logger.warn(String.format(Locale.ROOT,
+						"border-tour vehicle legs relaxed for missing availability: %d of %d (%.2f %%)", totalRelaxed, totalVehicle, 100.0 * totalRelaxed / Math.max(1, totalVehicle)));
+			}
+		}
+
+		/** Vehicle legs (initial mode restricted) in border tours seen so far, over all created constraints. */
+		public long getBorderTourVehicleTrips() {
+			return borderTourVehicleTrips.get();
+		}
+
+		/** Of those, the legs treated as free because the vehicle mode is not available to the person. */
+		public long getRelaxedVehicleTrips() {
+			return relaxedVehicleTrips.get();
 		}
 	}
 }
