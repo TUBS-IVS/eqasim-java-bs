@@ -14,6 +14,7 @@ import org.matsim.api.core.v01.Coord;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Person;
+import org.matsim.contribs.discrete_mode_choice.components.filters.TourLengthFilter;
 import org.matsim.contribs.discrete_mode_choice.components.tour_finder.ActivityTourFinder;
 import org.matsim.contribs.discrete_mode_choice.components.tour_finder.TourFinder;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
@@ -26,7 +27,7 @@ import org.matsim.utils.objectattributes.attributable.AttributesImpl;
  * Pins which trips the shipped tour finder {@code IsolatedOutsideTrips}
  * ({@link ActivityTourFinderWithExcludedActivities} on {@link ActivityTourFinder} with {@code [home, outside]})
  * together with the shipped {@link OutsideFilter} opens to the mode choice (eqasim-bs#678, spec section 7, cases 2 to
- * 5). The Python mirror of this classification follows these sets; the core classes are used unchanged.
+ * 5), and how the shipped {@link TourLengthFilter} counts the isolated runs. The Python mirror of this classification follows these sets; the core classes are used unchanged.
  */
 public class IsolatedOutsideTripsContractTest {
 	private static final List<String> TOUR_ACTIVITY_TYPES = List.of("home", "outside");
@@ -62,6 +63,23 @@ public class IsolatedOutsideTripsContractTest {
 		}
 	}
 
+	/**
+	 * The shipped {@link TourLengthFilter} judges the isolated runs, not the whole border tour: a 12-trip border tour
+	 * whose inside runs have 5 trips each is open under a limit of 6; an inside run of 7 trips is not.
+	 */
+	@Test
+	public void lengthFilterJudgesTheIsolatedRun() {
+		List<TourFilter> filters = List.of(filter, new TourLengthFilter(6));
+
+		// Trips 0-4 inside, 5 (E->O) and 6 (O->F) at the border, 7-11 inside.
+		String twelveTrips = "HABCDEOFGIJKH";
+		assertEquals(12, twelveTrips.length() - 1);
+		assertEquals(Set.of(0, 1, 2, 3, 4, 7, 8, 9, 10, 11), openTrips(isolatedFinder(), twelveTrips, filters));
+
+		// Trips 0-6 inside (a run of 7), 7 (G->O) and 8 (O->I) at the border, 9 inside.
+		assertEquals(Set.of(9), openTrips(isolatedFinder(), "HABCDEFGOIH", filters));
+	}
+
 	private static TourFinder isolatedFinder() {
 		return new ActivityTourFinderWithExcludedActivities(List.of("outside"),
 				new ActivityTourFinder(TOUR_ACTIVITY_TYPES));
@@ -69,10 +87,15 @@ public class IsolatedOutsideTripsContractTest {
 
 	/** Indices of the trips that lie in tours passing the filter. */
 	private Set<Integer> openTrips(TourFinder finder, String activities) {
+		return openTrips(finder, activities, List.of(filter));
+	}
+
+	/** Indices of the trips that lie in tours passing all filters. */
+	private static Set<Integer> openTrips(TourFinder finder, String activities, List<TourFilter> filters) {
 		Person person = PopulationUtils.getFactory().createPerson(Id.createPersonId("person"));
 		Set<Integer> open = new TreeSet<>();
 		for (List<DiscreteModeChoiceTrip> tour : finder.findTours(plan(activities))) {
-			if (filter.filter(person, tour)) {
+			if (filters.stream().allMatch(tourFilter -> tourFilter.filter(person, tour))) {
 				tour.forEach(trip -> open.add(trip.getIndex()));
 			}
 		}

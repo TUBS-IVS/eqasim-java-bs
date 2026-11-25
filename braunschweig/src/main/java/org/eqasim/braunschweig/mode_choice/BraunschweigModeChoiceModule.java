@@ -2,7 +2,10 @@ package org.eqasim.braunschweig.mode_choice;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.eqasim.core.components.config.EqasimConfigGroup;
 import org.eqasim.core.simulation.mode_choice.AbstractEqasimExtension;
@@ -17,6 +20,7 @@ import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.fares.zonal.VrbFareModule;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
 import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleConstraint;
+import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleSummaryListener;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigCarCostModel;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigPtCostModel;
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigCostParameters;
@@ -71,6 +75,9 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	 * bound; nothing changes until a config selects the name as a tour constraint.
 	 */
 	public static final String BORDER_TOUR_VEHICLE_CONSTRAINT_NAME = "BorderTourVehicleContinuity";
+
+	/** The activity tour finder types the border tour constraint assumes (its fixed home and outside types). */
+	static final Set<String> BORDER_TOUR_ACTIVITY_TYPES = Set.of("home", "outside");
 
 	/** VRB zone fare model (ADR-0133): bound only when the vrbFare config module is enabled. */
 	public static final String VRB_FARE_PT_COST_MODEL_NAME = "VrbZoneFareCostModel";
@@ -138,6 +145,8 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 
 		bindTourFinder(ISOLATED_OUTSIDE_TOUR_FINDER_NAME).to(ActivityTourFinderWithExcludedActivities.class);
 		bindTourConstraintFactory(BORDER_TOUR_VEHICLE_CONSTRAINT_NAME).to(BorderTourVehicleConstraint.Factory.class);
+		// Logs the final relaxed-leg rate at the end of a MATSim run; silent when the constraint saw no vehicle leg.
+		addControlerListenerBinding().to(BorderTourVehicleSummaryListener.class);
 	}
 
 	@Provides
@@ -176,11 +185,27 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 				new ActivityTourFinder(config.getActivityTypes()));
 	}
 
-	/** Same restricted modes and home finder as the contrib's stock {@code VehicleTourConstraint.Factory}. */
+	/**
+	 * Same restricted modes and home finder as the contrib's stock {@code VehicleTourConstraint.Factory}. When the
+	 * constraint is selected among the tour constraints, the activity tour finder must work on exactly the activity
+	 * types {@code home} and {@code outside}: the constraint cuts border tours at those fixed types and would
+	 * otherwise judge different tours than the tour finder builds. Configs that do not select the constraint are not
+	 * checked.
+	 */
 	@Provides
 	@Singleton
 	public BorderTourVehicleConstraint.Factory provideBorderTourVehicleConstraintFactory(
 			DiscreteModeChoiceConfigGroup dmcConfig, HomeFinder homeFinder) {
+		if (dmcConfig.getTourConstraints().contains(BORDER_TOUR_VEHICLE_CONSTRAINT_NAME)) {
+			Collection<String> activityTypes = dmcConfig.getActivityTourFinderConfigGroup().getActivityTypes();
+
+			if (!new HashSet<>(activityTypes).equals(BORDER_TOUR_ACTIVITY_TYPES)) {
+				throw new IllegalStateException(String.format(
+						"Tour constraint %s requires the activity tour finder types %s, but the config has %s",
+						BORDER_TOUR_VEHICLE_CONSTRAINT_NAME, BORDER_TOUR_ACTIVITY_TYPES, activityTypes));
+			}
+		}
+
 		return new BorderTourVehicleConstraint.Factory(dmcConfig.getVehicleTourConstraintConfig().getRestrictedModes(),
 				homeFinder);
 	}

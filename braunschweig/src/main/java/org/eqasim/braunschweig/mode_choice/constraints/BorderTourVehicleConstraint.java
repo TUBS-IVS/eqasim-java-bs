@@ -216,19 +216,46 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 			long totalRelaxed = previousRelaxed + relaxedTrips;
 			long totalVehicle = borderTourVehicleTrips.get();
 
-			if (warnedPersons.getAndIncrement() < MAXIMUM_PERSON_WARNINGS) {
+			// The counter stays bounded: it only grows while it is below the limit.
+			if (warnedPersons.get() < MAXIMUM_PERSON_WARNINGS
+					&& warnedPersons.getAndIncrement() < MAXIMUM_PERSON_WARNINGS) {
 				logger.warn(String.format(Locale.ROOT,
 						"Person %s has %d border-tour vehicle leg(s) in a mode that is not available to them; "
 								+ "they are treated as free non-vehicle legs",
 						person.getId(), relaxedTrips));
 			}
 
-			// Summary whenever the relaxed count reaches (or passes) a power of two.
+			// Running summary whenever the relaxed count reaches (or passes) a power of two.
 			if (Long.highestOneBit(totalRelaxed) > previousRelaxed) {
-				logger.warn(String.format(Locale.ROOT,
-						"border-tour vehicle legs relaxed for missing availability: %d of %d (%.2f %%)", totalRelaxed,
-						totalVehicle, 100.0 * totalRelaxed / totalVehicle));
+				logger.warn(summaryLine(totalRelaxed, totalVehicle));
 			}
+		}
+
+		/**
+		 * Logs the totals so far as the final summary line (also when no leg was relaxed). Logs nothing when no
+		 * border-tour vehicle leg was seen, for example when the constraint is not selected. Called at the end of a
+		 * MATSim run by {@link BorderTourVehicleSummaryListener}.
+		 */
+		public void logSummary() {
+			// Relaxed first, vehicle last: the vehicle total then covers every relaxed leg read (see record).
+			long totalRelaxed = relaxedVehicleTrips.get();
+			long totalVehicle = borderTourVehicleTrips.get();
+
+			if (totalVehicle == 0) {
+				return;
+			}
+
+			if (totalRelaxed > 0) {
+				logger.warn(summaryLine(totalRelaxed, totalVehicle));
+			} else {
+				logger.info(summaryLine(totalRelaxed, totalVehicle));
+			}
+		}
+
+		static String summaryLine(long relaxed, long vehicle) {
+			return String.format(Locale.ROOT,
+					"border-tour vehicle legs relaxed for missing availability: %d of %d (%.2f %%)", relaxed, vehicle,
+					100.0 * relaxed / vehicle);
 		}
 
 		/** Vehicle legs (initial mode restricted) in border tours seen so far, over all created constraints. */

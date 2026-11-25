@@ -8,6 +8,12 @@ import static org.junit.Assert.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.junit.Test;
 import org.matsim.api.core.v01.Coord;
 import org.matsim.api.core.v01.Id;
@@ -15,6 +21,7 @@ import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.contribs.discrete_mode_choice.components.constraints.VehicleTourConstraint;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
+import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourCandidate;
 import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourConstraint;
 import org.matsim.core.population.PopulationUtils;
 import org.matsim.facilities.ActivityFacility;
@@ -132,6 +139,107 @@ public class BorderTourVehicleConstraintTest {
 
 		assertEquals(1, factory.getBorderTourVehicleTrips());
 		assertEquals(0, factory.getRelaxedVehicleTrips());
+	}
+
+	@Test
+	public void validateAfterEstimation_delegatesOutsideBorderToursOnly() {
+		List<DiscreteModeChoiceTrip> trips = plan("HWSHAOH", "car", "car", "car", "walk", "walk", "walk");
+		boolean[] flags = BorderTourVehicleConstraint.borderTourFlags(trips);
+		RejectingDelegate delegate = new RejectingDelegate();
+		BorderTourVehicleConstraint constraint = new BorderTourVehicleConstraint(RESTRICTED_MODES, flags,
+				new boolean[trips.size()], delegate);
+
+		// Ordinary tour (trips 0-2): the delegate's answer.
+		assertFalse(constraint.validateAfterEstimation(trips.subList(0, 3), null, List.of()));
+		assertEquals(1, delegate.afterEstimationCalls);
+
+		// Border tour (trips 3-5): always true, the delegate is not asked.
+		assertTrue(constraint.validateAfterEstimation(trips.subList(3, 6), null, List.of()));
+		assertEquals(1, delegate.afterEstimationCalls);
+	}
+
+	@Test
+	public void finalSummary_logsTheRateAlsoWithoutRelaxedLegs() {
+		BorderTourVehicleConstraint.Factory factory = createFactory();
+		factory.createConstraint(person(), plan("HABOH", "car", "walk", "pt", "pt"), ALL_MODES);
+
+		List<String> messages = collectLog(factory::logSummary);
+
+		assertEquals(List.of("border-tour vehicle legs relaxed for missing availability: 0 of 1 (0.00 %)"), messages);
+	}
+
+	@Test
+	public void finalSummary_isSilentWithoutBorderTourVehicleLegs() {
+		BorderTourVehicleConstraint.Factory factory = createFactory();
+		factory.createConstraint(person(), plan("HWSH", "car", "car", "car"), ALL_MODES);
+
+		assertEquals(List.of(), collectLog(factory::logSummary));
+	}
+
+	@Test
+	public void personWarnings_stopAfterTen() {
+		BorderTourVehicleConstraint.Factory factory = createFactory();
+		List<String> withoutCar = List.of("bicycle", "pt", "walk", "car_passenger");
+
+		List<String> messages = collectLog(() -> {
+			for (int index = 0; index < 12; index++) {
+				factory.createConstraint(person(), plan("HABOH", "car", "walk", "pt", "pt"), withoutCar);
+			}
+		});
+
+		assertEquals(10, messages.stream().filter(message -> message.startsWith("Person ")).count());
+		assertEquals(12, factory.getRelaxedVehicleTrips());
+		// Running summary lines at 1, 2, 4 and 8 relaxed legs.
+		assertEquals(4, messages.stream().filter(message -> message.startsWith("border-tour vehicle legs")).count());
+	}
+
+	private static List<String> collectLog(Runnable action) {
+		Logger logger = (Logger) LogManager.getLogger(BorderTourVehicleConstraint.class);
+		CollectingAppender appender = new CollectingAppender();
+		Level level = logger.getLevel();
+		logger.addAppender(appender);
+		logger.setLevel(Level.INFO);
+		appender.start();
+
+		try {
+			action.run();
+			return appender.messages;
+		} finally {
+			logger.removeAppender(appender);
+			logger.setLevel(level);
+			appender.stop();
+		}
+	}
+
+	private static class CollectingAppender extends AbstractAppender {
+		private final List<String> messages = new ArrayList<>();
+
+		CollectingAppender() {
+			super("border-tour-vehicle-test", null, PatternLayout.createDefaultLayout(), false, null);
+		}
+
+		@Override
+		public void append(LogEvent event) {
+			messages.add(event.getMessage().getFormattedMessage());
+		}
+	}
+
+	/** Rejects every candidate after estimation and counts the calls. */
+	private static class RejectingDelegate implements TourConstraint {
+		int afterEstimationCalls = 0;
+
+		@Override
+		public boolean validateBeforeEstimation(List<DiscreteModeChoiceTrip> tour, List<String> modes,
+				List<List<String>> previousModes) {
+			return true;
+		}
+
+		@Override
+		public boolean validateAfterEstimation(List<DiscreteModeChoiceTrip> tour, TourCandidate candidate,
+				List<TourCandidate> previousCandidates) {
+			afterEstimationCalls++;
+			return false;
+		}
 	}
 
 	private static BorderTourVehicleConstraint.Factory createFactory() {
