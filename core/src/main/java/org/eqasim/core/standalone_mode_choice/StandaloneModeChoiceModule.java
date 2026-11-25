@@ -6,7 +6,10 @@ import java.util.Objects;
 
 import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.population.Population;
+import org.matsim.contribs.discrete_mode_choice.components.tour_finder.TourFinder;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceModel;
+import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourFilter;
+import org.matsim.contribs.discrete_mode_choice.model.tour_based.TripFilter;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
 import org.matsim.core.config.groups.ControllerConfigGroup;
 import org.matsim.core.controler.AbstractModule;
@@ -51,14 +54,33 @@ public class StandaloneModeChoiceModule extends AbstractModule {
 
     @Provides
     public StandaloneModeChoicePerformer provideStandaloneModeChoicePerformer(
-            Provider<DiscreteModeChoiceModel> discreteModeChoiceModelProvider, Population population,
+            Provider<DiscreteModeChoiceModel> discreteModeChoiceModelProvider,
+            Provider<FilteredTripFinder> filteredTripFinderProvider, Population population,
             OutputDirectoryHierarchy outputDirectoryHierarchy, Scenario scenario,
             StandaloneModeChoiceConfigGroup configGroup) {
         int numberOfThreads = getConfig().global().getNumberOfThreads();
         long randomSeed = getConfig().global().getRandomSeed();
 
-        return new StandaloneModeChoicePerformer(discreteModeChoiceModelProvider, configGroup, population,
-                numberOfThreads, randomSeed, outputDirectoryHierarchy, scenario);
+        return new StandaloneModeChoicePerformer(discreteModeChoiceModelProvider, filteredTripFinderProvider,
+                configGroup, population, numberOfThreads, randomSeed, outputDirectoryHierarchy, scenario);
+    }
+
+    /**
+     * The trips the configured model does not re-choose: those of tours (tour-based models) or the trips (trip-based
+     * model) its filter rejects. Uses the model's own tour finder and filter (eqasim-bs#678).
+     */
+    @Provides
+    public FilteredTripFinder provideFilteredTripFinder(DiscreteModeChoiceConfigGroup dmcConfig,
+            Provider<TourFinder> tourFinder, Provider<TourFilter> tourFilter, Provider<TripFilter> tripFilter) {
+        switch (dmcConfig.getModelType()) {
+        case Tour:
+        case EfficientTour:
+            return FilteredTripFinder.forTours(tourFinder.get(), tourFilter.get());
+        case Trip:
+            return FilteredTripFinder.forTrips(tripFilter.get());
+        default:
+            throw new IllegalStateException("Unknown discrete mode choice model type " + dmcConfig.getModelType());
+        }
     }
 
     @Provides

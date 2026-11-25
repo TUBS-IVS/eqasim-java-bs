@@ -131,7 +131,7 @@ public class StandaloneModeChoiceWorkerFailureTest {
 		String output = new File(temporaryFolder.getRoot(), "output_" + threads).getAbsolutePath();
 		OutputDirectoryHierarchy hierarchy = new OutputDirectoryHierarchy(output, null,
 				OverwriteFileSetting.deleteDirectoryIfExists, CompressionType.gzip);
-		new StandaloneModeChoicePerformer(model, configGroup, scenario.getPopulation(), threads, 1L,
+		new StandaloneModeChoicePerformer(model, () -> (person, trips) -> List.of(), configGroup, scenario.getPopulation(), threads, 1L,
 				hierarchy, scenario).run();
 	}
 

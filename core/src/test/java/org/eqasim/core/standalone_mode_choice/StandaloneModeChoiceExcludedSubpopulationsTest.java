@@ -103,7 +103,7 @@ public class StandaloneModeChoiceExcludedSubpopulationsTest {
 		String output = new File(temporaryFolder.getRoot(), "output_" + threads).getAbsolutePath();
 		OutputDirectoryHierarchy hierarchy = new OutputDirectoryHierarchy(output, null,
 				OverwriteFileSetting.deleteDirectoryIfExists, CompressionType.gzip);
-		new StandaloneModeChoicePerformer(ConstantModeModel::new, configGroup, scenario.getPopulation(), threads, 1L,
+		new StandaloneModeChoicePerformer(ConstantModeModel::new, () -> (person, trips) -> List.of(), configGroup, scenario.getPopulation(), threads, 1L,
 				hierarchy, scenario).run();
 	}
 
