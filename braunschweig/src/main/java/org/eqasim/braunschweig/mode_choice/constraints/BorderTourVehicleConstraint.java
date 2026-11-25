@@ -39,9 +39,11 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourConstraintF
  *
  * <p>
  * ASSUMPTION (spec section 5.2): keeping vehicle legs fixed gives up only tours that could drop the vehicle
- * altogether (park-and-ride-like tours); a tour that leaves the area by car keeps its car legs anyway. The initial
- * mode chain is always valid in a border tour, also when the chain itself is inconsistent, because the mode choice
- * drops a person whose initial chain is rejected (fallback behaviour EXCEPTION).
+ * altogether (park-and-ride-like tours); a tour that leaves the area by car keeps its car legs anyway. When every
+ * vehicle leg's mode is available to the person, the initial mode chain is always valid in a border tour, also when
+ * the chain itself is inconsistent, because the mode choice drops a person whose initial chain is rejected (fallback
+ * behaviour EXCEPTION). Persons with relaxed legs (see below) are the exception; the chain generator never offers
+ * their initial chain anyway.
  *
  * <p>
  * Vehicle legs without availability: the mode choice only builds chains from the person's available modes, and
@@ -201,7 +203,10 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 		}
 
 		private void record(Person person, int vehicleTrips, int relaxedTrips) {
-			long totalVehicle = borderTourVehicleTrips.addAndGet(vehicleTrips);
+			// Every thread adds its vehicle legs before its relaxed legs (relaxed <= vehicle per call). Reading the
+			// vehicle total after the relaxed update therefore covers every relaxed leg counted so far, so the summary
+			// never shows more relaxed than vehicle legs under concurrent replanning.
+			borderTourVehicleTrips.addAndGet(vehicleTrips);
 
 			if (relaxedTrips == 0) {
 				return;
@@ -209,6 +214,7 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 
 			long previousRelaxed = relaxedVehicleTrips.getAndAdd(relaxedTrips);
 			long totalRelaxed = previousRelaxed + relaxedTrips;
+			long totalVehicle = borderTourVehicleTrips.get();
 
 			if (warnedPersons.getAndIncrement() < MAXIMUM_PERSON_WARNINGS) {
 				logger.warn(String.format(Locale.ROOT,
@@ -220,7 +226,8 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 			// Summary whenever the relaxed count reaches (or passes) a power of two.
 			if (Long.highestOneBit(totalRelaxed) > previousRelaxed) {
 				logger.warn(String.format(Locale.ROOT,
-						"border-tour vehicle legs relaxed for missing availability: %d of %d (%.2f %%)", totalRelaxed, totalVehicle, 100.0 * totalRelaxed / Math.max(1, totalVehicle)));
+						"border-tour vehicle legs relaxed for missing availability: %d of %d (%.2f %%)", totalRelaxed,
+						totalVehicle, 100.0 * totalRelaxed / totalVehicle));
 			}
 		}
 
