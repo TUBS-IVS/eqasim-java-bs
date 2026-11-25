@@ -27,7 +27,8 @@ import org.matsim.utils.objectattributes.attributable.AttributesImpl;
  * Pins which trips the shipped tour finder {@code IsolatedOutsideTrips}
  * ({@link ActivityTourFinderWithExcludedActivities} on {@link ActivityTourFinder} with {@code [home, outside]})
  * together with the shipped {@link OutsideFilter} opens to the mode choice (eqasim-bs#678, spec section 7, cases 2 to
- * 5), and how the shipped {@link TourLengthFilter} counts the isolated runs. The Python mirror of this classification follows these sets; the core classes are used unchanged.
+ * 5), and how the shipped {@link TourLengthFilter} counts the isolated runs. The Python mirror of this
+ * classification follows these sets; the core classes are used unchanged.
  */
 public class IsolatedOutsideTripsContractTest {
 	private static final List<String> TOUR_ACTIVITY_TYPES = List.of("home", "outside");
