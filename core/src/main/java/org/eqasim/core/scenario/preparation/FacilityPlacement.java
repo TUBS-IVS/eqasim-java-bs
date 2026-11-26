@@ -3,6 +3,7 @@ package org.eqasim.core.scenario.preparation;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
@@ -70,11 +71,15 @@ public class FacilityPlacement {
 
 		List<Thread> threads = new LinkedList<>();
 
+		// As in PopulationRouter: a worker catches its exception and records it, the stage fails after the join
+		// instead of carrying on with the facilities of the failed worker left without a link (eqasim-bs#678).
+		AtomicReference<Throwable> workerError = new AtomicReference<>();
+
 		ParallelProgress progress = new ParallelProgress("Assigning links to facilities ...",
 				facilities.getFacilities().size());
 
 		for (int i = 0; i < numberOfThreads; i++) {
-			Thread thread = new Thread(new Worker(facilityIterator, progress));
+			Thread thread = new Thread(new Worker(facilityIterator, progress, workerError));
 			threads.add(thread);
 		}
 
@@ -86,6 +91,10 @@ public class FacilityPlacement {
 		}
 
 		progress.close();
+
+		if (workerError.get() != null) {
+			throw new RuntimeException("Found errors in facility placement threads", workerError.get());
+		}
 
 		logger.info(String.format("Facility placement: %d of %d facilities kept their preset link, %d were placed"
 				+ " on the closest eligible link", numberOfPresetLinks, facilities.getFacilities().size(),
@@ -103,14 +112,28 @@ public class FacilityPlacement {
 	private class Worker implements Runnable {
 		private final Iterator<? extends ActivityFacility> iterator;
 		private final ParallelProgress progress;
+		private final AtomicReference<Throwable> workerError;
 
-		Worker(Iterator<? extends ActivityFacility> iterator, ParallelProgress progress) {
+		Worker(Iterator<? extends ActivityFacility> iterator, ParallelProgress progress,
+				AtomicReference<Throwable> workerError) {
 			this.iterator = iterator;
 			this.progress = progress;
+			this.workerError = workerError;
 		}
 
 		@Override
 		public void run() {
+			try {
+				placeFacilities();
+			} catch (Throwable e) {
+				// Throwable, not Exception: an Error (OutOfMemoryError, StackOverflowError, AssertionError) must fail the
+				// stage too instead of ending only this worker
+				logger.error("Facility placement worker failed", e);
+				workerError.compareAndSet(null, e);
+			}
+		}
+
+		private void placeFacilities() {
 			List<ActivityFacility> localTasks = new LinkedList<>();
 
 			do {

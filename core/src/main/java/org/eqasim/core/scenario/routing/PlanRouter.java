@@ -72,35 +72,54 @@ public class PlanRouter {
 								"Found undefined activity end time for agent " + plan.getPerson().getId().toString());
 					}
 
-					Facility fromFacility = FacilitiesUtils.toFacility(trip.getOriginActivity(), facilities);
-					Facility toFacility = FacilitiesUtils.toFacility(trip.getDestinationActivity(), facilities);
-
-					// The scenario cutter's collapse marker (eqasim-bs#574) lives on the trip's legs, which the
-					// routing replaces
-					Object collapseCase = trip.getLegsOnly().get(0).getAttributes()
-							.getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE);
-
-					List<? extends PlanElement> newElements = tripRouter.calcRoute(mainMode, fromFacility, toFacility,
-							departureTime.seconds(), plan.getPerson(), trip.getTripAttributes());
-
-					routedTripCounts.merge(mainMode, 1, Integer::sum);
-
-					// Fix in case we have a transit trip that is only walk
-					newElements = fixOnlyWalk(mainMode, fromFacility, toFacility, departureTime.seconds(),
-							plan.getPerson(), newElements, trip.getTripAttributes());
-
-					keepWalkFallbackStamp(trip.getLegsOnly(), newElements);
-
-					if (collapseCase != null) {
-						for (Leg leg : TripStructureUtils.getLegs(newElements)) {
-							leg.getAttributes().putAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE, collapseCase);
-						}
-					}
-
+					List<? extends PlanElement> newElements = routeTrip(plan.getPerson(), trip.getOriginActivity(),
+							trip.getDestinationActivity(), departureTime.seconds(), trip.getTripElements(),
+							trip.getTripAttributes());
 					TripRouter.insertTrip(plan, trip.getOriginActivity(), newElements, trip.getDestinationActivity());
 				}
 			}
 		}
+	}
+
+	/**
+	 * Routes one trip with its main mode as eqasim does, without inserting it: a transit trip that comes back as walk
+	 * only is replaced by a plain walk stamped with {@link #WALK_FALLBACK_ATTRIBUTE}, a stamp of the previous elements
+	 * is kept while the trip is still walk-only (eqasim-bs#487), and the scenario cutter's collapse marker is carried
+	 * over (eqasim-bs#574). Used by {@link #run} (departing at the end time of the origin activity) and by the MATSim
+	 * loop's mode choice for the trips it does not re-choose (departing at the time the mode choice model estimated,
+	 * eqasim-bs#678).
+	 *
+	 * @param previousElements the trip's current elements (legs and stage activities)
+	 */
+	public List<? extends PlanElement> routeTrip(Person person, Activity originActivity, Activity destinationActivity,
+			double departureTime, List<? extends PlanElement> previousElements, Attributes tripAttributes) {
+		String mainMode = TripStructureUtils.identifyMainMode(previousElements);
+		List<Leg> previousLegs = TripStructureUtils.getLegs(previousElements);
+
+		Facility fromFacility = FacilitiesUtils.toFacility(originActivity, facilities);
+		Facility toFacility = FacilitiesUtils.toFacility(destinationActivity, facilities);
+
+		// The scenario cutter's collapse marker (eqasim-bs#574) lives on the trip's legs, which the routing replaces
+		Object collapseCase = previousLegs.get(0).getAttributes().getAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE);
+
+		List<? extends PlanElement> newElements = tripRouter.calcRoute(mainMode, fromFacility, toFacility,
+				departureTime, person, tripAttributes);
+
+		routedTripCounts.merge(mainMode, 1, Integer::sum);
+
+		// Fix in case we have a transit trip that is only walk
+		newElements = fixOnlyWalk(mainMode, fromFacility, toFacility, departureTime, person, newElements,
+				tripAttributes);
+
+		keepWalkFallbackStamp(previousLegs, newElements);
+
+		if (collapseCase != null) {
+			for (Leg leg : TripStructureUtils.getLegs(newElements)) {
+				leg.getAttributes().putAttribute(Constants.CUT_TRANSIT_COLLAPSE_ATTRIBUTE, collapseCase);
+			}
+		}
+
+		return newElements;
 	}
 
 	/**

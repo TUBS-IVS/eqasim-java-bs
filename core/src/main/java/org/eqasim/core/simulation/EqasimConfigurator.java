@@ -21,6 +21,7 @@ import org.eqasim.core.components.transit.EqasimTransitModule;
 import org.eqasim.core.components.transit.EqasimTransitQSimModule;
 import org.eqasim.core.simulation.analysis.EqasimAnalysisModule;
 import org.eqasim.core.simulation.mode_choice.EqasimModeChoiceModule;
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripsModule;
 import org.eqasim.core.simulation.mode_choice.constraints.leg_time.LegTimeConstraintConfigGroup;
 import org.eqasim.core.simulation.mode_choice.constraints.leg_time.LegTimeConstraintModule;
 import org.eqasim.core.simulation.mode_choice.epsilon.EpsilonModule;
@@ -87,6 +88,8 @@ public abstract class EqasimConfigurator {
 		registerModule(new EpsilonModule());
 		registerModule(new EqasimRaptorModule());
 		registerModule(new EqasimModeChoiceModule());
+		// after the DMC module: wraps its model so trips it does not re-choose stay unchanged (eqasim-bs#678)
+		registerModule(new FilteredTripsModule());
 		registerModule(new EqasimTrafficModule());
 		registerModule(new EqasimAnalysisModule());
 
