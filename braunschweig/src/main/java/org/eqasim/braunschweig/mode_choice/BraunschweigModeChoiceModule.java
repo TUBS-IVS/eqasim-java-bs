@@ -205,7 +205,8 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	 * constraint is selected among the tour constraints, the activity tour finder must work on exactly the activity
 	 * types {@code home} and {@code outside}: the constraint cuts border tours at those fixed types and would
 	 * otherwise judge different tours than the tour finder builds. Configs that do not select the constraint are not
-	 * checked.
+	 * checked. When {@link #SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME} is a selected trip constraint, the border rule
+	 * leaves the trips it catches to that rule (eqasim-bs#679, see {@link BorderTourVehicleConstraint}).
 	 */
 	@Provides
 	@Singleton
@@ -221,7 +222,10 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 			}
 		}
 
+		boolean sameFacilityLeisureExemption = dmcConfig.getTripConstraints()
+				.contains(SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME);
+
 		return new BorderTourVehicleConstraint.Factory(dmcConfig.getVehicleTourConstraintConfig().getRestrictedModes(),
-				homeFinder);
+				homeFinder, sameFacilityLeisureExemption);
 	}
 }

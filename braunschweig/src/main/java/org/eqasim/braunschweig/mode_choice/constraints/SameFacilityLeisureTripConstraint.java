@@ -1,5 +1,6 @@
 package org.eqasim.braunschweig.mode_choice.constraints;
 
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -29,10 +30,11 @@ import org.matsim.facilities.ActivityFacility;
  *
  * <p>
  * Rule: a trip whose origin and destination activity carry the same non-null facility id, and where at least one of
- * the two activities has the type {@code leisure}, may only use one of {@link #ALLOWED_MODES} ({@code walk} or
- * {@code bicycle}). Every other trip is left to the other constraints. The rule needs no marker in the population.
- * It also rejects the initial (diary) mode of a caught trip when that mode is not allowed; {@code walk} is always
- * available ({@code BraunschweigModeAvailability}), so a caught trip always keeps a valid mode.
+ * the two activities has the type {@link #LEISURE_ACTIVITY_TYPE}, may only use one of {@link #ALLOWED_MODES}. Every
+ * other trip is left to the other constraints. The rule needs no marker in the population. It also rejects the initial
+ * (diary) mode of a caught trip when that mode is not allowed. {@code BraunschweigModeAvailability} offers
+ * {@code walk} to every person except the subpopulation {@code freight} (only {@code truck}, and no leisure
+ * activities), so a caught trip of a person the rule can meet always keeps a valid mode.
  *
  * <p>
  * ASSUMPTION (owner's decision of 2026-11-26 for eqasim-bs#679): a leisure trip that starts and ends at one facility
@@ -44,19 +46,38 @@ import org.matsim.facilities.ActivityFacility;
  * {@code true}.
  *
  * <p>
+ * Interplay with {@link BorderTourVehicleConstraint}: that rule pins every vehicle leg of a border tour to its initial
+ * mode, so a caught trip with initial mode {@code car} in a border tour would have no valid candidate once both rules
+ * are selected. When this constraint is selected among the trip constraints, the border rule therefore leaves every
+ * trip that {@link #appliesTo} catches to this rule (see there).
+ *
+ * <p>
  * Inert unless a config selects {@link BraunschweigModeChoiceModule#SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME} among
  * the trip constraints of the discrete mode choice; the tour-based model applies it through the stock
  * {@code FromTripBased} tour constraint.
  */
 public class SameFacilityLeisureTripConstraint extends AbstractTripConstraint {
-	static final String LEISURE_ACTIVITY_TYPE = "leisure";
+	/**
+	 * ASSUMPTION (the rule's definition, eqasim-bs ADR-0207, not a configuration value): the activity type that marks a
+	 * leisure end. Fixed together with {@link #ALLOWED_MODES} because both define which trips the rule covers and what
+	 * it permits; another type or mode set is another rule.
+	 */
+	public static final String LEISURE_ACTIVITY_TYPE = "leisure";
 
-	/** The only modes a caught trip may use: the fork's names for walking and cycling. */
+	/**
+	 * ASSUMPTION (the rule's definition, eqasim-bs ADR-0207, not a configuration value): the only modes a caught trip
+	 * may use, the fork's names for walking and cycling. Fixed together with {@link #LEISURE_ACTIVITY_TYPE}.
+	 */
 	public static final Set<String> ALLOWED_MODES = Set.of(TransportMode.walk, BraunschweigModeChoiceModule.BICYCLE);
 
+	private final AtomicLong reachedTrips;
 	private final AtomicLong rejectedCandidates;
 
-	SameFacilityLeisureTripConstraint(AtomicLong rejectedCandidates) {
+	/** Plan positions ({@link DiscreteModeChoiceTrip#getIndex()}) of the caught trips already counted as evaluated. */
+	private final BitSet reached = new BitSet();
+
+	SameFacilityLeisureTripConstraint(AtomicLong reachedTrips, AtomicLong rejectedCandidates) {
+		this.reachedTrips = reachedTrips;
 		this.rejectedCandidates = rejectedCandidates;
 	}
 
@@ -78,7 +99,17 @@ public class SameFacilityLeisureTripConstraint extends AbstractTripConstraint {
 
 	@Override
 	public boolean validateBeforeEstimation(DiscreteModeChoiceTrip trip, String mode, List<String> previousModes) {
-		if (!appliesTo(trip) || ALLOWED_MODES.contains(mode)) {
+		if (!appliesTo(trip)) {
+			return true;
+		}
+
+		// The contrib's models create one constraint per chooseModes call (one plan, one thread): no lock needed.
+		if (!reached.get(trip.getIndex())) {
+			reached.set(trip.getIndex());
+			reachedTrips.incrementAndGet();
+		}
+
+		if (ALLOWED_MODES.contains(mode)) {
 			return true;
 		}
 
@@ -87,82 +118,100 @@ public class SameFacilityLeisureTripConstraint extends AbstractTripConstraint {
 	}
 
 	/**
-	 * Creates the constraint per replanned plan and counts the trips of the plan and those the rule applies to. Bound
-	 * as a singleton so the counters are shared by all mode choice threads and the
-	 * {@link SameFacilityLeisureTripSummaryListener}; the counters are thread-safe and count per constraint creation
-	 * (one per replanned plan), not per distinct person or trip.
+	 * Creates the constraint per replanned plan. Bound as a singleton so the counters are shared by all mode choice
+	 * threads and the {@link SameFacilityLeisureTripSummaryListener}; they are thread-safe and count per constraint
+	 * creation (one per replanned plan), not per distinct person or trip.
 	 *
 	 * <p>
-	 * Rejected candidates count every rejection decision: the tour-based model checks a trip once per candidate mode
-	 * chain, so this number grows with the chains evaluated, not with the trips.
+	 * Counters:
+	 * <ul>
+	 * <li>plan trips: all trips of the plans the factory created a constraint for;</li>
+	 * <li>caught: of those, the trips the rule applies to;</li>
+	 * <li>evaluated: of those, the trips the mode choice asked this rule about at least once. A caught trip in a tour
+	 * the mode choice does not re-choose (dropped by a tour filter, for example the outside or the tour length filter)
+	 * is never asked about and keeps its initial mode, motorised or not: caught minus evaluated is the share the rule
+	 * did not reach (the fallback rate of this rule);</li>
+	 * <li>rejected: the candidate modes this rule rejected first. The composite constraints stop at the first rejecting
+	 * constraint, so the count depends on the order of the selected constraints ({@code RunAdaptConfig} rebuilds the
+	 * trip constraint list from a {@code HashSet}) and includes candidates that a constraint asked later would reject
+	 * too; the tour-based model asks once per candidate mode chain, so it grows with the chains, not with the
+	 * trips.</li>
+	 * </ul>
 	 *
 	 * <p>
-	 * Logging: a running line whenever the applied-trip count reaches (or passes) a power of two (the only output of
-	 * the standalone mode choice, which fires no controller events) and a final line at the end of a MATSim run
+	 * Logging: a running line whenever the number of created constraints reaches a power of two, with the totals of
+	 * the plans created before (the only output of the standalone mode choice, which fires no controller events; plans
+	 * other threads are still choosing may show as not yet evaluated), and a final line at the end of a MATSim run
 	 * ({@link #logSummary()}).
 	 */
 	public static class Factory implements TripConstraintFactory {
 		private static final Logger logger = LogManager.getLogger(SameFacilityLeisureTripConstraint.class);
 
+		private final AtomicLong plans = new AtomicLong();
 		private final AtomicLong trips = new AtomicLong();
-		private final AtomicLong appliedTrips = new AtomicLong();
+		private final AtomicLong caughtTrips = new AtomicLong();
+		private final AtomicLong reachedTrips = new AtomicLong();
 		private final AtomicLong rejectedCandidates = new AtomicLong();
 
 		@Override
 		public TripConstraint createConstraint(Person person, List<DiscreteModeChoiceTrip> planTrips,
 				Collection<String> availableModes) {
-			int applied = 0;
+			long previousPlans = plans.getAndIncrement();
+
+			// Running summary of the plans created before this one, after 1, 2, 4, ... earlier plans.
+			if (previousPlans > 0 && Long.bitCount(previousPlans) == 1) {
+				logger.info(currentSummaryLine());
+			}
+
+			int caught = 0;
 
 			for (DiscreteModeChoiceTrip trip : planTrips) {
 				if (appliesTo(trip)) {
-					applied++;
+					caught++;
 				}
 			}
 
-			record(planTrips.size(), applied);
-			return new SameFacilityLeisureTripConstraint(rejectedCandidates);
-		}
-
-		private void record(int planTrips, int applied) {
-			// Every thread adds its trips before its applied trips (applied <= trips per call). Reading the trip total
-			// after the applied update therefore covers every applied trip counted so far.
-			trips.addAndGet(planTrips);
-
-			if (applied == 0) {
-				return;
-			}
-
-			long previousApplied = appliedTrips.getAndAdd(applied);
-			long totalApplied = previousApplied + applied;
-
-			// Running summary whenever the applied count reaches (or passes) a power of two.
-			if (Long.highestOneBit(totalApplied) > previousApplied) {
-				logger.info(summaryLine(totalApplied, trips.get(), rejectedCandidates.get()));
-			}
+			// Plan trips before caught trips: a reader taking caught first and plan trips last sees caught <= trips.
+			trips.addAndGet(planTrips.size());
+			caughtTrips.addAndGet(caught);
+			return new SameFacilityLeisureTripConstraint(reachedTrips, rejectedCandidates);
 		}
 
 		/**
-		 * Logs the totals so far as the final summary line (also when the rule applied to no trip). Logs nothing when
-		 * the factory created no constraint, for example when the constraint is not selected. Called at the end of a
-		 * MATSim run by {@link SameFacilityLeisureTripSummaryListener}.
+		 * Logs the totals so far as the final summary line (also when the rule caught no trip). Logs nothing when the
+		 * factory created no constraint, for example when the constraint is not selected. Called at the end of a MATSim
+		 * run by {@link SameFacilityLeisureTripSummaryListener}.
 		 */
 		public void logSummary() {
-			// Applied first, trips last: the trip total then covers every applied trip read (see record).
-			long totalApplied = appliedTrips.get();
-			long totalTrips = trips.get();
-
-			if (totalTrips == 0) {
+			if (plans.get() == 0) {
 				return;
 			}
 
-			logger.info(summaryLine(totalApplied, totalTrips, rejectedCandidates.get()));
+			logger.info(currentSummaryLine());
 		}
 
-		static String summaryLine(long applied, long trips, long rejected) {
+		private String currentSummaryLine() {
+			// Evaluated first, caught next, plan trips last: each count read covers the ones read before it (a trip is
+			// evaluated only after its plan's caught trips were added).
+			long evaluated = reachedTrips.get();
+			long rejected = rejectedCandidates.get();
+			long caught = caughtTrips.get();
+			long planTrips = trips.get();
+			return summaryLine(caught, planTrips, evaluated, rejected);
+		}
+
+		static String summaryLine(long caught, long planTrips, long evaluated, long rejected) {
+			long notEvaluated = caught - evaluated;
 			return String.format(Locale.ROOT,
-					"same-facility leisure trips kept on foot or by bicycle: %d of %d trips (%.2f %%), "
-							+ "%d candidate modes rejected",
-					applied, trips, 100.0 * applied / trips, rejected);
+					"same-facility leisure trips: caught %d of %d plan trips; the mode choice evaluated %d of them "
+							+ "(%.2f %%), %d (%.2f %%) lie in tours it does not re-choose and keep their mode; "
+							+ "%d candidate modes this rule rejected first",
+					caught, planTrips, evaluated, share(evaluated, caught), notEvaluated, share(notEvaluated, caught),
+					rejected);
+		}
+
+		private static double share(long part, long whole) {
+			return whole == 0 ? 0.0 : 100.0 * part / whole;
 		}
 
 		/** Trips of all plans the factory created a constraint for. */
@@ -171,11 +220,16 @@ public class SameFacilityLeisureTripConstraint extends AbstractTripConstraint {
 		}
 
 		/** Of those, the trips the rule applies to. */
-		public long getAppliedTrips() {
-			return appliedTrips.get();
+		public long getCaughtTrips() {
+			return caughtTrips.get();
 		}
 
-		/** Candidate modes the rule rejected, over all created constraints. */
+		/** Of those, the trips the mode choice asked this rule about at least once (per created constraint). */
+		public long getReachedTrips() {
+			return reachedTrips.get();
+		}
+
+		/** Candidate modes this rule rejected first (order-dependent, see the Javadoc of the factory). */
 		public long getRejectedCandidates() {
 			return rejectedCandidates.get();
 		}

@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import org.apache.logging.log4j.Level;
@@ -33,7 +34,7 @@ import org.matsim.utils.objectattributes.attributable.AttributesImpl;
  * to the other constraints.
  */
 public class SameFacilityLeisureTripConstraintTest {
-	private static final String PREFIX = "same-facility leisure trips kept on foot or by bicycle: ";
+	private static final String PREFIX = "same-facility leisure trips: ";
 	private static final List<String> ALL_MODES = List.of(TransportMode.car, BraunschweigModeChoiceModule.CAR_PASSENGER,
 			TransportMode.pt, TransportMode.walk, BraunschweigModeChoiceModule.BICYCLE);
 
@@ -101,7 +102,7 @@ public class SameFacilityLeisureTripConstraintTest {
 	}
 
 	@Test
-	public void factory_countsAppliedTripsAndRejectedCandidates() {
+	public void factory_countsCaughtEvaluatedTripsAndRejectedCandidates() {
 		DiscreteModeChoiceTrip loop = trip("home", "F", "leisure", "F", TransportMode.car, 0);
 		DiscreteModeChoiceTrip wayHome = trip("leisure", "F", "home", "F", TransportMode.car, 1);
 		DiscreteModeChoiceTrip other = trip("home", "F", "work", "W", TransportMode.car, 2);
@@ -109,45 +110,72 @@ public class SameFacilityLeisureTripConstraintTest {
 		TripConstraint constraint = factory.createConstraint(person(), List.of(loop, wayHome, other), ALL_MODES);
 
 		assertEquals(3, factory.getTrips());
-		assertEquals(2, factory.getAppliedTrips());
+		assertEquals(2, factory.getCaughtTrips());
+		assertEquals(0, factory.getReachedTrips());
 		assertEquals(0, factory.getRejectedCandidates());
 
-		for (String mode : ALL_MODES) {
-			constraint.validateBeforeEstimation(loop, mode, List.of());
-			constraint.validateBeforeEstimation(other, mode, List.of());
+		// The mode choice asks about the loop leg (every mode, twice) and the other trip, never about the way home.
+		for (int round = 0; round < 2; round++) {
+			for (String mode : ALL_MODES) {
+				constraint.validateBeforeEstimation(loop, mode, List.of());
+				constraint.validateBeforeEstimation(other, mode, List.of());
+			}
 		}
 
-		// car, car_passenger and pt on the loop leg; nothing on the other trip.
-		assertEquals(3, factory.getRejectedCandidates());
+		// The loop leg counts once as evaluated; the way home is caught but not evaluated.
+		assertEquals(2, factory.getCaughtTrips());
+		assertEquals(1, factory.getReachedTrips());
+		// car, car_passenger and pt on the loop leg, twice; nothing on the other trip.
+		assertEquals(6, factory.getRejectedCandidates());
+		assertEquals(List.of(PREFIX + "caught 2 of 3 plan trips; the mode choice evaluated 1 of them (50.00 %), "
+				+ "1 (50.00 %) lie in tours it does not re-choose and keep their mode; "
+				+ "6 candidate modes this rule rejected first"), collectLog(factory::logSummary));
 	}
 
 	@Test
-	public void runningSummary_logsAtPowersOfTwoOfTheAppliedTrips() {
+	public void factory_countsTheSameTripAgainForEveryCreatedConstraint() {
+		DiscreteModeChoiceTrip loop = trip("home", "F", "leisure", "F", TransportMode.car, 0);
 		SameFacilityLeisureTripConstraint.Factory factory = new SameFacilityLeisureTripConstraint.Factory();
+
+		for (int replanning = 0; replanning < 2; replanning++) {
+			factory.createConstraint(person(), List.of(loop), ALL_MODES)
+					.validateBeforeEstimation(loop, TransportMode.walk, List.of());
+		}
+
+		assertEquals(2, factory.getCaughtTrips());
+		assertEquals(2, factory.getReachedTrips());
+	}
+
+	@Test
+	public void runningSummary_logsThePreviousTotalsAtPowersOfTwoOfTheCreatedConstraints() {
+		SameFacilityLeisureTripConstraint.Factory factory = new SameFacilityLeisureTripConstraint.Factory();
+		DiscreteModeChoiceTrip loop = trip("home", "F", "leisure", "F", TransportMode.car);
 
 		List<String> messages = collectLog(() -> {
 			for (int index = 0; index < 5; index++) {
-				factory.createConstraint(person(), List.of(trip("home", "F", "leisure", "F", TransportMode.car)),
-						ALL_MODES);
+				factory.createConstraint(person(), List.of(loop), ALL_MODES)
+						.validateBeforeEstimation(loop, TransportMode.car, List.of());
 			}
 		});
 
-		// Lines at 1, 2 and 4 applied trips.
-		assertEquals(List.of(
-				PREFIX + "1 of 1 trips (100.00 %), 0 candidate modes rejected",
-				PREFIX + "2 of 2 trips (100.00 %), 0 candidate modes rejected",
-				PREFIX + "4 of 4 trips (100.00 %), 0 candidate modes rejected"),
-				messages);
+		// Lines when the 2nd, 3rd and 5th constraint is created: totals of the 1, 2 and 4 plans before.
+		assertEquals(List.of(line(1), line(2), line(4)), messages);
+	}
+
+	private static String line(int plans) {
+		return String.format(Locale.ROOT, PREFIX + "caught %d of %d plan trips; the mode choice evaluated %d of them "
+				+ "(100.00 %%), 0 (0.00 %%) lie in tours it does not re-choose and keep their mode; "
+				+ "%d candidate modes this rule rejected first", plans, plans, plans, plans);
 	}
 
 	@Test
-	public void finalSummary_logsTheRateAlsoWithoutAppliedTrips() {
+	public void finalSummary_logsTheRateAlsoWithoutCaughtTrips() {
 		SameFacilityLeisureTripConstraint.Factory factory = new SameFacilityLeisureTripConstraint.Factory();
 		factory.createConstraint(person(), List.of(trip("home", "F", "work", "W", TransportMode.car)), ALL_MODES);
 
-		assertEquals(List.of(
-				PREFIX + "0 of 1 trips (0.00 %), 0 candidate modes rejected"),
-				collectLog(factory::logSummary));
+		assertEquals(List.of(PREFIX + "caught 0 of 1 plan trips; the mode choice evaluated 0 of them (0.00 %), "
+				+ "0 (0.00 %) lie in tours it does not re-choose and keep their mode; "
+				+ "0 candidate modes this rule rejected first"), collectLog(factory::logSummary));
 	}
 
 	@Test

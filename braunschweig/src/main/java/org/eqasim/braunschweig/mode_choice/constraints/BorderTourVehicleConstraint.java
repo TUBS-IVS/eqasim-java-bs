@@ -56,6 +56,17 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourConstraintF
  * <p>
  * "Initial mode" is {@link DiscreteModeChoiceTrip#getInitialMode()}, the mode of the trip in the plan being
  * replanned.
+ *
+ * <p>
+ * Interplay with {@link SameFacilityLeisureTripConstraint} (eqasim-bs#679): that trip rule allows only walk or bicycle
+ * on a same-facility leisure trip, also when its initial mode is a vehicle mode. Pinning such a trip to its initial
+ * {@code car} here would leave the border tour without a valid candidate. When the factory is built with the
+ * exemption on (the module does this exactly when the trip rule is selected among the trip constraints), every trip
+ * that {@link SameFacilityLeisureTripConstraint#appliesTo} catches is left out of the border rule: it is neither a
+ * vehicle leg that keeps its mode nor a trip on which a new vehicle leg is refused, and it is not counted among the
+ * vehicle legs. A trip without displacement does not move a vehicle, so the continuity of the other legs is unchanged.
+ * Without the exemption the rule behaves as described above. Tours outside border tours are unaffected either way:
+ * the stock constraint decides there.
  */
 public class BorderTourVehicleConstraint implements TourConstraint {
 	static final String HOME_ACTIVITY_TYPE = "home";
@@ -64,13 +75,20 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 	private final Collection<String> restrictedModes;
 	private final boolean[] borderTourFlags;
 	private final boolean[] fixedVehicleLegs;
+	private final boolean[] exemptTrips;
 	private final TourConstraint delegate;
 
 	BorderTourVehicleConstraint(Collection<String> restrictedModes, boolean[] borderTourFlags,
 			boolean[] fixedVehicleLegs, TourConstraint delegate) {
+		this(restrictedModes, borderTourFlags, fixedVehicleLegs, new boolean[borderTourFlags.length], delegate);
+	}
+
+	BorderTourVehicleConstraint(Collection<String> restrictedModes, boolean[] borderTourFlags,
+			boolean[] fixedVehicleLegs, boolean[] exemptTrips, TourConstraint delegate) {
 		this.restrictedModes = restrictedModes;
 		this.borderTourFlags = borderTourFlags;
 		this.fixedVehicleLegs = fixedVehicleLegs;
+		this.exemptTrips = exemptTrips;
 		this.delegate = delegate;
 	}
 
@@ -120,6 +138,10 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 			DiscreteModeChoiceTrip trip = tour.get(index);
 			String mode = modes.get(index);
 
+			if (exemptTrips[trip.getIndex()]) {
+				continue; // a same-facility leisure trip, left to SameFacilityLeisureTripConstraint
+			}
+
 			if (fixedVehicleLegs[trip.getIndex()]) {
 				if (!mode.equals(trip.getInitialMode())) {
 					return false; // a vehicle leg changed its mode
@@ -155,7 +177,9 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 	/**
 	 * Builds the constraint per plan: the border tour flags and the fixed vehicle legs from all trips of the plan and
 	 * the stock {@link VehicleTourConstraint} at the home location as the delegate. Bound as a singleton; the counters
-	 * are thread-safe and count per constraint creation (one per replanned plan), not per distinct person.
+	 * are thread-safe and count per constraint creation (one per replanned plan), not per distinct person. With the
+	 * same-facility leisure exemption on, the trips {@link SameFacilityLeisureTripConstraint#appliesTo} catches are
+	 * left out of the border rule and of the counters (see the class Javadoc).
 	 */
 	public static class Factory implements TourConstraintFactory {
 		private static final Logger logger = LogManager.getLogger(BorderTourVehicleConstraint.class);
@@ -163,14 +187,26 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 
 		private final Collection<String> restrictedModes;
 		private final HomeFinder homeFinder;
+		private final boolean sameFacilityLeisureExemption;
 
 		private final AtomicLong borderTourVehicleTrips = new AtomicLong();
 		private final AtomicLong relaxedVehicleTrips = new AtomicLong();
 		private final AtomicInteger warnedPersons = new AtomicInteger();
 
+		/** The border rule alone, without the same-facility leisure exemption. */
 		public Factory(Collection<String> restrictedModes, HomeFinder homeFinder) {
+			this(restrictedModes, homeFinder, false);
+		}
+
+		/**
+		 * @param sameFacilityLeisureExemption leave the trips {@link SameFacilityLeisureTripConstraint#appliesTo}
+		 *                                     catches to that rule; on exactly when it is a selected trip constraint
+		 */
+		public Factory(Collection<String> restrictedModes, HomeFinder homeFinder,
+				boolean sameFacilityLeisureExemption) {
 			this.restrictedModes = restrictedModes;
 			this.homeFinder = homeFinder;
+			this.sameFacilityLeisureExemption = sameFacilityLeisureExemption;
 		}
 
 		@Override
@@ -178,14 +214,17 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 				Collection<String> availableModes) {
 			boolean[] borderTourFlags = borderTourFlags(planTrips);
 			boolean[] fixedVehicleLegs = new boolean[planTrips.size()];
+			boolean[] exemptTrips = new boolean[planTrips.size()];
 
 			int vehicleTrips = 0;
 			int relaxedTrips = 0;
 
 			for (int index = 0; index < planTrips.size(); index++) {
 				String initialMode = planTrips.get(index).getInitialMode();
+				exemptTrips[index] = sameFacilityLeisureExemption
+						&& SameFacilityLeisureTripConstraint.appliesTo(planTrips.get(index));
 
-				if (borderTourFlags[index] && restrictedModes.contains(initialMode)) {
+				if (borderTourFlags[index] && !exemptTrips[index] && restrictedModes.contains(initialMode)) {
 					vehicleTrips++;
 
 					if (availableModes.contains(initialMode)) {
@@ -198,7 +237,7 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 
 			record(person, vehicleTrips, relaxedTrips);
 
-			return new BorderTourVehicleConstraint(restrictedModes, borderTourFlags, fixedVehicleLegs,
+			return new BorderTourVehicleConstraint(restrictedModes, borderTourFlags, fixedVehicleLegs, exemptTrips,
 					new VehicleTourConstraint(restrictedModes, homeFinder.getHomeLocationId(planTrips)));
 		}
 
@@ -256,6 +295,11 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 			return String.format(Locale.ROOT,
 					"border-tour vehicle legs relaxed for missing availability: %d of %d (%.2f %%)", relaxed, vehicle,
 					100.0 * relaxed / vehicle);
+		}
+
+		/** Whether the trips caught by {@link SameFacilityLeisureTripConstraint} are left out of the border rule. */
+		public boolean isSameFacilityLeisureExemption() {
+			return sameFacilityLeisureExemption;
 		}
 
 		/** Vehicle legs (initial mode restricted) in border tours seen so far, over all created constraints. */
