@@ -1,6 +1,7 @@
 package org.eqasim;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -527,11 +528,14 @@ public class TestSimulationPipeline {
         });
 
         var dropoffs = getDropoffs("melun_test/output_drt/output_events.xml.gz");
-        assertEquals(dropoffs.get(Id.createPersonId("2700648")), 26963.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("2719254")), 39845.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("3078310")), 44673.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("3180146")), 64782.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("2683322")), 62852.0, 1e-3);
+        // eqasim-bs#678: the mode choice replanning creates one more trip router per replanning thread (for the trips
+        // it does not re-choose), which draws once more from MATSim's random stream; formerly 26963 / 39845 / 44673 /
+        // 64782 / 62852, and person 3078310 no longer takes a DRT trip in this random stream
+        assertEquals(dropoffs.get(Id.createPersonId("2700648")), 27113.0, 1e-3);
+        assertEquals(dropoffs.get(Id.createPersonId("2719254")), 41147.0, 1e-3);
+        assertNull(dropoffs.get(Id.createPersonId("3078310")));
+        assertEquals(dropoffs.get(Id.createPersonId("3180146")), 41374.0, 1e-3);
+        assertEquals(dropoffs.get(Id.createPersonId("2683322")), 66085.0, 1e-3);
     }
 
     @Test
@@ -589,11 +593,14 @@ public class TestSimulationPipeline {
         });
 
         var dropoffs = getDropoffs("melun_test/output_drt_vdf/output_events.xml.gz");
-        assertEquals(dropoffs.get(Id.createPersonId("2700648")), 26963.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("2719254")), 39845.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("3078310")), 44673.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("3180146")), 64782.0, 1e-3);
-        assertEquals(dropoffs.get(Id.createPersonId("2683322")), 62852.0, 1e-3);
+        // eqasim-bs#678: the mode choice replanning creates one more trip router per replanning thread (for the trips
+        // it does not re-choose), which draws once more from MATSim's random stream; formerly 26963 / 39845 / 44673 /
+        // 64782 / 62852, and person 3078310 no longer takes a DRT trip in this random stream
+        assertEquals(dropoffs.get(Id.createPersonId("2700648")), 27113.0, 1e-3);
+        assertEquals(dropoffs.get(Id.createPersonId("2719254")), 41147.0, 1e-3);
+        assertNull(dropoffs.get(Id.createPersonId("3078310")));
+        assertEquals(dropoffs.get(Id.createPersonId("3180146")), 41374.0, 1e-3);
+        assertEquals(dropoffs.get(Id.createPersonId("2683322")), 66085.0, 1e-3);
     }
 
     @Test

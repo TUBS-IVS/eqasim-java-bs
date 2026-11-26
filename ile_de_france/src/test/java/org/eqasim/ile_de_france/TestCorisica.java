@@ -123,9 +123,12 @@ public class TestCorisica {
 			});
 
 			Map<String, Long> counts = countLegs("corsica_test/cut_output/output_events.xml.gz");
-			Assert.assertEquals(424, (long) counts.get("car"));
+			// eqasim-bs#678: the mode choice replanning creates one more trip router per replanning thread (for the
+			// trips it does not re-choose), which draws once more from MATSim's random stream; formerly 424 / 53 / 101
+			// (a scratch run without that router gives 424 / 101 again)
+			Assert.assertEquals(426, (long) counts.get("car"));
 			Assert.assertEquals(53, (long) counts.get("car_passenger"));
-			Assert.assertEquals(101, (long) counts.get("walk"));
+			Assert.assertEquals(99, (long) counts.get("walk"));
 			Assert.assertEquals(0, (long) counts.getOrDefault("bike", 0L));
 			Assert.assertEquals(0, (long) counts.getOrDefault("pt", 0L));
 			Assert.assertEquals(6, (long) counts.get("outside"));

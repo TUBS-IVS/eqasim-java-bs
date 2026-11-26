@@ -8,16 +8,17 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eqasim.core.misc.ParallelProgress;
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripCounter;
 import org.eqasim.core.scenario.routing.RunPopulationRouting;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.IdSet;
@@ -41,6 +42,7 @@ public class StandaloneModeChoicePerformer {
     private static final Logger logger = LogManager.getLogger(StandaloneModeChoicePerformer.class);
 
     private final Provider<DiscreteModeChoiceModel> discreteModeChoiceModelProvider;
+    private final FilteredTripCounter filteredTripCounter;
     private final boolean removePersonsWithBadPlans;
     private final Population population;
     private final int numberOfThreads;
@@ -50,8 +52,13 @@ public class StandaloneModeChoicePerformer {
     private final Scenario scenario;
     private final Set<String> excludedSubpopulations;
 
-    public StandaloneModeChoicePerformer(Provider<DiscreteModeChoiceModel> discreteModeChoiceModelProvider, StandaloneModeChoiceConfigGroup configGroup, Population population, int numberOfThreads, long seed, OutputDirectoryHierarchy outputDirectoryHierarchy, Scenario scenario) {
+    /**
+     * @param filteredTripCounter counts the trips the (injected, {@code KeepFilteredTripsModel}-wrapped) model keeps
+     *                            unchanged because a filter rejects them (eqasim-bs#678); logged after the choice
+     */
+    public StandaloneModeChoicePerformer(Provider<DiscreteModeChoiceModel> discreteModeChoiceModelProvider, FilteredTripCounter filteredTripCounter, StandaloneModeChoiceConfigGroup configGroup, Population population, int numberOfThreads, long seed, OutputDirectoryHierarchy outputDirectoryHierarchy, Scenario scenario) {
         this.discreteModeChoiceModelProvider = discreteModeChoiceModelProvider;
+        this.filteredTripCounter = filteredTripCounter;
         this.removePersonsWithBadPlans = configGroup.isRemovePersonsWithNoValidAlternative();
         this.numberOfThreads = numberOfThreads;
         this.population = population;
@@ -116,12 +123,26 @@ public class StandaloneModeChoicePerformer {
         }
         logExcludedSubpopulations(excludedCounts);
 
-        ParallelProgress progress = new ParallelProgress("Standalone mode choice", selectedPlans.size());
-        progress.start();
+        // A worker exception propagates (ExecutionException from Future.get, or the exception itself without a
+        // thread pool); the progress is closed on every path so a failed run ends instead of hanging (eqasim-bs#678).
+        // An interruption while closing never replaces the worker's exception: try-with-resources adds it as suppressed.
+        try (ParallelProgress progress = new ParallelProgress("Standalone mode choice", selectedPlans.size())) {
+            progress.start();
+            choose(selectedPlans, progress);
+        }
 
+        logger.info("Standalone mode choice: " + filteredTripCounter.summary()
+                + " (persons without a valid alternative are not counted)");
+
+        String outputPlansName = outputDirectoryHierarchy.getOutputFilename("output_plans.xml.gz");
+        new PopulationWriter(population).write(outputPlansName);
+        ConfigUtils.writeConfig(scenario.getConfig(), this.outputDirectoryHierarchy.getOutputFilename("output_config.xml"));
+    }
+
+    private void choose(List<Plan> selectedPlans, ParallelProgress progress) throws InterruptedException, ExecutionException {
         if(numberOfThreads > 0 && !selectedPlans.isEmpty()) {
         	ExecutorService exec = Executors.newFixedThreadPool(numberOfThreads);
-            List<Future<Set<Id<Person>>>> futures = new ArrayList<>();
+            CompletionService<Set<Id<Person>>> completion = new ExecutorCompletionService<>(exec);
 
             final int total = selectedPlans.size();
             int numChunks = (total + chunkSize - 1) / chunkSize;
@@ -138,7 +159,7 @@ public class StandaloneModeChoicePerformer {
                 List<Plan> subList = selectedPlans.subList(from, to);
                 Random chunkRandom = new Random(random.nextInt());
 
-                futures.add(exec.submit(() -> {
+                completion.submit(() -> {
                     PlanAlgoThread worker = new PlanAlgoThread(
                         new DiscreteModeChoiceAlgorithm(
                             chunkRandom,
@@ -156,16 +177,24 @@ public class StandaloneModeChoicePerformer {
                     // run and collect any bad-plan IDs
                     worker.run();
                     return worker.getPersonsWithNoAlternative();
-                }));
+                });
             }
-            // wait for everything to finish
-            exec.shutdown();
-            exec.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
 
-            // combine results
+            // Take the chunk results as they complete, so the first failed chunk ends the choice at once instead of
+            // after all remaining chunks have run (eqasim-bs#678). The combined set does not depend on the order in
+            // which the chunks finish.
             IdSet<Person> personsToRemove = new IdSet<>(Person.class);
-            for (Future<Set<Id<Person>>> f : futures) {
-                personsToRemove.addAll(f.get());
+            try {
+                for (int chunk = 0; chunk < numChunks; chunk++) {
+                    personsToRemove.addAll(completion.take().get());
+                }
+            } catch (ExecutionException | InterruptedException e) {
+                logger.error("Standalone mode choice failed in a chunk or was interrupted; cancelling the remaining chunks");
+                throw e;
+            } finally {
+                // after success every chunk is done and the idle threads end; after a failure the chunks not yet
+                // started are dropped and the running ones are interrupted (PlanAlgoThread stops at the next plan)
+                exec.shutdownNow();
             }
 
             if(this.removePersonsWithBadPlans && !personsToRemove.isEmpty()) {
@@ -190,12 +219,6 @@ public class StandaloneModeChoicePerformer {
                 personsToRemove.forEach(population::removePerson);
             }
         }
-
-        progress.close();
-
-        String outputPlansName = outputDirectoryHierarchy.getOutputFilename("output_plans.xml.gz");
-        new PopulationWriter(population).write(outputPlansName);
-        ConfigUtils.writeConfig(scenario.getConfig(), this.outputDirectoryHierarchy.getOutputFilename("output_config.xml"));
     }
 
 
@@ -221,6 +244,10 @@ public class StandaloneModeChoicePerformer {
         @Override
         public void run() {
             for (Plan plan : this.plans) {
+                if (Thread.currentThread().isInterrupted()) {
+                    // a cancelled chunk (another chunk failed) stops instead of choosing its remaining plans
+                    throw new IllegalStateException("Standalone mode choice worker was interrupted");
+                }
                 try {
                     this.planAlgo.run(plan);
                 } catch (IllegalStateException e) {
@@ -235,6 +262,7 @@ public class StandaloneModeChoicePerformer {
                 this.progress.update(1);
             }
         }
+
 
         public IdSet<Person> getPersonsWithNoAlternative() {
             return this.personsWithNoAlternative;

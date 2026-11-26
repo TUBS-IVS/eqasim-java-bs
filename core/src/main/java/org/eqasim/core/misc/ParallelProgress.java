@@ -6,7 +6,7 @@ import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class ParallelProgress {
+public class ParallelProgress implements AutoCloseable {
 	private final Logger logger = LogManager.getLogger(ParallelProgress.class);
 
 	private final Thread thread;
@@ -17,12 +17,18 @@ public class ParallelProgress {
 	private boolean showRemainingTime = true;
 	private boolean showSpeed = true;
 
-	private long currentCount = 0;
-	private long lastCount = -1;
+	// volatile: written by the workers (under the lock of update/set), read by the progress thread
+	private volatile long currentCount = 0;
+	private volatile long lastCount = -1;
 	private int interval = 10000;
 
 	public ParallelProgress(String description, long totalCount) {
-		thread = new Thread(this::run);
+		thread = new Thread(this::run, "ParallelProgress: " + description);
+
+		// The thread only logs progress. As a daemon it never keeps the JVM alive when a caller fails before
+		// close(): it would otherwise run until the count is reached, which a failed run never does
+		// (eqasim-bs#678, a worker exception of the standalone mode choice hung the JVM).
+		thread.setDaemon(true);
 
 		this.totalCount = totalCount;
 		this.description = description;
@@ -132,6 +138,7 @@ public class ParallelProgress {
 		currentCount = count;
 	}
 
+	@Override
 	public void close() throws InterruptedException {
 		thread.interrupt();
 		thread.join();

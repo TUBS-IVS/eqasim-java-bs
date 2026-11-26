@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripCounter;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -103,7 +104,7 @@ public class StandaloneModeChoiceExcludedSubpopulationsTest {
 		String output = new File(temporaryFolder.getRoot(), "output_" + threads).getAbsolutePath();
 		OutputDirectoryHierarchy hierarchy = new OutputDirectoryHierarchy(output, null,
 				OverwriteFileSetting.deleteDirectoryIfExists, CompressionType.gzip);
-		new StandaloneModeChoicePerformer(ConstantModeModel::new, configGroup, scenario.getPopulation(), threads, 1L,
+		new StandaloneModeChoicePerformer(ConstantModeModel::new, new FilteredTripCounter(), configGroup, scenario.getPopulation(), threads, 1L,
 				hierarchy, scenario).run();
 	}
 
