@@ -21,6 +21,8 @@ import org.eqasim.braunschweig.fares.zonal.VrbFareModule;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
 import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleConstraint;
 import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleSummaryListener;
+import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripConstraint;
+import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripSummaryListener;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigCarCostModel;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigPtCostModel;
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigCostParameters;
@@ -75,6 +77,12 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	 * bound; nothing changes until a config selects the name as a tour constraint.
 	 */
 	public static final String BORDER_TOUR_VEHICLE_CONSTRAINT_NAME = "BorderTourVehicleContinuity";
+
+	/**
+	 * Rule for same-facility leisure trips (eqasim-bs#679): only walk or bicycle. Always bound; nothing changes until a
+	 * config selects the name as a trip constraint.
+	 */
+	public static final String SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME = "SameFacilityLeisureNonMotorised";
 
 	/** The activity tour finder types the border tour constraint assumes (its fixed home and outside types). */
 	static final Set<String> BORDER_TOUR_ACTIVITY_TYPES = Set.of("home", "outside");
@@ -147,6 +155,13 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		bindTourConstraintFactory(BORDER_TOUR_VEHICLE_CONSTRAINT_NAME).to(BorderTourVehicleConstraint.Factory.class);
 		// Logs the final relaxed-leg rate at the end of a MATSim run; silent when the constraint saw no vehicle leg.
 		addControlerListenerBinding().to(BorderTourVehicleSummaryListener.class);
+
+		// One shared factory: its counters are filled by all mode choice threads and read by the summary listener.
+		bind(SameFacilityLeisureTripConstraint.Factory.class).in(Singleton.class);
+		bindTripConstraintFactory(SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME)
+				.to(SameFacilityLeisureTripConstraint.Factory.class);
+		// Logs the final applied-trip count at the end of a MATSim run; silent when the constraint created nothing.
+		addControlerListenerBinding().to(SameFacilityLeisureTripSummaryListener.class);
 	}
 
 	@Provides
