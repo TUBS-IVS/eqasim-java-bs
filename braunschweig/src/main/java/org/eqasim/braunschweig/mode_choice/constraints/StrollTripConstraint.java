@@ -19,8 +19,8 @@ import org.matsim.contribs.discrete_mode_choice.model.trip_based.TripConstraintF
  * Keeps a trip into a stroll activity on foot or by bicycle (eqasim-bs#679).
  *
  * <p>
- * The population pipeline of eqasim-bs#679 marks the activity of a stroll or dog walk with the activity attribute
- * {@link #STROLL_ATTRIBUTE} (a {@code java.lang.Boolean}). Rule: a trip whose destination activity carries the
+ * The population pipeline of eqasim-bs#679 marks the activity of an out-and-back stroll with the activity attribute
+ * {@link #OUT_AND_BACK_STROLL_ATTRIBUTE} (a {@code java.lang.Boolean}). Rule: a trip whose destination activity carries the
  * attribute with the value {@link Boolean#TRUE} may only use one of
  * {@link SameFacilityLeisureTripConstraint#ALLOWED_MODES} (the same set as the same-facility leisure rule, not a
  * copy). Only a real {@code Boolean.TRUE} counts: a {@code String} "true", {@code Boolean.FALSE} or a missing
@@ -31,12 +31,13 @@ import org.matsim.contribs.discrete_mode_choice.model.trip_based.TripConstraintF
  *
  * <p>
  * Inert unless a config selects {@link BraunschweigModeChoiceModule#STROLL_TRIP_CONSTRAINT_NAME} among the trip
- * constraints of the discrete mode choice. Not coordinated with {@link BorderTourVehicleConstraint}: that rule does
- * not know this constraint (see the report of the task).
+ * constraints of the discrete mode choice. No coordination with {@link BorderTourVehicleConstraint} is needed: the
+ * pipeline writes the attribute only on a stroll that starts at home and whose next trip ends at home, so its tour
+ * (home, stroll, home) never touches an {@code outside} activity and is never a border tour.
  */
 public class StrollTripConstraint extends AbstractTripConstraint {
-	/** The destination activity attribute the pipeline writes (Boolean) for a stroll activity. */
-	public static final String STROLL_ATTRIBUTE = "stroll";
+	/** The destination activity attribute the pipeline writes (Boolean) for an out-and-back stroll activity. */
+	public static final String OUT_AND_BACK_STROLL_ATTRIBUTE = "outAndBackStroll";
 
 	private final AtomicLong reachedTrips;
 	private final AtomicLong rejectedCandidates;
@@ -51,7 +52,7 @@ public class StrollTripConstraint extends AbstractTripConstraint {
 
 	/** Whether the rule applies to the trip: the destination activity attribute is the Boolean true. */
 	public static boolean appliesTo(DiscreteModeChoiceTrip trip) {
-		return Boolean.TRUE.equals(trip.getDestinationActivity().getAttributes().getAttribute(STROLL_ATTRIBUTE));
+		return Boolean.TRUE.equals(trip.getDestinationActivity().getAttributes().getAttribute(OUT_AND_BACK_STROLL_ATTRIBUTE));
 	}
 
 	@Override

@@ -20,7 +20,7 @@ import org.matsim.utils.objectattributes.attributable.AttributesImpl;
 
 /**
  * Pins the rule for trips into a stroll activity (eqasim-bs#679): only a destination activity whose attribute
- * {@code stroll} is the Boolean {@code true} limits the trip to the modes of the same-facility leisure rule.
+ * {@code outAndBackStroll} is the Boolean {@code true} limits the trip to the modes of the same-facility leisure rule.
  */
 public class StrollTripConstraintTest {
 	private static final List<String> ALL_MODES = List.of(TransportMode.car, BraunschweigModeChoiceModule.CAR_PASSENGER,
@@ -86,13 +86,13 @@ public class StrollTripConstraintTest {
 		return PopulationUtils.getFactory().createPerson(Id.createPersonId("person"));
 	}
 
-	/** A trip home to leisure; the stroll attribute of the destination is set when the value is not null. */
+	/** A trip home to leisure; the out-and-back stroll attribute of the destination is set when the value is not null. */
 	private static DiscreteModeChoiceTrip trip(Object strollValue) {
 		Activity origin = PopulationUtils.createActivityFromCoord("home", new Coord(0, 0));
 		Activity destination = PopulationUtils.createActivityFromCoord("leisure", new Coord(100, 0));
 
 		if (strollValue != null) {
-			destination.getAttributes().putAttribute(StrollTripConstraint.STROLL_ATTRIBUTE, strollValue);
+			destination.getAttributes().putAttribute(StrollTripConstraint.OUT_AND_BACK_STROLL_ATTRIBUTE, strollValue);
 		}
 
 		return new DiscreteModeChoiceTrip(origin, destination, TransportMode.car, List.of(), 0, 0, 0,
