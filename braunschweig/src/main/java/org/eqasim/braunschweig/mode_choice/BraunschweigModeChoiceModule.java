@@ -22,7 +22,7 @@ import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
 import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleConstraint;
 import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleSummaryListener;
 import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripConstraint;
-import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripSummaryListener;
+import org.eqasim.braunschweig.mode_choice.constraints.LeisureTripRuleSummaryListener;
 import org.eqasim.braunschweig.mode_choice.constraints.StrollTripConstraint;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigCarCostModel;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigPtCostModel;
@@ -168,7 +168,7 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		bindTripConstraintFactory(SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME)
 				.to(SameFacilityLeisureTripConstraint.Factory.class);
 		// Logs the final applied-trip count at the end of a MATSim run; silent when the constraint created nothing.
-		addControlerListenerBinding().to(SameFacilityLeisureTripSummaryListener.class);
+		addControlerListenerBinding().to(LeisureTripRuleSummaryListener.class);
 
 		// Same pattern for trips into a stroll activity; its summary is logged by the listener above.
 		bind(StrollTripConstraint.Factory.class).in(Singleton.class);

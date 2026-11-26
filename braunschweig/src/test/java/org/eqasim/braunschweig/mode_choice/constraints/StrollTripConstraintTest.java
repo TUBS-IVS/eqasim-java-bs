@@ -4,18 +4,27 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 
 import org.eqasim.braunschweig.mode_choice.BraunschweigModeChoiceModule;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.matsim.api.core.v01.Coord;
 import org.matsim.api.core.v01.Id;
+import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.TransportMode;
 import org.matsim.api.core.v01.population.Activity;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
 import org.matsim.contribs.discrete_mode_choice.model.trip_based.TripConstraint;
+import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.population.PopulationUtils;
+import org.matsim.core.population.io.PopulationReader;
+import org.matsim.core.scenario.ScenarioUtils;
 import org.matsim.utils.objectattributes.attributable.AttributesImpl;
 
 /**
@@ -25,6 +34,9 @@ import org.matsim.utils.objectattributes.attributable.AttributesImpl;
 public class StrollTripConstraintTest {
 	private static final List<String> ALL_MODES = List.of(TransportMode.car, BraunschweigModeChoiceModule.CAR_PASSENGER,
 			TransportMode.pt, TransportMode.walk, BraunschweigModeChoiceModule.BICYCLE);
+
+	@Rule
+	public TemporaryFolder folder = new TemporaryFolder();
 
 	@Test
 	public void marked_trip_rejects_car_and_accepts_walk_and_bicycle() {
@@ -68,6 +80,49 @@ public class StrollTripConstraintTest {
 
 		assertEquals(1, factory.getReachedTrips());
 		assertEquals(1, factory.getRejectedCandidates());
+	}
+
+	/**
+	 * Pins the Boolean round trip: the attribute in the form the Python writer emits, read back by MATSim's population
+	 * reader, is a {@code Boolean} the rule recognises; an activity without the attribute is not caught.
+	 */
+	@Test
+	public void attribute_read_from_population_xml_is_caught() throws Exception {
+		String xml = """
+				<?xml version="1.0" encoding="utf-8"?>
+				<!DOCTYPE population SYSTEM "http://www.matsim.org/files/dtd/population_v6.dtd">
+				<population>
+				<person id="p">
+				<plan selected="yes">
+				<activity type="home" x="0" y="0" end_time="08:00:00" />
+				<leg mode="car" />
+				<activity type="leisure" x="10" y="0" end_time="09:00:00">
+				<attributes>
+				<attribute name="outAndBackStroll" class="java.lang.Boolean">true</attribute>
+				</attributes>
+				</activity>
+				<leg mode="car" />
+				<activity type="leisure" x="20" y="0" end_time="10:00:00" />
+				</plan>
+				</person>
+				</population>
+				""".stripLeading();
+		File file = folder.newFile("population.xml");
+		Files.writeString(file.toPath(), xml, StandardCharsets.UTF_8);
+
+		Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+		new PopulationReader(scenario).readFile(file.getAbsolutePath());
+		List<org.matsim.api.core.v01.population.PlanElement> elements = scenario.getPopulation().getPersons()
+				.get(Id.createPersonId("p")).getSelectedPlan().getPlanElements();
+		Activity home = (Activity) elements.get(0);
+		Activity marked = (Activity) elements.get(2);
+		Activity unmarked = (Activity) elements.get(4);
+
+		assertEquals(Boolean.TRUE, marked.getAttributes().getAttribute(StrollTripConstraint.OUT_AND_BACK_STROLL_ATTRIBUTE));
+		assertTrue(StrollTripConstraint.appliesTo(
+				new DiscreteModeChoiceTrip(home, marked, "car", List.of(), 0, 0, 0, new AttributesImpl())));
+		assertFalse(StrollTripConstraint.appliesTo(
+				new DiscreteModeChoiceTrip(marked, unmarked, "car", List.of(), 0, 1, 1, new AttributesImpl())));
 	}
 
 	private static void assertEveryModeAllowed(DiscreteModeChoiceTrip trip) {

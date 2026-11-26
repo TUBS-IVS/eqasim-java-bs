@@ -14,7 +14,7 @@ import java.util.function.Consumer;
 
 import org.eqasim.braunschweig.BraunschweigConfigurator;
 import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripConstraint;
-import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripSummaryListener;
+import org.eqasim.braunschweig.mode_choice.constraints.LeisureTripRuleSummaryListener;
 import org.eqasim.braunschweig.scenario.RunAdaptConfig;
 import org.eqasim.core.scenario.config.GenerateConfig;
 import org.junit.Rule;
@@ -73,7 +73,7 @@ public class SameFacilityLeisureTripConstraintBindingTest {
 		// One shared instance: the counters the mode choice fills are the ones the summary listener reports.
 		assertSame(provider.get(), provider.get());
 		assertSame(provider.get(), injector.getInstance(SameFacilityLeisureTripConstraint.Factory.class));
-		assertTrue(listeners(injector).stream().anyMatch(SameFacilityLeisureTripSummaryListener.class::isInstance));
+		assertTrue(listeners(injector).stream().anyMatch(LeisureTripRuleSummaryListener.class::isInstance));
 
 		// The tour constraint chain the tour-based model uses asks the rule (through FromTripBased).
 		List<DiscreteModeChoiceTrip> trips = strollFromHome();

@@ -121,7 +121,7 @@ public class SameFacilityLeisureTripConstraint extends AbstractTripConstraint {
 
 	/**
 	 * Creates the constraint per replanned plan. Bound as a singleton so the counters are shared by all mode choice
-	 * threads and the {@link SameFacilityLeisureTripSummaryListener}; they are thread-safe and count per constraint
+	 * threads and the {@link LeisureTripRuleSummaryListener}; they are thread-safe and count per constraint
 	 * creation (one per replanned plan), not per distinct person or trip.
 	 *
 	 * <p>
@@ -182,7 +182,7 @@ public class SameFacilityLeisureTripConstraint extends AbstractTripConstraint {
 		/**
 		 * Logs the totals so far as the final summary line (also when the rule caught no trip). Logs nothing when the
 		 * factory created no constraint, for example when the constraint is not selected. Called at the end of a MATSim
-		 * run by {@link SameFacilityLeisureTripSummaryListener}.
+		 * run by {@link LeisureTripRuleSummaryListener}.
 		 */
 		public void logSummary() {
 			if (plans.get() == 0) {

@@ -77,7 +77,7 @@ public class StrollTripConstraint extends AbstractTripConstraint {
 
 	/**
 	 * Creates the constraint per replanned plan. Bound as a singleton so the counters are shared by all mode choice
-	 * threads and the {@link SameFacilityLeisureTripSummaryListener}. Counters as in
+	 * threads and the {@link LeisureTripRuleSummaryListener}. Counters as in
 	 * {@link SameFacilityLeisureTripConstraint.Factory}: plan trips, caught trips, evaluated trips (a caught trip in a
 	 * tour the mode choice does not re-choose is never asked about and keeps its initial mode: caught minus evaluated
 	 * is the share the rule did not reach) and the candidate modes this rule rejected first (order-dependent).

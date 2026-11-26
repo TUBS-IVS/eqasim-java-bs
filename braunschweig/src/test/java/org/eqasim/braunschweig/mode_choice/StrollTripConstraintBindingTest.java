@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.eqasim.braunschweig.BraunschweigConfigurator;
-import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripSummaryListener;
+import org.eqasim.braunschweig.mode_choice.constraints.LeisureTripRuleSummaryListener;
 import org.eqasim.braunschweig.mode_choice.constraints.StrollTripConstraint;
 import org.eqasim.braunschweig.scenario.RunAdaptConfig;
 import org.eqasim.core.scenario.config.GenerateConfig;
@@ -73,6 +73,6 @@ public class StrollTripConstraintBindingTest {
 		// One shared instance: the counters the mode choice fills are the ones the summary listener reports.
 		assertSame(provider.get(), injector.getInstance(StrollTripConstraint.Factory.class));
 		assertTrue(injector.getInstance(Key.get(new TypeLiteral<Set<ControllerListener>>() {
-		})).stream().anyMatch(SameFacilityLeisureTripSummaryListener.class::isInstance));
+		})).stream().anyMatch(LeisureTripRuleSummaryListener.class::isInstance));
 	}
 }

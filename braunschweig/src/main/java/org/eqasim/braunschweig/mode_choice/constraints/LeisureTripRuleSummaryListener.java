@@ -6,8 +6,8 @@ import org.matsim.core.controler.listener.ShutdownListener;
 import com.google.inject.Inject;
 
 /**
- * Logs the final count of same-facility leisure trips kept on foot or by bicycle when a MATSim run ends
- * (eqasim-bs#679). The running summary lines of {@link SameFacilityLeisureTripConstraint.Factory} appear only when the
+ * Logs the final counts of the two leisure trip rules of eqasim-bs#679 when a MATSim run ends: the same-facility
+ * leisure trips and the trips into an out-and-back stroll, both kept on foot or by bicycle. The running summary lines of {@link SameFacilityLeisureTripConstraint.Factory} appear only when the
  * applied-trip count crosses a power of two; this line gives the final total, also when the rule applied to no trip.
  * It logs nothing when the factory created no constraint (for example when the constraint is not selected).
  *
@@ -16,14 +16,14 @@ import com.google.inject.Inject;
  * run there; that run shows only the running summary lines.
  *
  * <p>
- * It also logs the final line of {@link StrollTripConstraint.Factory} (trips into a stroll activity, eqasim-bs#679).
+ * The second line comes from {@link StrollTripConstraint.Factory} and follows the same rules.
  */
-public class SameFacilityLeisureTripSummaryListener implements ShutdownListener {
+public class LeisureTripRuleSummaryListener implements ShutdownListener {
 	private final SameFacilityLeisureTripConstraint.Factory factory;
 	private final StrollTripConstraint.Factory strollFactory;
 
 	@Inject
-	public SameFacilityLeisureTripSummaryListener(SameFacilityLeisureTripConstraint.Factory factory,
+	public LeisureTripRuleSummaryListener(SameFacilityLeisureTripConstraint.Factory factory,
 			StrollTripConstraint.Factory strollFactory) {
 		this.factory = factory;
 		this.strollFactory = strollFactory;
