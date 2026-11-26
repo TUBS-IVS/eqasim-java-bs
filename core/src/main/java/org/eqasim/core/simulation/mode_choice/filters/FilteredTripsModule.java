@@ -1,5 +1,6 @@
 package org.eqasim.core.simulation.mode_choice.filters;
 
+import org.eqasim.core.scenario.routing.PlanRouter;
 import org.matsim.contribs.discrete_mode_choice.components.tour_finder.TourFinder;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceModel;
 import org.matsim.contribs.discrete_mode_choice.model.tour_based.EfficientTourBasedModel;
@@ -9,6 +10,8 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TripFilter;
 import org.matsim.contribs.discrete_mode_choice.model.trip_based.TripBasedModel;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
 import org.matsim.core.controler.AbstractModule;
+import org.matsim.core.router.TripRouter;
+import org.matsim.facilities.ActivityFacilities;
 
 import com.google.inject.Provider;
 import com.google.inject.Provides;
@@ -53,12 +56,25 @@ public class FilteredTripsModule extends AbstractModule {
 		}
 	}
 
+	/**
+	 * The MATSim loop's choice for the trips the model does not re-choose: route them again with eqasim's routing (owner
+	 * decision 2026-11-26, see {@link KeptTripElements}). The standalone mode choice overrides this binding with
+	 * {@link KeptTripElements#unchanged()}. Not a singleton: one {@link PlanRouter} per model instance, i.e. per
+	 * replanning thread.
+	 */
+	@Provides
+	public KeptTripElements provideKeptTripElements(ActivityFacilities facilities, Provider<TripRouter> tripRouter) {
+		// PlanRouter is not bound in the simulation injector (it disables just-in-time bindings); a fresh TripRouter
+		// per instance, as the contrib's strategy takes one per replanning thread, created only when a trip is kept
+		return KeptTripElements.rerouted(() -> new PlanRouter(facilities, tripRouter.get()));
+	}
+
 	/** The configured model (the same choice of model type as the contrib's binding), wrapped. Not a singleton. */
 	@Provides
 	public DiscreteModeChoiceModel provideDiscreteModeChoiceModel(DiscreteModeChoiceConfigGroup dmcConfig,
 			Provider<TourBasedModel> tourBasedModel, Provider<EfficientTourBasedModel> efficientTourBasedModel,
 			Provider<TripBasedModel> tripBasedModel, FilteredTripFinder filteredTripFinder,
-			FilteredTripCounter counter) {
+			KeptTripElements keptTripElements, FilteredTripCounter counter) {
 		DiscreteModeChoiceModel model;
 		switch (dmcConfig.getModelType()) {
 		case Tour:
@@ -73,6 +89,6 @@ public class FilteredTripsModule extends AbstractModule {
 		default:
 			throw new IllegalStateException("Unknown discrete mode choice model type " + dmcConfig.getModelType());
 		}
-		return new KeepFilteredTripsModel(model, filteredTripFinder, counter);
+		return new KeepFilteredTripsModel(model, filteredTripFinder, keptTripElements, counter);
 	}
 }

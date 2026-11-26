@@ -14,6 +14,7 @@ import org.eqasim.core.scenario.routing.PlanRouter;
 import org.eqasim.core.simulation.mode_choice.filters.FilteredTripCounter;
 import org.eqasim.core.simulation.mode_choice.filters.FilteredTripFinder;
 import org.eqasim.core.simulation.mode_choice.filters.KeepFilteredTripsModel;
+import org.eqasim.core.simulation.mode_choice.filters.KeptTripElements;
 import org.eqasim.core.simulation.mode_choice.filters.OutsideFilter;
 import org.junit.Rule;
 import org.junit.Test;
@@ -153,7 +154,8 @@ public class StandaloneModeChoiceFilteredTripsTest {
 				OverwriteFileSetting.deleteDirectoryIfExists, CompressionType.gzip);
 		FilteredTripCounter counter = new FilteredTripCounter();
 		new StandaloneModeChoicePerformer(
-				() -> new KeepFilteredTripsModel(new TourModelLike(respectFilter), finder(), counter), counter,
+				() -> new KeepFilteredTripsModel(new TourModelLike(respectFilter), finder(), KeptTripElements.unchanged(),
+						counter), counter,
 				configGroup, scenario.getPopulation(), threads, 1L, hierarchy, scenario).run();
 	}
 

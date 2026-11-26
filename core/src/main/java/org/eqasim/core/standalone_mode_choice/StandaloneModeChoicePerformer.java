@@ -132,7 +132,7 @@ public class StandaloneModeChoicePerformer {
         }
 
         logger.info("Standalone mode choice: " + filteredTripCounter.summary()
-                + " (counted over all chosen plans, including persons removed afterwards for lack of a valid alternative)");
+                + "; they are kept unchanged (persons without a valid alternative are not counted)");
 
         String outputPlansName = outputDirectoryHierarchy.getOutputFilename("output_plans.xml.gz");
         new PopulationWriter(population).write(outputPlansName);

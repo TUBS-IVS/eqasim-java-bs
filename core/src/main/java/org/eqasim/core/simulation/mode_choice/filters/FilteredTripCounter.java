@@ -33,14 +33,14 @@ public class FilteredTripCounter implements BeforeMobsimListener {
 	}
 
 	/**
-	 * "X of Y trips (p %) are rejected by the model's filter, not re-chosen and kept unchanged", counted over every
-	 * plan the model has chosen for so far, including persons removed afterwards.
+	 * "X of Y trips (p %) are rejected by the model's filter and not re-chosen", counted over every plan the model
+	 * has chosen for so far; a person without a valid alternative (the model throws) is not counted.
 	 */
 	public String summary() {
 		long trips = numberOfTrips.get();
 		long kept = numberOfKeptTrips.get();
 		return String.format(Locale.ROOT,
-				"%d of %d trips (%.2f %%) are rejected by the model's filter, not re-chosen and kept unchanged", kept,
+				"%d of %d trips (%.2f %%) are rejected by the model's filter and not re-chosen", kept,
 				trips, trips == 0 ? 0.0 : 100.0 * kept / trips);
 	}
 
@@ -48,8 +48,9 @@ public class FilteredTripCounter implements BeforeMobsimListener {
 	public void notifyBeforeMobsim(BeforeMobsimEvent event) {
 		// replanning of this iteration is done; iteration 0 has none
 		if (numberOfTrips.get() > 0) {
-			logger.info(String.format(Locale.ROOT, "Mode choice replanning of iteration %d: %s", event.getIteration(),
-					summary()));
+			logger.info(String.format(Locale.ROOT,
+					"Mode choice replanning of iteration %d: %s; they were routed again with eqasim's routing",
+					event.getIteration(), summary()));
 		}
 		numberOfTrips.set(0);
 		numberOfKeptTrips.set(0);

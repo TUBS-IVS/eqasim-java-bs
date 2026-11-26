@@ -1,8 +1,7 @@
 package org.eqasim.core.simulation.mode_choice.filters;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,7 +10,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 
 import org.apache.commons.io.FileUtils;
 import org.eqasim.TestConfigurator;
@@ -43,32 +41,34 @@ import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
 import org.matsim.contribs.discrete_mode_choice.model.mode_availability.ModeAvailability;
 import org.matsim.contribs.discrete_mode_choice.modules.AbstractDiscreteModeChoiceExtension;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
-import org.matsim.contribs.discrete_mode_choice.replanning.DiscreteModeChoiceAlgorithm;
-import org.matsim.contribs.discrete_mode_choice.replanning.TripListConverter;
 import org.matsim.core.config.CommandLine;
 import org.matsim.core.config.CommandLine.ConfigurationException;
 import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.population.routes.RouteUtils;
+import org.matsim.core.replanning.PlanStrategy;
 import org.matsim.core.router.RoutingModule;
 import org.matsim.core.router.RoutingRequest;
 import org.matsim.core.router.TripStructureUtils;
 import org.matsim.core.scenario.ScenarioUtils;
 import org.matsim.core.utils.timing.TimeInterpretationModule;
 
-import com.google.inject.Inject;
 import com.google.inject.Injector;
-import com.google.inject.Singleton;
+import com.google.inject.Key;
+import com.google.inject.name.Names;
 
 /**
- * The MATSim loop's mode choice replanning (eqasim-bs#678): the contrib's DiscreteModeChoiceReplanningModule runs a
- * DiscreteModeChoiceAlgorithm over the injected DiscreteModeChoiceModel and TripListConverter, as composed here. A trip
- * of a tour the filter rejects (a border tour via eqasim's OutsideFilter) must come out as it went in, the walk-fallback
- * stamp included; a trip of an accepted tour is still re-chosen and re-inserted. Before, the contrib re-routed the
- * rejected tours with the plain router, so the stamp was lost and routed pt could become walk-only.
+ * The MATSim loop's mode choice replanning (eqasim-bs#678, owner decision 2026-11-26): the injector's DiscreteModeChoice
+ * plan strategy (random selector, plan copy, the contrib's DiscreteModeChoiceReplanningModule, its routing check) gets
+ * the {@link KeepFilteredTripsModel}-wrapped model. A trip of a tour the filter rejects (a border tour via eqasim's
+ * OutsideFilter) is routed again, but with eqasim's routing: a pt trip that had fallen back to walk keeps its
+ * walk-fallback stamp, a routed pt trip stays pt. A trip of an accepted tour is re-chosen as before. Before the fix the
+ * contrib re-routed the rejected tours with the plain router, which dropped the stamp.
  */
 public class FilteredTripsReplanningTest {
+	private static final double ROUTED_TRAVEL_TIME = 3600.0;
+
 	@After
 	public void tearDown() throws IOException {
 		FileUtils.deleteDirectory(new File("simulation_output"));
@@ -163,38 +163,47 @@ public class FilteredTripsReplanningTest {
 	}
 
 	@Test
-	public void theLoopKeepsTripsOfRejectedToursAndReChoosesTheOthers() throws ConfigurationException {
+	public void theLoopReRoutesRejectedToursWithEqasimRoutingAndReChoosesTheOthers() throws ConfigurationException {
 		Config config = config();
 		Scenario scenario = scenario(config);
 		Injector injector = createInjector(scenario, config);
 		PopulationFactory factory = scenario.getPopulation().getFactory();
 
-		// as DiscreteModeChoiceReplanningModule.getPlanAlgoInstance composes it
-		DiscreteModeChoiceAlgorithm algorithm = new DiscreteModeChoiceAlgorithm(new Random(1),
-				injector.getInstance(DiscreteModeChoiceModel.class), factory,
-				injector.getInstance(TripListConverter.class));
+		// the controller injector hands the wrapped model to everything that injects the model, the strategy included
+		assertTrue(injector.getInstance(DiscreteModeChoiceModel.class) instanceof KeepFilteredTripsModel);
+		// the strategy as MATSim's controller looks it up (AbstractModule.addPlanStrategyBinding)
+		PlanStrategy strategy = injector.getInstance(Key.get(PlanStrategy.class, Names.named("DiscreteModeChoice")));
 
-		Plan border = borderPlan(factory);
-		List<PlanElement> borderBefore = new ArrayList<>(border.getPlanElements());
-		Plan resident = residentPlan(factory);
-		List<Leg> residentBefore = TripStructureUtils.getLegs(resident);
+		Plan borderPlan = borderPlan(factory);
+		Plan residentPlan = residentPlan(factory);
+		Person border = borderPlan.getPerson();
+		Person resident = residentPlan.getPerson();
 
-		algorithm.run(border);
-		algorithm.run(resident);
+		strategy.init(() -> 1);
+		strategy.run(border);
+		strategy.run(resident);
+		strategy.finish();
 
-		List<PlanElement> borderAfter = border.getPlanElements();
-		assertEquals(borderBefore.size(), borderAfter.size());
-		for (int index = 0; index < borderBefore.size(); index++) {
-			assertSame("element " + index, borderBefore.get(index), borderAfter.get(index));
-		}
-		assertEquals(TransportMode.pt,
-				((Leg) borderAfter.get(1)).getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+		// the border plan (the strategy works on a copy): same structure, every trip routed again by eqasim's routing
+		List<Leg> borderLegs = TripStructureUtils.getLegs(border.getSelectedPlan());
+		assertEquals(2, borderLegs.size());
+		Leg fallback = borderLegs.get(0);
+		assertEquals(TransportMode.walk, fallback.getMode());
+		assertEquals(TransportMode.walk, TripStructureUtils.getRoutingMode(fallback));
+		assertEquals(TransportMode.pt, fallback.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+		assertEquals(ROUTED_TRAVEL_TIME, fallback.getTravelTime().seconds(), 0.0);
+		Leg pt = borderLegs.get(1);
+		assertEquals(TransportMode.pt, pt.getMode());
+		assertEquals(TransportMode.pt, TripStructureUtils.getRoutingMode(pt));
+		assertEquals(ROUTED_TRAVEL_TIME, pt.getTravelTime().seconds(), 0.0);
+		assertEquals(null, pt.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
 
-		// the resident's trips are re-chosen and re-inserted as before (the static router returns new legs)
-		List<Leg> residentAfter = TripStructureUtils.getLegs(resident);
-		assertEquals(2, residentAfter.size());
-		for (int index = 0; index < residentAfter.size(); index++) {
-			assertNotSame(residentBefore.get(index), residentAfter.get(index));
+		// the resident's trips are re-chosen (walk or bike, both of zero utility) and routed as before
+		List<Leg> residentLegs = TripStructureUtils.getLegs(resident.getSelectedPlan());
+		assertEquals(2, residentLegs.size());
+		for (Leg leg : residentLegs) {
+			assertTrue(leg.getMode(), List.of(TransportMode.walk, TransportMode.bike).contains(leg.getMode()));
+			assertEquals(ROUTED_TRAVEL_TIME, leg.getTravelTime().seconds(), 0.0);
 		}
 	}
 
@@ -205,24 +214,25 @@ public class FilteredTripsReplanningTest {
 			bindModeAvailability("static").toInstance(new StaticModeAvailability());
 			bind(ModeParameters.class).toInstance(new ModeParameters());
 			for (String mode : List.of(TransportMode.walk, TransportMode.bike, TransportMode.pt)) {
-				addRoutingModuleBinding(mode).to(StaticRoutingModule.class);
+				addRoutingModuleBinding(mode).toInstance(new StaticRoutingModule(mode));
 			}
 		}
 	}
 
-	@Singleton
+	/** One leg of its own mode, with a travel time ({@link #ROUTED_TRAVEL_TIME}) that marks it as newly routed. */
 	static private class StaticRoutingModule implements RoutingModule {
-		private final PopulationFactory populationFactory;
+		private final String mode;
 
-		@Inject
-		public StaticRoutingModule(PopulationFactory populationFactory) {
-			this.populationFactory = populationFactory;
+		StaticRoutingModule(String mode) {
+			this.mode = mode;
 		}
 
 		@Override
 		public List<? extends PlanElement> calcRoute(RoutingRequest request) {
-			Leg leg = populationFactory.createLeg(TransportMode.walk);
-			leg.setTravelTime(3600.0);
+			Leg leg = PopulationUtils.createLeg(mode);
+			leg.setTravelTime(ROUTED_TRAVEL_TIME);
+			// a route, as every real router sets one (the contrib's routing check requires it)
+			leg.setRoute(RouteUtils.createGenericRouteImpl(Id.createLinkId("link"), Id.createLinkId("link")));
 			return Collections.singletonList(leg);
 		}
 	}

@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.util.Objects;
 
 import org.eqasim.core.simulation.mode_choice.filters.FilteredTripCounter;
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripsModule;
+import org.eqasim.core.simulation.mode_choice.filters.KeptTripElements;
 import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.population.Population;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceModel;
@@ -48,6 +50,15 @@ public class StandaloneModeChoiceModule extends AbstractModule {
                     DiscreteModeChoiceModel.FallbackBehaviour.EXCEPTION,
                     StandaloneModeChoiceConfigGroup.REMOVE_PERSON_WITH_NO_VALID_ALTERNATIVES));
         }
+    }
+
+    /**
+     * Overrides the MATSim loop's binding ({@link FilteredTripsModule}): the trips the model does not re-choose leave
+     * the standalone mode choice exactly as they came in (owner decision 2026-11-26, see {@link KeptTripElements}).
+     */
+    @Provides
+    public KeptTripElements provideKeptTripElements() {
+        return KeptTripElements.unchanged();
     }
 
     @Provides

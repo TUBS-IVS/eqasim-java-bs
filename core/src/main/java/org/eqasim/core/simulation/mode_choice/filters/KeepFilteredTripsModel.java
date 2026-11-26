@@ -20,9 +20,10 @@ import org.matsim.contribs.discrete_mode_choice.model.trip_based.candidates.Trip
  * elements of a {@link RoutedTripCandidate}, else a bare leg. For a tour its filter rejects, the tour-based model keeps
  * the initial modes but re-estimates, i.e. re-routes, them with the plain trip router, which drops the walk-fallback
  * stamp and can turn routed pt into walk-only legs. This wrapper replaces the candidate of every trip
- * {@link FilteredTripFinder} reports by a routed candidate whose elements are the trip's own elements as they were in the
- * plan; the algorithm then puts the very same objects back. Utility, duration and mode come from the wrapped model's
- * candidate, so which trips are re-chosen, and how, does not change.
+ * {@link FilteredTripFinder} reports by a routed candidate whose elements come from {@link KeptTripElements}: in the
+ * MATSim loop the trip routed again with eqasim's own routing (stamp kept), in the standalone mode choice the trip's own
+ * elements unchanged (see there for the reason). Utility and mode come from the wrapped model's candidate, so which trips
+ * are re-chosen, and how, does not change.
  * </p>
  *
  * <p>
@@ -39,12 +40,14 @@ import org.matsim.contribs.discrete_mode_choice.model.trip_based.candidates.Trip
 public class KeepFilteredTripsModel implements DiscreteModeChoiceModel {
 	private final DiscreteModeChoiceModel delegate;
 	private final FilteredTripFinder filteredTripFinder;
+	private final KeptTripElements keptTripElements;
 	private final FilteredTripCounter counter;
 
 	public KeepFilteredTripsModel(DiscreteModeChoiceModel delegate, FilteredTripFinder filteredTripFinder,
-			FilteredTripCounter counter) {
+			KeptTripElements keptTripElements, FilteredTripCounter counter) {
 		this.delegate = delegate;
 		this.filteredTripFinder = filteredTripFinder;
+		this.keptTripElements = keptTripElements;
 		this.counter = counter;
 	}
 
@@ -76,7 +79,7 @@ public class KeepFilteredTripsModel implements DiscreteModeChoiceModel {
 						person.getId(), index, candidate.getMode(), filteredTrip.getInitialMode()));
 			}
 
-			result.set(index, new KeptTripCandidate(candidate, new ArrayList<>(filteredTrip.getInitialElements())));
+			result.set(index, new KeptTripCandidate(candidate, keptTripElements.elements(person, filteredTrip)));
 		}
 		return result;
 	}
@@ -90,7 +93,11 @@ public class KeepFilteredTripsModel implements DiscreteModeChoiceModel {
 		return -1;
 	}
 
-	/** The model's candidate for a kept trip, routed with the trip's own elements as they were in the plan. */
+	/**
+	 * The model's candidate for a kept trip, with the elements of {@link KeptTripElements}. The duration is the model's
+	 * estimate: after {@code chooseModes} the contrib's algorithm only reads the mode, the utility and the routed
+	 * elements, and inside the model the durations are used before this wrapper runs.
+	 */
 	static final class KeptTripCandidate implements TripCandidate, RoutedTripCandidate {
 		private final TripCandidate candidate;
 		private final List<PlanElement> elements;
