@@ -14,17 +14,24 @@ import com.google.inject.Inject;
  * <p>
  * The standalone mode choice ({@code RunStandaloneModeChoice}) fires no controller events, so this listener does not
  * run there; that run shows only the running summary lines.
+ *
+ * <p>
+ * It also logs the final line of {@link StrollTripConstraint.Factory} (trips into a stroll activity, eqasim-bs#679).
  */
 public class SameFacilityLeisureTripSummaryListener implements ShutdownListener {
 	private final SameFacilityLeisureTripConstraint.Factory factory;
+	private final StrollTripConstraint.Factory strollFactory;
 
 	@Inject
-	public SameFacilityLeisureTripSummaryListener(SameFacilityLeisureTripConstraint.Factory factory) {
+	public SameFacilityLeisureTripSummaryListener(SameFacilityLeisureTripConstraint.Factory factory,
+			StrollTripConstraint.Factory strollFactory) {
 		this.factory = factory;
+		this.strollFactory = strollFactory;
 	}
 
 	@Override
 	public void notifyShutdown(ShutdownEvent event) {
 		factory.logSummary();
+		strollFactory.logSummary();
 	}
 }
