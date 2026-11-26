@@ -48,8 +48,10 @@ import org.matsim.facilities.ActivityFacility;
  * <p>
  * Interplay with {@link BorderTourVehicleConstraint}: that rule pins every vehicle leg of a border tour to its initial
  * mode, so a caught trip with initial mode {@code car} in a border tour would have no valid candidate once both rules
- * are selected. When this constraint is selected among the trip constraints, the border rule therefore leaves every
- * trip that {@link #appliesTo} catches to this rule (see there).
+ * are selected. When this constraint is selected among the trip constraints, the border rule therefore does not pin
+ * a trip that {@link #appliesTo} catches, but still refuses a vehicle mode on it other than its initial mode: in a
+ * border tour a caught {@code car} trip ends up on {@code walk}, a caught {@code bicycle} trip keeps the bicycle or
+ * walks (see there).
  *
  * <p>
  * Inert unless a config selects {@link BraunschweigModeChoiceModule#SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME} among

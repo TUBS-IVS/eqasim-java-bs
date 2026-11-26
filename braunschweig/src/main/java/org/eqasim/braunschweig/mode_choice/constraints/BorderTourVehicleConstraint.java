@@ -61,11 +61,14 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourConstraintF
  * Interplay with {@link SameFacilityLeisureTripConstraint} (eqasim-bs#679): that trip rule allows only walk or bicycle
  * on a same-facility leisure trip, also when its initial mode is a vehicle mode. Pinning such a trip to its initial
  * {@code car} here would leave the border tour without a valid candidate. When the factory is built with the
- * exemption on (the module does this exactly when the trip rule is selected among the trip constraints), every trip
- * that {@link SameFacilityLeisureTripConstraint#appliesTo} catches is left out of the border rule: it is neither a
- * vehicle leg that keeps its mode nor a trip on which a new vehicle leg is refused, and it is not counted among the
- * vehicle legs. A trip without displacement does not move a vehicle, so the continuity of the other legs is unchanged.
- * Without the exemption the rule behaves as described above. Tours outside border tours are unaffected either way:
+ * exemption on (the module does this exactly when the trip rule is selected among the trip constraints), a trip that
+ * {@link SameFacilityLeisureTripConstraint#appliesTo} catches is not pinned to its initial mode and is not counted
+ * among the vehicle legs, but it still gets no new vehicle leg: a restricted mode is valid on it only when it equals
+ * the trip's initial mode (the border rule tracks no vehicle locations, so a vehicle the person does not have at that
+ * place must not appear). A caught {@code car} trip therefore ends up on {@code walk} (car is refused by the trip
+ * rule, bicycle here); a caught {@code bicycle} trip may keep the bicycle or switch to walk. A trip without
+ * displacement does not move a vehicle, so the continuity of the other legs is unchanged. Without the exemption the
+ * rule behaves as described above. Tours outside border tours are unaffected either way:
  * the stock constraint decides there.
  */
 public class BorderTourVehicleConstraint implements TourConstraint {
@@ -139,7 +142,13 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 			String mode = modes.get(index);
 
 			if (exemptTrips[trip.getIndex()]) {
-				continue; // a same-facility leisure trip, left to SameFacilityLeisureTripConstraint
+				// A same-facility leisure trip: not pinned (SameFacilityLeisureTripConstraint decides its mode), but no
+				// vehicle other than the one it already uses.
+				if (restrictedModes.contains(mode) && !mode.equals(trip.getInitialMode())) {
+					return false;
+				}
+
+				continue;
 			}
 
 			if (fixedVehicleLegs[trip.getIndex()]) {
@@ -179,7 +188,7 @@ public class BorderTourVehicleConstraint implements TourConstraint {
 	 * the stock {@link VehicleTourConstraint} at the home location as the delegate. Bound as a singleton; the counters
 	 * are thread-safe and count per constraint creation (one per replanned plan), not per distinct person. With the
 	 * same-facility leisure exemption on, the trips {@link SameFacilityLeisureTripConstraint#appliesTo} catches are
-	 * left out of the border rule and of the counters (see the class Javadoc).
+	 * not pinned, take no new vehicle mode and are left out of the counters (see the class Javadoc).
 	 */
 	public static class Factory implements TourConstraintFactory {
 		private static final Logger logger = LogManager.getLogger(BorderTourVehicleConstraint.class);

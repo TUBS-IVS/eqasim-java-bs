@@ -208,7 +208,10 @@ public class BorderTourVehicleConstraintTest {
 		// Walk on the caught trip, the other car legs pinned: valid under both rules.
 		assertTrue(border.validateBeforeEstimation(tour, List.of("car", "walk", "car"), List.of()));
 		assertTrue(bothRules(border, sameFacility, tour, List.of("car", "walk", "car")));
-		assertTrue(bothRules(border, sameFacility, tour, List.of("car", "bicycle", "car")));
+
+		// A bicycle the person does not use there: refused as a new vehicle leg.
+		assertFalse(border.validateBeforeEstimation(tour, List.of("car", "bicycle", "car"), List.of()));
+		assertFalse(bothRules(border, sameFacility, tour, List.of("car", "bicycle", "car")));
 
 		// Car kept on the caught trip: the border rule no longer decides it, the same-facility rule rejects it.
 		assertTrue(border.validateBeforeEstimation(tour, List.of("car", "car", "car"), List.of()));
@@ -221,6 +224,23 @@ public class BorderTourVehicleConstraintTest {
 		// The caught trip is not a vehicle leg of the border rule.
 		assertEquals(2, factory.getBorderTourVehicleTrips());
 		assertTrue(factory.isSameFacilityLeisureExemption());
+	}
+
+	@Test
+	public void withSameFacilityLeisureRule_aCaughtBicycleTripKeepsTheBicycleOrWalks() {
+		List<DiscreteModeChoiceTrip> trips = plan("HAaBOH", "car", "bicycle", "car", "pt", "pt");
+		BorderTourVehicleConstraint.Factory factory = new BorderTourVehicleConstraint.Factory(RESTRICTED_MODES,
+				planTrips -> HOME_ID, true);
+		TourConstraint border = factory.createConstraint(person(), trips, ALL_MODES);
+		TripConstraint sameFacility = new SameFacilityLeisureTripConstraint.Factory().createConstraint(person(), trips,
+				ALL_MODES);
+		List<DiscreteModeChoiceTrip> tour = trips.subList(0, 3);
+
+		assertTrue(bothRules(border, sameFacility, tour, List.of("car", "bicycle", "car")));
+		assertTrue(bothRules(border, sameFacility, tour, List.of("car", "walk", "car")));
+		assertFalse(border.validateBeforeEstimation(tour, List.of("car", "car", "car"), List.of()));
+		assertFalse(bothRules(border, sameFacility, tour, List.of("car", "car", "car")));
+		assertEquals(2, factory.getBorderTourVehicleTrips());
 	}
 
 	@Test
