@@ -2,6 +2,8 @@ package org.eqasim.core.standalone_mode_choice;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -9,6 +11,9 @@ import java.util.List;
 import java.util.Random;
 
 import org.eqasim.core.scenario.routing.PlanRouter;
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripCounter;
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripFinder;
+import org.eqasim.core.simulation.mode_choice.filters.KeepFilteredTripsModel;
 import org.eqasim.core.simulation.mode_choice.filters.OutsideFilter;
 import org.junit.Rule;
 import org.junit.Test;
@@ -51,16 +56,30 @@ public class StandaloneModeChoiceFilteredTripsTest {
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
+	private static FilteredTripFinder finder() {
+		return FilteredTripFinder.forTours(new PlanTourFinder(), new OutsideFilter());
+	}
+
 	/**
-	 * Chooses {@link #CHOSEN_MODE} for every trip, also for the trips of a rejected tour: like the contrib's algorithm,
-	 * which re-inserts every trip it gets back, it rewrites every trip unless the performer puts it back.
+	 * Like the contrib's tour-based model: the trips of a rejected tour keep their initial modes (as unrouted
+	 * candidates, which the contrib's algorithm would re-insert as bare legs), every other trip gets
+	 * {@link #CHOSEN_MODE}. With {@code respectFilter = false} it re-chooses the rejected trips as well, which the
+	 * wrapper must refuse.
 	 */
-	private static final class ConstantModeModel implements DiscreteModeChoiceModel {
+	private static final class TourModelLike implements DiscreteModeChoiceModel {
+		private final boolean respectFilter;
+
+		TourModelLike(boolean respectFilter) {
+			this.respectFilter = respectFilter;
+		}
+
 		@Override
 		public List<TripCandidate> chooseModes(Person person, List<DiscreteModeChoiceTrip> trips, Random random) {
+			List<DiscreteModeChoiceTrip> filtered = finder().findFilteredTrips(person, trips);
 			List<TripCandidate> candidates = new ArrayList<>();
-			for (int index = 0; index < trips.size(); index++) {
-				candidates.add(new DefaultTripCandidate(0.0, CHOSEN_MODE, 0.0));
+			for (DiscreteModeChoiceTrip trip : trips) {
+				boolean kept = respectFilter && filtered.contains(trip);
+				candidates.add(new DefaultTripCandidate(0.0, kept ? trip.getInitialMode() : CHOSEN_MODE, 0.0));
 			}
 			return candidates;
 		}
@@ -124,13 +143,18 @@ public class StandaloneModeChoiceFilteredTripsTest {
 	}
 
 	private void perform(Scenario scenario, int threads) throws Exception {
+		perform(scenario, threads, true);
+	}
+
+	private void perform(Scenario scenario, int threads, boolean respectFilter) throws Exception {
 		StandaloneModeChoiceConfigGroup configGroup = new StandaloneModeChoiceConfigGroup();
 		String output = new File(temporaryFolder.getRoot(), "output_" + threads).getAbsolutePath();
 		OutputDirectoryHierarchy hierarchy = new OutputDirectoryHierarchy(output, null,
 				OverwriteFileSetting.deleteDirectoryIfExists, CompressionType.gzip);
-		new StandaloneModeChoicePerformer(ConstantModeModel::new,
-				() -> FilteredTripFinder.forTours(new PlanTourFinder(), new OutsideFilter()), configGroup,
-				scenario.getPopulation(), threads, 1L, hierarchy, scenario).run();
+		FilteredTripCounter counter = new FilteredTripCounter();
+		new StandaloneModeChoicePerformer(
+				() -> new KeepFilteredTripsModel(new TourModelLike(respectFilter), finder(), counter), counter,
+				configGroup, scenario.getPopulation(), threads, 1L, hierarchy, scenario).run();
 	}
 
 	@Test
@@ -162,5 +186,14 @@ public class StandaloneModeChoiceFilteredTripsTest {
 			}
 			assertEquals("threads " + threads, List.of(CHOSEN_MODE, CHOSEN_MODE), residentModes);
 		}
+	}
+
+	@Test
+	public void aModelThatReChoosesARejectedTripFails() {
+		// the finder and the model disagree (e.g. a filter that depends on departure times): fail, never mix silently
+		Scenario scenario = ScenarioUtils.createScenario(ConfigUtils.createConfig());
+		addBorderPerson(scenario.getPopulation());
+		IllegalStateException error = assertThrows(IllegalStateException.class, () -> perform(scenario, 0, false));
+		assertTrue(error.getMessage(), error.getMessage().contains("the filter and the model disagree"));
 	}
 }

@@ -4,12 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Objects;
 
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripCounter;
 import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.population.Population;
-import org.matsim.contribs.discrete_mode_choice.components.tour_finder.TourFinder;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceModel;
-import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourFilter;
-import org.matsim.contribs.discrete_mode_choice.model.tour_based.TripFilter;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
 import org.matsim.core.config.groups.ControllerConfigGroup;
 import org.matsim.core.controler.AbstractModule;
@@ -55,34 +53,14 @@ public class StandaloneModeChoiceModule extends AbstractModule {
     @Provides
     public StandaloneModeChoicePerformer provideStandaloneModeChoicePerformer(
             Provider<DiscreteModeChoiceModel> discreteModeChoiceModelProvider,
-            Provider<FilteredTripFinder> filteredTripFinderProvider, Population population,
+            FilteredTripCounter filteredTripCounter, Population population,
             OutputDirectoryHierarchy outputDirectoryHierarchy, Scenario scenario,
             StandaloneModeChoiceConfigGroup configGroup) {
         int numberOfThreads = getConfig().global().getNumberOfThreads();
         long randomSeed = getConfig().global().getRandomSeed();
 
-        return new StandaloneModeChoicePerformer(discreteModeChoiceModelProvider, filteredTripFinderProvider,
+        return new StandaloneModeChoicePerformer(discreteModeChoiceModelProvider, filteredTripCounter,
                 configGroup, population, numberOfThreads, randomSeed, outputDirectoryHierarchy, scenario);
-    }
-
-    /**
-     * The trips the configured model does not re-choose: those of tours (tour-based models) or the trips (trip-based
-     * model) its filter rejects. Uses the model's own tour finder and filter (eqasim-bs#678). The filters must not
-     * depend on trip departure times, which the model sets before filtering and the finder does not; eqasim's
-     * OutsideFilter and the contrib's TourLengthFilter satisfy this (see {@link FilteredTripFinder}).
-     */
-    @Provides
-    public FilteredTripFinder provideFilteredTripFinder(DiscreteModeChoiceConfigGroup dmcConfig,
-            Provider<TourFinder> tourFinder, Provider<TourFilter> tourFilter, Provider<TripFilter> tripFilter) {
-        switch (dmcConfig.getModelType()) {
-        case Tour:
-        case EfficientTour:
-            return FilteredTripFinder.forTours(tourFinder.get(), tourFilter.get());
-        case Trip:
-            return FilteredTripFinder.forTrips(tripFilter.get());
-        default:
-            throw new IllegalStateException("Unknown discrete mode choice model type " + dmcConfig.getModelType());
-        }
     }
 
     @Provides

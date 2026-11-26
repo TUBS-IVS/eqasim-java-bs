@@ -16,6 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eqasim.core.misc.ParallelProgress;
+import org.eqasim.core.simulation.mode_choice.filters.FilteredTripCounter;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -131,7 +132,7 @@ public class StandaloneModeChoiceWorkerFailureTest {
 		String output = new File(temporaryFolder.getRoot(), "output_" + threads).getAbsolutePath();
 		OutputDirectoryHierarchy hierarchy = new OutputDirectoryHierarchy(output, null,
 				OverwriteFileSetting.deleteDirectoryIfExists, CompressionType.gzip);
-		new StandaloneModeChoicePerformer(model, () -> (person, trips) -> List.of(), configGroup, scenario.getPopulation(), threads, 1L,
+		new StandaloneModeChoicePerformer(model, new FilteredTripCounter(), configGroup, scenario.getPopulation(), threads, 1L,
 				hierarchy, scenario).run();
 	}
 

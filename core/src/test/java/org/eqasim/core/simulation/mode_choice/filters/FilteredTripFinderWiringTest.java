@@ -1,4 +1,4 @@
-package org.eqasim.core.standalone_mode_choice;
+package org.eqasim.core.simulation.mode_choice.filters;
 
 import static org.junit.Assert.assertEquals;
 
@@ -34,10 +34,7 @@ import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.PopulationFactory;
 import org.matsim.contribs.discrete_mode_choice.components.tour_finder.ActivityTourFinder;
-import org.matsim.contribs.discrete_mode_choice.components.tour_finder.TourFinder;
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
-import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourFilter;
-import org.matsim.contribs.discrete_mode_choice.model.tour_based.TripFilter;
 import org.matsim.contribs.discrete_mode_choice.modules.FilterModule;
 import org.matsim.contribs.discrete_mode_choice.modules.ModelModule.ModelType;
 import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
@@ -54,8 +51,8 @@ import org.matsim.core.utils.timing.TimeInterpretationModule;
 import com.google.inject.Injector;
 
 /**
- * {@link StandaloneModeChoiceModule#provideFilteredTripFinder} builds the finder from the DMC bindings the config
- * selects (eqasim-bs#678): the tour finder {@code IsolatedOutsideTrips} (Braunschweig binds this name to
+ * The injected {@link FilteredTripFinder} ({@link FilteredTripsModule#provideFilteredTripFinder}) is built from the DMC
+ * bindings the config selects (eqasim-bs#678): the tour finder {@code IsolatedOutsideTrips} (Braunschweig binds this name to
  * {@link ActivityTourFinderWithExcludedActivities} on {@code [home, outside]} with {@code outside} excluded; the same
  * composition is bound here, the Braunschweig provider is pinned by its IsolatedOutsideTripsContractTest) and the tour
  * filters {@code OutsideFilter} and {@code TourLength}. The finder must return exactly the border trips and the trips of
@@ -111,9 +108,7 @@ public class FilteredTripFinderWiringTest {
 	}
 
 	private static FilteredTripFinder finder(Injector injector) {
-		return new StandaloneModeChoiceModule().provideFilteredTripFinder(
-				injector.getInstance(DiscreteModeChoiceConfigGroup.class), injector.getProvider(TourFinder.class),
-				injector.getProvider(TourFilter.class), injector.getProvider(TripFilter.class));
+		return injector.getInstance(FilteredTripFinder.class);
 	}
 
 	/** A plan through the activity types (H home, O outside, other letters inside), one walk trip between each two. */

@@ -1,4 +1,4 @@
-package org.eqasim.core.standalone_mode_choice;
+package org.eqasim.core.simulation.mode_choice.filters;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,9 +17,10 @@ import org.matsim.contribs.discrete_mode_choice.model.tour_based.TripFilter;
  * The model keeps such trips at their initial modes, but it still re-estimates them, and
  * {@code DiscreteModeChoiceAlgorithm} re-inserts every trip it gets back. The trips of a rejected tour are therefore
  * re-routed by the plain trip router, which drops eqasim's walk-fallback stamp ({@code PlanRouter.WALK_FALLBACK_ATTRIBUTE})
- * and can turn a routed pt trip into a walk-only one (eqasim-bs#678). The standalone mode choice uses this finder to put
- * these trips back exactly as they came in. It applies the same tour finder and filter the model applies to the same
- * trip list, so it rejects exactly the tours the model rejects.
+ * and can turn a routed pt trip into a walk-only one (eqasim-bs#678). {@link KeepFilteredTripsModel} uses this finder to
+ * hand these trips back exactly as they came in, in the MATSim loop's mode choice replanning and in the standalone mode
+ * choice. It applies the same tour finder and filter the model applies to the same trip list, so it rejects exactly
+ * the tours the model rejects.
  * </p>
  *
  * <p>

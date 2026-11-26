@@ -1,0 +1,78 @@
+package org.eqasim.core.simulation.mode_choice.filters;
+
+import org.matsim.contribs.discrete_mode_choice.components.tour_finder.TourFinder;
+import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceModel;
+import org.matsim.contribs.discrete_mode_choice.model.tour_based.EfficientTourBasedModel;
+import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourBasedModel;
+import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourFilter;
+import org.matsim.contribs.discrete_mode_choice.model.tour_based.TripFilter;
+import org.matsim.contribs.discrete_mode_choice.model.trip_based.TripBasedModel;
+import org.matsim.contribs.discrete_mode_choice.modules.config.DiscreteModeChoiceConfigGroup;
+import org.matsim.core.controler.AbstractModule;
+
+import com.google.inject.Provider;
+import com.google.inject.Provides;
+import com.google.inject.Singleton;
+
+/**
+ * Keeps the trips the discrete mode choice does not re-choose unchanged (eqasim-bs#678). Overrides the contrib's
+ * {@code DiscreteModeChoiceModel} binding with the configured model wrapped in {@link KeepFilteredTripsModel}, so the
+ * MATSim loop's mode choice replanning (the contrib's DiscreteModeChoice strategy) and the standalone mode choice both
+ * use it. Must be installed after the contrib's {@code DiscreteModeChoiceModule}, as an overriding module (the
+ * {@code EqasimConfigurator} registers it after {@code EqasimModeChoiceModule}).
+ */
+public class FilteredTripsModule extends AbstractModule {
+	@Override
+	public void install() {
+		addControllerListenerBinding().to(FilteredTripCounter.class);
+	}
+
+	@Provides
+	@Singleton
+	public FilteredTripCounter provideFilteredTripCounter() {
+		return new FilteredTripCounter();
+	}
+
+	/**
+	 * The trips the configured model does not re-choose: those of tours (tour-based models) or the trips (trip-based
+	 * model) its filter rejects. Uses the model's own tour finder and filter. The filters must not depend on trip
+	 * departure times, which the model sets before filtering and the finder does not; eqasim's OutsideFilter and the
+	 * contrib's TourLengthFilter satisfy this (see {@link FilteredTripFinder}).
+	 */
+	@Provides
+	public FilteredTripFinder provideFilteredTripFinder(DiscreteModeChoiceConfigGroup dmcConfig,
+			Provider<TourFinder> tourFinder, Provider<TourFilter> tourFilter, Provider<TripFilter> tripFilter) {
+		switch (dmcConfig.getModelType()) {
+		case Tour:
+		case EfficientTour:
+			return FilteredTripFinder.forTours(tourFinder.get(), tourFilter.get());
+		case Trip:
+			return FilteredTripFinder.forTrips(tripFilter.get());
+		default:
+			throw new IllegalStateException("Unknown discrete mode choice model type " + dmcConfig.getModelType());
+		}
+	}
+
+	/** The configured model (the same choice of model type as the contrib's binding), wrapped. Not a singleton. */
+	@Provides
+	public DiscreteModeChoiceModel provideDiscreteModeChoiceModel(DiscreteModeChoiceConfigGroup dmcConfig,
+			Provider<TourBasedModel> tourBasedModel, Provider<EfficientTourBasedModel> efficientTourBasedModel,
+			Provider<TripBasedModel> tripBasedModel, FilteredTripFinder filteredTripFinder,
+			FilteredTripCounter counter) {
+		DiscreteModeChoiceModel model;
+		switch (dmcConfig.getModelType()) {
+		case Tour:
+			model = tourBasedModel.get();
+			break;
+		case EfficientTour:
+			model = efficientTourBasedModel.get();
+			break;
+		case Trip:
+			model = tripBasedModel.get();
+			break;
+		default:
+			throw new IllegalStateException("Unknown discrete mode choice model type " + dmcConfig.getModelType());
+		}
+		return new KeepFilteredTripsModel(model, filteredTripFinder, counter);
+	}
+}
