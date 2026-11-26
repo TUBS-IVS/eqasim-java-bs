@@ -18,11 +18,13 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 
 /**
- * Keeps the trips the discrete mode choice does not re-choose unchanged (eqasim-bs#678). Overrides the contrib's
+ * Handles the trips the discrete mode choice does not re-choose (eqasim-bs#678). Overrides the contrib's
  * {@code DiscreteModeChoiceModel} binding with the configured model wrapped in {@link KeepFilteredTripsModel}, so the
  * MATSim loop's mode choice replanning (the contrib's DiscreteModeChoice strategy) and the standalone mode choice both
- * use it. Must be installed after the contrib's {@code DiscreteModeChoiceModule}, as an overriding module (the
- * {@code EqasimConfigurator} registers it after {@code EqasimModeChoiceModule}).
+ * use it. What the kept trips get is the bound {@link KeptTripElements}: routed again with eqasim's routing in the loop
+ * (bound here), unchanged in the standalone mode choice (overridden there). Must be installed after the contrib's
+ * {@code DiscreteModeChoiceModule}, as an overriding module (the {@code EqasimConfigurator} registers it after
+ * {@code EqasimModeChoiceModule}).
  */
 public class FilteredTripsModule extends AbstractModule {
 	@Override
@@ -60,13 +62,16 @@ public class FilteredTripsModule extends AbstractModule {
 	 * The MATSim loop's choice for the trips the model does not re-choose: route them again with eqasim's routing (owner
 	 * decision 2026-11-26, see {@link KeptTripElements}). The standalone mode choice overrides this binding with
 	 * {@link KeptTripElements#unchanged()}. Not a singleton: one {@link PlanRouter} per model instance, i.e. per
-	 * replanning thread.
+	 * replanning thread, created here, together with the model, on the thread that asks for the model (the contrib's
+	 * strategy does so on the main thread before its replanning threads start; see {@link KeptTripElements.Rerouted}
+	 * for why this matters for reproducibility).
 	 */
 	@Provides
-	public KeptTripElements provideKeptTripElements(ActivityFacilities facilities, Provider<TripRouter> tripRouter) {
+	public KeptTripElements provideKeptTripElements(ActivityFacilities facilities, Provider<TripRouter> tripRouter,
+			FilteredTripCounter counter) {
 		// PlanRouter is not bound in the simulation injector (it disables just-in-time bindings); a fresh TripRouter
-		// per instance, as the contrib's strategy takes one per replanning thread, created only when a trip is kept
-		return KeptTripElements.rerouted(() -> new PlanRouter(facilities, tripRouter.get()));
+		// per instance, as the contrib's strategy takes one per replanning thread
+		return KeptTripElements.rerouted(new PlanRouter(facilities, tripRouter.get()), counter);
 	}
 
 	/** The configured model (the same choice of model type as the contrib's binding), wrapped. Not a singleton. */

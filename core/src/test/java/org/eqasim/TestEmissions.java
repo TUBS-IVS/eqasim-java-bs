@@ -153,11 +153,14 @@ public class TestEmissions {
 		// eqasim-bs#465: since the transit engine boards a zero-slack transfer (1 s tolerance) and falls back to
 		// another route of the planned line, passengers it used to abort complete their day (more legs than the
 		// former 4641 / 1554 / 11910 / 638 / 2251)
-		Assert.assertEquals(4647, (long) counts.get("car"));
+		// eqasim-bs#678: the mode choice replanning creates one more trip router per replanning thread (for the trips it
+		// does not re-choose), which draws once more from MATSim's random stream; formerly 4647 / 1560 / 11951 / 638 /
+		// 2260
+		Assert.assertEquals(4605, (long) counts.get("car"));
 		Assert.assertEquals(1560, (long) counts.get("car_passenger"));
-		Assert.assertEquals(11951, (long) counts.get("walk"));
-		Assert.assertEquals(638, (long) counts.getOrDefault("bike", 0L));
-		Assert.assertEquals(2260, (long) counts.get("pt"));
+		Assert.assertEquals(11892, (long) counts.get("walk"));
+		Assert.assertEquals(677, (long) counts.getOrDefault("bike", 0L));
+		Assert.assertEquals(2282, (long) counts.get("pt"));
 
 		SafeOsmHbefaMapping.defaultType = "URB/Local/50";
 
@@ -169,7 +172,9 @@ public class TestEmissions {
 				"--eqasim-configurator", TestConfigurator.class.getName() });
 
 		// eqasim-bs#465: more completed car legs, see above (formerly 640230)
-		assertEquals(641382, countLines(new File("melun_test/output/output_emissions_events.xml.gz")));
+		// eqasim-bs#678: one more trip router per replanning thread draws once more from MATSim's random stream
+		// (formerly 641382)
+		assertEquals(640002, countLines(new File("melun_test/output/output_emissions_events.xml.gz")));
 
 		RunExportEmissionsNetwork.main(new String[] { "--config-path", "melun_test/input/config.xml",
 				"--pollutants", "PM,CO,NOx,Unknown", "--time-bin-size", "3600",
@@ -184,15 +189,19 @@ public class TestEmissions {
 		// eqasim-bs#465: more completed car legs reach more link and hour bins (formerly 42235); since a passenger
 		// who missed the planned departure boards another line serving the stop pair (eqasim-bs ADR-0161, 2 of about
 		// 2290 Melun pt departures per iteration), the bins are 42234 (formerly 42242)
-		assertEquals(42234, features.size());
+		// eqasim-bs#678: one more trip router per replanning thread draws once more from MATSim's random stream
+		// (formerly 42234)
+		assertEquals(41886, features.size());
 
 		SimpleFeature feature = features.stream().filter(f -> f.getAttribute("link").toString().equals("163994")
 				& f.getAttribute("time").toString().equals("43200")).findFirst().orElse(null);
 		assertNotNull(feature);
 
-		double expectedPm = 0.059894542675388;
-		double expectedCo = 0.893473893036039;
-		double expectedNox = 1.080511804659364;
+		// eqasim-bs#678: one more trip router per replanning thread draws once more from MATSim's random stream
+		// (formerly 0.059894542675388 / 0.893473893036039 / 1.080511804659364)
+		double expectedPm = 0.054546273465965;
+		double expectedCo = 0.881274714781534;
+		double expectedNox = 0.945222617201943;
 		double expectedUnknown = Double.NaN;
 
 		assertEquals(expectedPm, feature.getAttribute("PM"));

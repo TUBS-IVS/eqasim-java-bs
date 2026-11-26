@@ -22,8 +22,12 @@ import org.eqasim.core.simulation.EqasimConfigurator;
 import org.eqasim.core.simulation.mode_choice.EqasimModeChoiceModule;
 import org.eqasim.core.simulation.mode_choice.parameters.ModeParameters;
 import org.eqasim.core.simulation.termination.EqasimTerminationConfigGroup;
+import org.eqasim.core.standalone_mode_choice.StandaloneModeChoiceConfigGroup;
+import org.eqasim.core.standalone_mode_choice.StandaloneModeChoiceModule;
 import org.junit.After;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.matsim.api.core.v01.Coord;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.Scenario;
@@ -45,6 +49,7 @@ import org.matsim.core.config.CommandLine;
 import org.matsim.core.config.CommandLine.ConfigurationException;
 import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
+import org.matsim.core.controler.OutputDirectoryLogging;
 import org.matsim.core.population.PopulationUtils;
 import org.matsim.core.population.routes.RouteUtils;
 import org.matsim.core.replanning.PlanStrategy;
@@ -74,11 +79,15 @@ public class FilteredTripsReplanningTest {
 		FileUtils.deleteDirectory(new File("simulation_output"));
 	}
 
-	private static Injector createInjector(Scenario scenario, Config config) throws ConfigurationException {
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+	private static Injector createInjector(Scenario scenario, Config config, boolean ptWalkOnly)
+			throws ConfigurationException {
 		EqasimConfigurator configurator = new TestConfigurator();
 		return new InjectorBuilder(scenario, configurator) //
 				.addOverridingModules(configurator.getModules(config)) //
-				.addOverridingModule(new StaticModesModule()) //
+				.addOverridingModule(new StaticModesModule(ptWalkOnly)) //
 				.addOverridingModule(new TimeInterpretationModule()) //
 				.build();
 	}
@@ -162,60 +171,139 @@ public class FilteredTripsReplanningTest {
 		return plan;
 	}
 
-	@Test
-	public void theLoopReRoutesRejectedToursWithEqasimRoutingAndReChoosesTheOthers() throws ConfigurationException {
+	/** Runs the injector's DiscreteModeChoice strategy on a border person and a resident; returns the injector. */
+	private static Injector replan(int threads, boolean ptWalkOnly, Person border, Person resident)
+			throws ConfigurationException {
 		Config config = config();
+		config.global().setNumberOfThreads(threads);
 		Scenario scenario = scenario(config);
-		Injector injector = createInjector(scenario, config);
-		PopulationFactory factory = scenario.getPopulation().getFactory();
+		Injector injector = createInjector(scenario, config, ptWalkOnly);
 
 		// the controller injector hands the wrapped model to everything that injects the model, the strategy included
 		assertTrue(injector.getInstance(DiscreteModeChoiceModel.class) instanceof KeepFilteredTripsModel);
 		// the strategy as MATSim's controller looks it up (AbstractModule.addPlanStrategyBinding)
 		PlanStrategy strategy = injector.getInstance(Key.get(PlanStrategy.class, Names.named("DiscreteModeChoice")));
 
-		Plan borderPlan = borderPlan(factory);
-		Plan residentPlan = residentPlan(factory);
-		Person border = borderPlan.getPerson();
-		Person resident = residentPlan.getPerson();
-
 		strategy.init(() -> 1);
 		strategy.run(border);
 		strategy.run(resident);
 		strategy.finish();
+		return injector;
+	}
 
-		// the border plan (the strategy works on a copy): same structure, every trip routed again by eqasim's routing
-		List<Leg> borderLegs = TripStructureUtils.getLegs(border.getSelectedPlan());
-		assertEquals(2, borderLegs.size());
-		Leg fallback = borderLegs.get(0);
-		assertEquals(TransportMode.walk, fallback.getMode());
-		assertEquals(TransportMode.walk, TripStructureUtils.getRoutingMode(fallback));
-		assertEquals(TransportMode.pt, fallback.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
-		assertEquals(ROUTED_TRAVEL_TIME, fallback.getTravelTime().seconds(), 0.0);
-		Leg pt = borderLegs.get(1);
-		assertEquals(TransportMode.pt, pt.getMode());
-		assertEquals(TransportMode.pt, TripStructureUtils.getRoutingMode(pt));
-		assertEquals(ROUTED_TRAVEL_TIME, pt.getTravelTime().seconds(), 0.0);
-		assertEquals(null, pt.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+	@Test
+	public void theLoopReRoutesRejectedToursWithEqasimRoutingAndReChoosesTheOthers() throws ConfigurationException {
+		// one replanning thread and two (the contrib creates one model, i.e. one router, per thread)
+		for (int threads : new int[] { 1, 2 }) {
+			PopulationFactory factory = PopulationUtils.getFactory();
+			Person border = borderPlan(factory).getPerson();
+			Person resident = residentPlan(factory).getPerson();
+			Injector injector = replan(threads, false, border, resident);
+			String context = "threads " + threads;
 
-		// the resident's trips are re-chosen (walk or bike, both of zero utility) and routed as before
-		List<Leg> residentLegs = TripStructureUtils.getLegs(resident.getSelectedPlan());
-		assertEquals(2, residentLegs.size());
-		for (Leg leg : residentLegs) {
-			assertTrue(leg.getMode(), List.of(TransportMode.walk, TransportMode.bike).contains(leg.getMode()));
-			assertEquals(ROUTED_TRAVEL_TIME, leg.getTravelTime().seconds(), 0.0);
+			// the border plan (the strategy works on a copy): same structure, every trip routed again by eqasim's
+			// routing
+			List<Leg> borderLegs = TripStructureUtils.getLegs(border.getSelectedPlan());
+			assertEquals(context, 2, borderLegs.size());
+			Leg fallback = borderLegs.get(0);
+			assertEquals(context, TransportMode.walk, fallback.getMode());
+			assertEquals(context, TransportMode.walk, TripStructureUtils.getRoutingMode(fallback));
+			assertEquals(context, TransportMode.pt,
+					fallback.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+			assertEquals(context, ROUTED_TRAVEL_TIME, fallback.getTravelTime().seconds(), 0.0);
+			Leg pt = borderLegs.get(1);
+			assertEquals(context, TransportMode.pt, pt.getMode());
+			assertEquals(context, TransportMode.pt, TripStructureUtils.getRoutingMode(pt));
+			assertEquals(context, ROUTED_TRAVEL_TIME, pt.getTravelTime().seconds(), 0.0);
+			assertEquals(context, null, pt.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+
+			// the resident's trips are re-chosen (walk or bike, both of zero utility) and routed as before
+			List<Leg> residentLegs = TripStructureUtils.getLegs(resident.getSelectedPlan());
+			assertEquals(context, 2, residentLegs.size());
+			for (Leg leg : residentLegs) {
+				assertTrue(leg.getMode(), List.of(TransportMode.walk, TransportMode.bike).contains(leg.getMode()));
+				assertEquals(context, ROUTED_TRAVEL_TIME, leg.getTravelTime().seconds(), 0.0);
+			}
+
+			// counted: 2 kept trips, both routed again, none fell back now, one kept its stamp
+			FilteredTripCounter counter = injector.getInstance(FilteredTripCounter.class);
+			assertEquals(context, 2, counter.getNumberOfKeptTrips());
+			assertEquals(context, 2, counter.getNumberOfReroutedTrips());
+			assertEquals(context, 0, counter.getNumberOfWalkFallbacks());
+			assertEquals(context, 1, counter.getNumberOfKeptStamps());
 		}
 	}
 
-	/** walk, bike and pt available with zero utility, routed by a static router; as in TestSpecialModeChoiceCases. */
+	@Test
+	public void aKeptPtTripThatRoutesWalkOnlyIsStampedAndCounted() throws ConfigurationException {
+		// the pt router finds no pt connection (walk legs only): eqasim's routing replaces the trip by a stamped walk
+		PopulationFactory factory = PopulationUtils.getFactory();
+		Person border = borderPlan(factory).getPerson();
+		Person resident = residentPlan(factory).getPerson();
+		Injector injector = replan(1, true, border, resident);
+
+		Leg pt = TripStructureUtils.getLegs(border.getSelectedPlan()).get(1);
+		assertEquals(TransportMode.walk, pt.getMode());
+		assertEquals(TransportMode.walk, TripStructureUtils.getRoutingMode(pt));
+		assertEquals(TransportMode.pt, pt.getAttributes().getAttribute(PlanRouter.WALK_FALLBACK_ATTRIBUTE));
+
+		FilteredTripCounter counter = injector.getInstance(FilteredTripCounter.class);
+		assertEquals(2, counter.getNumberOfReroutedTrips());
+		assertEquals(1, counter.getNumberOfWalkFallbacks());
+		assertEquals(1, counter.getNumberOfKeptStamps());
+		assertTrue(counter.summary(), counter.summary().contains("1 fell back to walk (50.00 %)"));
+	}
+
+	@Test
+	public void theLoopInjectorBindsReRouting() throws ConfigurationException {
+		Config config = config();
+		Injector injector = createInjector(scenario(config), config, false);
+		assertTrue(injector.getInstance(KeptTripElements.class) instanceof KeptTripElements.Rerouted);
+	}
+
+	@Test
+	public void theStandaloneInjectorBindsUnchangedTrips() throws ConfigurationException, IOException {
+		Config config = config();
+		StandaloneModeChoiceConfigGroup standaloneConfig = new StandaloneModeChoiceConfigGroup();
+		standaloneConfig.setOutputDirectory(temporaryFolder.newFolder("standalone").getAbsolutePath());
+		config.addModule(standaloneConfig);
+
+		// as RunStandaloneModeChoice registers it: after the configurator's modules, so its binding wins
+		EqasimConfigurator configurator = new TestConfigurator();
+		configurator.registerModule(new StandaloneModeChoiceModule());
+		try {
+			Injector injector = new InjectorBuilder(scenario(config), configurator) //
+					.addOverridingModules(configurator.getModules(config)) //
+					.addOverridingModule(new StaticModesModule(false)) //
+					.addOverridingModule(new TimeInterpretationModule()) //
+					.build();
+			assertTrue(injector.getInstance(KeptTripElements.class) instanceof KeptTripElements.Unchanged);
+		} finally {
+			// the standalone module's output directory starts MATSim's file logging; close it, or a later controller in
+			// this JVM finds its log file locked (TestSimulationPipeline)
+			OutputDirectoryLogging.closeOutputDirLogging();
+		}
+	}
+
+	/**
+	 * walk, bike and pt available with zero utility, routed by a static router; as in TestSpecialModeChoiceCases. With
+	 * {@code ptWalkOnly}, the pt router returns a walk leg only, like a pt router without a connection.
+	 */
 	static private class StaticModesModule extends AbstractDiscreteModeChoiceExtension {
+		private final boolean ptWalkOnly;
+
+		StaticModesModule(boolean ptWalkOnly) {
+			this.ptWalkOnly = ptWalkOnly;
+		}
+
 		@Override
 		protected void installExtension() {
 			bindModeAvailability("static").toInstance(new StaticModeAvailability());
 			bind(ModeParameters.class).toInstance(new ModeParameters());
-			for (String mode : List.of(TransportMode.walk, TransportMode.bike, TransportMode.pt)) {
-				addRoutingModuleBinding(mode).toInstance(new StaticRoutingModule(mode));
-			}
+			addRoutingModuleBinding(TransportMode.walk).toInstance(new StaticRoutingModule(TransportMode.walk));
+			addRoutingModuleBinding(TransportMode.bike).toInstance(new StaticRoutingModule(TransportMode.bike));
+			addRoutingModuleBinding(TransportMode.pt)
+					.toInstance(new StaticRoutingModule(ptWalkOnly ? TransportMode.walk : TransportMode.pt));
 		}
 	}
 

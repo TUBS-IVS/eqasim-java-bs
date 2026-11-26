@@ -12,8 +12,9 @@ import org.matsim.contribs.discrete_mode_choice.model.trip_based.candidates.Rout
 import org.matsim.contribs.discrete_mode_choice.model.trip_based.candidates.TripCandidate;
 
 /**
- * Wraps the discrete mode choice model so that the trips it does not re-choose leave the mode choice exactly as they
- * came in (eqasim-bs#678).
+ * Wraps the discrete mode choice model so that the trips it does not re-choose get the elements of the bound
+ * {@link KeptTripElements} instead of the contrib's plain re-routing (eqasim-bs#678): routed again with eqasim's routing
+ * in the MATSim loop, unchanged in the standalone mode choice.
  *
  * <p>
  * The contrib's {@code DiscreteModeChoiceAlgorithm} re-inserts every trip it gets back from the model: the routed
