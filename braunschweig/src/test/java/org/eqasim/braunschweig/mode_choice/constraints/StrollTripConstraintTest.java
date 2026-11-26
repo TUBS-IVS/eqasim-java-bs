@@ -3,6 +3,7 @@ package org.eqasim.braunschweig.mode_choice.constraints;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -59,9 +60,32 @@ public class StrollTripConstraintTest {
 	}
 
 	@Test
-	public void string_true_or_boolean_false_places_no_restriction() {
-		assertEveryModeAllowed(trip("true"));
+	public void boolean_false_and_absent_attribute_place_no_restriction() {
 		assertEveryModeAllowed(trip(Boolean.FALSE));
+		assertEveryModeAllowed(trip(null));
+	}
+
+	@Test
+	public void string_true_is_a_format_error() {
+		DiscreteModeChoiceTrip trip = trip("true");
+
+		try {
+			StrollTripConstraint.appliesTo(person(), trip);
+			fail("a String attribute value must be rejected");
+		} catch (IllegalStateException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains("person"));
+			assertTrue(e.getMessage(), e.getMessage().contains("'leisure'"));
+			assertTrue(e.getMessage(), e.getMessage().contains("'true'"));
+			assertTrue(e.getMessage(), e.getMessage().contains("java.lang.String"));
+		}
+
+		// The constraint itself fails the same way, so the mode choice does not run with the rule switched off.
+		try {
+			createConstraint(trip);
+			fail("the factory must reject the plan");
+		} catch (IllegalStateException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains("java.lang.String"));
+		}
 	}
 
 	@Test
@@ -119,9 +143,9 @@ public class StrollTripConstraintTest {
 		Activity unmarked = (Activity) elements.get(4);
 
 		assertEquals(Boolean.TRUE, marked.getAttributes().getAttribute(StrollTripConstraint.OUT_AND_BACK_STROLL_ATTRIBUTE));
-		assertTrue(StrollTripConstraint.appliesTo(
+		assertTrue(StrollTripConstraint.appliesTo(person(),
 				new DiscreteModeChoiceTrip(home, marked, "car", List.of(), 0, 0, 0, new AttributesImpl())));
-		assertFalse(StrollTripConstraint.appliesTo(
+		assertFalse(StrollTripConstraint.appliesTo(person(),
 				new DiscreteModeChoiceTrip(marked, unmarked, "car", List.of(), 0, 1, 1, new AttributesImpl())));
 	}
 

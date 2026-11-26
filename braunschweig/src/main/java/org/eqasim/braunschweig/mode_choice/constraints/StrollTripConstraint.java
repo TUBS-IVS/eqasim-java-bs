@@ -20,12 +20,12 @@ import org.matsim.contribs.discrete_mode_choice.model.trip_based.TripConstraintF
  *
  * <p>
  * The population pipeline of eqasim-bs#679 marks the activity of an out-and-back stroll with the activity attribute
- * {@link #OUT_AND_BACK_STROLL_ATTRIBUTE} (a {@code java.lang.Boolean}). Rule: a trip whose destination activity carries the
- * attribute with the value {@link Boolean#TRUE} may only use one of
+ * {@link #OUT_AND_BACK_STROLL_ATTRIBUTE} (a {@code java.lang.Boolean}). Rule: a trip whose destination activity
+ * carries the attribute with the value {@link Boolean#TRUE} may only use one of
  * {@link SameFacilityLeisureTripConstraint#ALLOWED_MODES} (the same set as the same-facility leisure rule, not a
- * copy). Only a real {@code Boolean.TRUE} counts: a {@code String} "true", {@code Boolean.FALSE} or a missing
- * attribute place no restriction, and every other trip is left to the other constraints.
- *
+ * copy). {@code Boolean.FALSE} or a missing attribute place no restriction. A value that is not a {@code Boolean}
+ * (for example the {@code String} "true") is a format error and throws an {@link IllegalStateException}. Every other
+ * trip is left to the other constraints.
  * <p>
  * ASSUMPTION (owner's decision of 2026-11-26 for eqasim-bs#679): a trip into a stroll is not a motorised trip.
  *
@@ -39,25 +39,47 @@ public class StrollTripConstraint extends AbstractTripConstraint {
 	/** The destination activity attribute the pipeline writes (Boolean) for an out-and-back stroll activity. */
 	public static final String OUT_AND_BACK_STROLL_ATTRIBUTE = "outAndBackStroll";
 
+	private final Person person;
 	private final AtomicLong reachedTrips;
 	private final AtomicLong rejectedCandidates;
 
 	/** Plan positions ({@link DiscreteModeChoiceTrip#getIndex()}) of the caught trips already counted as evaluated. */
 	private final BitSet reached = new BitSet();
 
-	StrollTripConstraint(AtomicLong reachedTrips, AtomicLong rejectedCandidates) {
+	StrollTripConstraint(Person person, AtomicLong reachedTrips, AtomicLong rejectedCandidates) {
+		this.person = person;
 		this.reachedTrips = reachedTrips;
 		this.rejectedCandidates = rejectedCandidates;
 	}
 
-	/** Whether the rule applies to the trip: the destination activity attribute is the Boolean true. */
-	public static boolean appliesTo(DiscreteModeChoiceTrip trip) {
-		return Boolean.TRUE.equals(trip.getDestinationActivity().getAttributes().getAttribute(OUT_AND_BACK_STROLL_ATTRIBUTE));
+	/**
+	 * Whether the rule applies to the trip: the destination activity attribute is the Boolean true. An absent attribute
+	 * or {@code Boolean.FALSE} means not marked.
+	 *
+	 * @throws IllegalStateException if the attribute is present but not a {@code java.lang.Boolean} (a format error of
+	 *                               the population writer, which must not switch the rule off silently)
+	 */
+	public static boolean appliesTo(Person person, DiscreteModeChoiceTrip trip) {
+		Object value = trip.getDestinationActivity().getAttributes().getAttribute(OUT_AND_BACK_STROLL_ATTRIBUTE);
+
+		if (value == null) {
+			return false;
+		}
+
+		if (!(value instanceof Boolean)) {
+			throw new IllegalStateException(String.format(
+					"Person %s: activity '%s' has attribute %s with value '%s' of class %s,"
+							+ " expected a java.lang.Boolean",
+					person.getId(), trip.getDestinationActivity().getType(), OUT_AND_BACK_STROLL_ATTRIBUTE, value,
+					value.getClass().getName()));
+		}
+
+		return (Boolean) value;
 	}
 
 	@Override
 	public boolean validateBeforeEstimation(DiscreteModeChoiceTrip trip, String mode, List<String> previousModes) {
-		if (!appliesTo(trip)) {
+		if (!appliesTo(person, trip)) {
 			return true;
 		}
 
@@ -105,7 +127,7 @@ public class StrollTripConstraint extends AbstractTripConstraint {
 			int caught = 0;
 
 			for (DiscreteModeChoiceTrip trip : planTrips) {
-				if (appliesTo(trip)) {
+				if (appliesTo(person, trip)) {
 					caught++;
 				}
 			}
@@ -113,7 +135,7 @@ public class StrollTripConstraint extends AbstractTripConstraint {
 			// Plan trips before caught trips: a reader taking caught first and plan trips last sees caught <= trips.
 			trips.addAndGet(planTrips.size());
 			caughtTrips.addAndGet(caught);
-			return new StrollTripConstraint(reachedTrips, rejectedCandidates);
+			return new StrollTripConstraint(person, reachedTrips, rejectedCandidates);
 		}
 
 		/**
