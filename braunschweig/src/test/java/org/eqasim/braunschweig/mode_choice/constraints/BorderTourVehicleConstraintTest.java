@@ -23,6 +23,7 @@ import org.matsim.contribs.discrete_mode_choice.components.constraints.VehicleTo
 import org.matsim.contribs.discrete_mode_choice.model.DiscreteModeChoiceTrip;
 import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourCandidate;
 import org.matsim.contribs.discrete_mode_choice.model.tour_based.TourConstraint;
+import org.matsim.contribs.discrete_mode_choice.model.trip_based.TripConstraint;
 import org.matsim.core.population.PopulationUtils;
 import org.matsim.facilities.ActivityFacility;
 import org.matsim.utils.objectattributes.attributable.AttributesImpl;
@@ -193,6 +194,84 @@ public class BorderTourVehicleConstraintTest {
 		assertEquals(4, messages.stream().filter(message -> message.startsWith("border-tour vehicle legs")).count());
 	}
 
+	@Test
+	public void withSameFacilityLeisureRule_aCaughtCarTripIsLeftToThatRule() {
+		// Trip 1 (A -> a) is a same-facility leisure trip with initial mode car inside a border tour.
+		List<DiscreteModeChoiceTrip> trips = plan("HAaBOH", "car", "car", "car", "pt", "pt");
+		BorderTourVehicleConstraint.Factory factory = new BorderTourVehicleConstraint.Factory(RESTRICTED_MODES,
+				planTrips -> HOME_ID, true);
+		TourConstraint border = factory.createConstraint(person(), trips, ALL_MODES);
+		TripConstraint sameFacility = new SameFacilityLeisureTripConstraint.Factory().createConstraint(person(), trips,
+				ALL_MODES);
+		List<DiscreteModeChoiceTrip> tour = trips.subList(0, 3);
+
+		// Walk on the caught trip, the other car legs pinned: valid under both rules.
+		assertTrue(border.validateBeforeEstimation(tour, List.of("car", "walk", "car"), List.of()));
+		assertTrue(bothRules(border, sameFacility, tour, List.of("car", "walk", "car")));
+
+		// A bicycle the person does not use there: refused as a new vehicle leg.
+		assertFalse(border.validateBeforeEstimation(tour, List.of("car", "bicycle", "car"), List.of()));
+		assertFalse(bothRules(border, sameFacility, tour, List.of("car", "bicycle", "car")));
+
+		// Car kept on the caught trip: the border rule no longer decides it, the same-facility rule rejects it.
+		assertTrue(border.validateBeforeEstimation(tour, List.of("car", "car", "car"), List.of()));
+		assertFalse(bothRules(border, sameFacility, tour, List.of("car", "car", "car")));
+
+		// The other vehicle legs stay pinned.
+		assertFalse(border.validateBeforeEstimation(tour, List.of("walk", "walk", "car"), List.of()));
+		assertFalse(border.validateBeforeEstimation(tour, List.of("car", "walk", "pt"), List.of()));
+
+		// The caught trip is not a vehicle leg of the border rule.
+		assertEquals(2, factory.getBorderTourVehicleTrips());
+		assertTrue(factory.isSameFacilityLeisureExemption());
+	}
+
+	@Test
+	public void withSameFacilityLeisureRule_aCaughtBicycleTripKeepsTheBicycleOrWalks() {
+		List<DiscreteModeChoiceTrip> trips = plan("HAaBOH", "car", "bicycle", "car", "pt", "pt");
+		BorderTourVehicleConstraint.Factory factory = new BorderTourVehicleConstraint.Factory(RESTRICTED_MODES,
+				planTrips -> HOME_ID, true);
+		TourConstraint border = factory.createConstraint(person(), trips, ALL_MODES);
+		TripConstraint sameFacility = new SameFacilityLeisureTripConstraint.Factory().createConstraint(person(), trips,
+				ALL_MODES);
+		List<DiscreteModeChoiceTrip> tour = trips.subList(0, 3);
+
+		assertTrue(bothRules(border, sameFacility, tour, List.of("car", "bicycle", "car")));
+		assertTrue(bothRules(border, sameFacility, tour, List.of("car", "walk", "car")));
+		assertFalse(border.validateBeforeEstimation(tour, List.of("car", "car", "car"), List.of()));
+		assertFalse(bothRules(border, sameFacility, tour, List.of("car", "car", "car")));
+		assertEquals(2, factory.getBorderTourVehicleTrips());
+	}
+
+	@Test
+	public void withoutSameFacilityLeisureRule_theCaughtTripStaysAPinnedVehicleLeg() {
+		List<DiscreteModeChoiceTrip> trips = plan("HAaBOH", "car", "car", "car", "pt", "pt");
+		BorderTourVehicleConstraint.Factory factory = createFactory();
+		TourConstraint border = factory.createConstraint(person(), trips, ALL_MODES);
+		List<DiscreteModeChoiceTrip> tour = trips.subList(0, 3);
+
+		assertFalse(border.validateBeforeEstimation(tour, List.of("car", "walk", "car"), List.of()));
+		assertTrue(border.validateBeforeEstimation(tour, List.of("car", "car", "car"), List.of()));
+		assertEquals(3, factory.getBorderTourVehicleTrips());
+		assertFalse(factory.isSameFacilityLeisureExemption());
+	}
+
+	/** Both rules as the tour-based model combines them: the tour rule and the trip rule on every trip. */
+	private static boolean bothRules(TourConstraint border, TripConstraint sameFacility,
+			List<DiscreteModeChoiceTrip> tour, List<String> modes) {
+		if (!border.validateBeforeEstimation(tour, modes, List.of())) {
+			return false;
+		}
+
+		for (int index = 0; index < tour.size(); index++) {
+			if (!sameFacility.validateBeforeEstimation(tour.get(index), modes.get(index), List.of())) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	private static List<String> collectLog(Runnable action) {
 		Logger logger = (Logger) LogManager.getLogger(BorderTourVehicleConstraint.class);
 		CollectingAppender appender = new CollectingAppender();
@@ -255,8 +334,9 @@ public class BorderTourVehicleConstraintTest {
 	}
 
 	/**
-	 * Builds the trips of a plan from a string of activity letters: H = home, O = outside, any other letter an
-	 * inside activity at its own facility (the facility id is the letter, "home" for H).
+	 * Builds the trips of a plan from a string of activity letters: H = home, O = outside, any other upper-case letter
+	 * an inside activity at its own facility (the facility id is the letter, "home" for H), a lower-case letter a
+	 * leisure activity at the facility of its upper-case letter.
 	 */
 	static List<DiscreteModeChoiceTrip> plan(String activities, String... modes) {
 		if (modes.length != activities.length() - 1) {
@@ -280,10 +360,11 @@ public class BorderTourVehicleConstraintTest {
 		String type = switch (letter) {
 		case 'H' -> "home";
 		case 'O' -> "outside";
-		default -> "other";
+		default -> Character.isLowerCase(letter) ? "leisure" : "other";
 		};
 		Activity activity = PopulationUtils.createActivityFromCoord(type, new Coord(position, 0));
-		activity.setFacilityId(letter == 'H' ? HOME_ID : Id.create(String.valueOf(letter), ActivityFacility.class));
+		String facility = String.valueOf(Character.toUpperCase(letter));
+		activity.setFacilityId(letter == 'H' ? HOME_ID : Id.create(facility, ActivityFacility.class));
 		return activity;
 	}
 }

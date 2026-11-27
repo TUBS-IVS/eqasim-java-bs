@@ -1,5 +1,6 @@
 package org.eqasim.braunschweig.mode_choice;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -90,6 +91,21 @@ public class BorderTourVehicleConstraintBindingTest {
 		notSelected.setTourConstraints(List.of("VehicleContinuity"));
 		notSelected.getActivityTourFinderConfigGroup().setActivityTypes(List.of("home"));
 		assertNotNull(provide(notSelected));
+	}
+
+	@Test
+	public void providerExemptsSameFacilityLeisureTripsOnlyWhenThatRuleIsSelected() {
+		DiscreteModeChoiceConfigGroup both = new DiscreteModeChoiceConfigGroup();
+		both.setTourConstraints(List.of(BraunschweigModeChoiceModule.BORDER_TOUR_VEHICLE_CONSTRAINT_NAME));
+		both.setTripConstraints(List.of(BraunschweigModeChoiceModule.SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME));
+		both.getActivityTourFinderConfigGroup().setActivityTypes(List.of("home", "outside"));
+		assertTrue(provide(both).isSameFacilityLeisureExemption());
+
+		DiscreteModeChoiceConfigGroup borderOnly = new DiscreteModeChoiceConfigGroup();
+		borderOnly.setTourConstraints(List.of(BraunschweigModeChoiceModule.BORDER_TOUR_VEHICLE_CONSTRAINT_NAME));
+		borderOnly.setTripConstraints(List.of("OutsideConstraint"));
+		borderOnly.getActivityTourFinderConfigGroup().setActivityTypes(List.of("home", "outside"));
+		assertFalse(provide(borderOnly).isSameFacilityLeisureExemption());
 	}
 
 	private static BorderTourVehicleConstraint.Factory provide(DiscreteModeChoiceConfigGroup dmcConfig) {

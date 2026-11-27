@@ -21,6 +21,9 @@ import org.eqasim.braunschweig.fares.zonal.VrbFareModule;
 import org.eqasim.braunschweig.fares.zonal.VrbZoneFareCostModel;
 import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleConstraint;
 import org.eqasim.braunschweig.mode_choice.constraints.BorderTourVehicleSummaryListener;
+import org.eqasim.braunschweig.mode_choice.constraints.SameFacilityLeisureTripConstraint;
+import org.eqasim.braunschweig.mode_choice.constraints.LeisureTripRuleSummaryListener;
+import org.eqasim.braunschweig.mode_choice.constraints.StrollTripConstraint;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigCarCostModel;
 import org.eqasim.braunschweig.mode_choice.costs.BraunschweigPtCostModel;
 import org.eqasim.braunschweig.mode_choice.parameters.BraunschweigCostParameters;
@@ -75,6 +78,18 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	 * bound; nothing changes until a config selects the name as a tour constraint.
 	 */
 	public static final String BORDER_TOUR_VEHICLE_CONSTRAINT_NAME = "BorderTourVehicleContinuity";
+
+	/**
+	 * Rule for same-facility leisure trips (eqasim-bs#679): only walk or bicycle. Always bound; nothing changes until a
+	 * config selects the name as a trip constraint.
+	 */
+	public static final String SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME = "SameFacilityLeisureNonMotorised";
+
+	/**
+	 * Rule for trips into a stroll activity (eqasim-bs#679): only walk or bicycle. Always bound; nothing changes until a
+	 * config selects the name as a trip constraint.
+	 */
+	public static final String STROLL_TRIP_CONSTRAINT_NAME = "StrollNonMotorised";
 
 	/** The activity tour finder types the border tour constraint assumes (its fixed home and outside types). */
 	static final Set<String> BORDER_TOUR_ACTIVITY_TYPES = Set.of("home", "outside");
@@ -147,6 +162,17 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 		bindTourConstraintFactory(BORDER_TOUR_VEHICLE_CONSTRAINT_NAME).to(BorderTourVehicleConstraint.Factory.class);
 		// Logs the final relaxed-leg rate at the end of a MATSim run; silent when the constraint saw no vehicle leg.
 		addControlerListenerBinding().to(BorderTourVehicleSummaryListener.class);
+
+		// One shared factory: its counters are filled by all mode choice threads and read by the summary listener.
+		bind(SameFacilityLeisureTripConstraint.Factory.class).in(Singleton.class);
+		bindTripConstraintFactory(SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME)
+				.to(SameFacilityLeisureTripConstraint.Factory.class);
+		// Logs the final applied-trip count at the end of a MATSim run; silent when the constraint created nothing.
+		addControlerListenerBinding().to(LeisureTripRuleSummaryListener.class);
+
+		// Same pattern for trips into a stroll activity; its summary is logged by the listener above.
+		bind(StrollTripConstraint.Factory.class).in(Singleton.class);
+		bindTripConstraintFactory(STROLL_TRIP_CONSTRAINT_NAME).to(StrollTripConstraint.Factory.class);
 	}
 
 	@Provides
@@ -190,7 +216,8 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 	 * constraint is selected among the tour constraints, the activity tour finder must work on exactly the activity
 	 * types {@code home} and {@code outside}: the constraint cuts border tours at those fixed types and would
 	 * otherwise judge different tours than the tour finder builds. Configs that do not select the constraint are not
-	 * checked.
+	 * checked. When {@link #SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME} is a selected trip constraint, the border rule
+	 * leaves the trips it catches to that rule (eqasim-bs#679, see {@link BorderTourVehicleConstraint}).
 	 */
 	@Provides
 	@Singleton
@@ -206,7 +233,10 @@ public class BraunschweigModeChoiceModule extends AbstractEqasimExtension {
 			}
 		}
 
+		boolean sameFacilityLeisureExemption = dmcConfig.getTripConstraints()
+				.contains(SAME_FACILITY_LEISURE_TRIP_CONSTRAINT_NAME);
+
 		return new BorderTourVehicleConstraint.Factory(dmcConfig.getVehicleTourConstraintConfig().getRestrictedModes(),
-				homeFinder);
+				homeFinder, sameFacilityLeisureExemption);
 	}
 }
