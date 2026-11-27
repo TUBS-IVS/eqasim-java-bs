@@ -1,6 +1,7 @@
 package org.eqasim.braunschweig;
 
 
+import org.eqasim.braunschweig.analysis.LoopTripDistanceStatsModule;
 import org.eqasim.braunschweig.fares.zonal.VrbFareConfigGroup;
 import org.eqasim.braunschweig.mode_choice.BraunschweigModeChoiceModule;
 import org.eqasim.braunschweig.parking.ParkingConfigGroup;
@@ -20,6 +21,8 @@ public class BraunschweigConfigurator extends EqasimConfigurator {
 		registerConfigGroup(new VrbFareConfigGroup(), true);
 		registerConfigGroup(new ParkingConfigGroup(), true);
 		registerModule(new BraunschweigModeChoiceModule(cmd));
+		// MATSim's distance statistics with the diary length of the zero-length loop trips (eqasim-bs#679).
+		registerModule(new LoopTripDistanceStatsModule());
 	}
 
 	/**
