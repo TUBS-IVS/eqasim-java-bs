@@ -34,7 +34,7 @@ import com.google.inject.Inject;
  * </ul>
  *
  * MATSim's own files stay as MATSim writes them. Without any trip carrying the attribute both files hold MATSim's
- * values. Every iteration logs how many trips were corrected and the kilometres before and after; executed trips that
+ * values (up to the floating-point rounding of the summation order). Every iteration logs how many trips were corrected and the kilometres before and after; executed trips that
  * cannot be matched to the selected plan are counted and make the line a warning.
  */
 public class LoopTripDistanceStatsListener implements IterationEndsListener {

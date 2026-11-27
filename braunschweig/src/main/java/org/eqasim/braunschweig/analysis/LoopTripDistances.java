@@ -22,7 +22,7 @@ import org.matsim.core.router.TripStructureUtils.Trip;
  * <p>
  * The Braunschweig synthesis places a stroll or dog walk that has no destination of its own (a "loop") at the place of
  * the activity before it. The trip into it then starts and ends at one place and has a route of (almost) 0 m, and so
- * has the trip out of it when it goes back to the loop's start place. The synthesis writes the survey diary length of
+ * has the trip out of it when it ends at the loop's place. The synthesis writes the survey diary length of
  * such a trip (km, a path length) as the attribute {@link #LOOP_TRIP_DIARY_DISTANCE_ATTRIBUTE} on the trip's
  * DESTINATION activity. MATSim's own {@code traveldistancestats.csv} and {@code pkm_modestats.csv} count these trips
  * with their route length; this class computes the same two statistics with the diary length instead, so an analysis
@@ -31,9 +31,12 @@ import org.matsim.core.router.TripStructureUtils.Trip;
  *
  * <p>
  * Definitions, the same as MATSim's {@code TravelDistanceStats} and {@code PKMbyModeCalculator} (read from the MATSim
- * version this project uses): over the EXECUTED plans of the iteration, a leg's distance is its route distance (NaN
- * without a route); the leg statistic is over every leg with a finite distance, the trip statistic over every trip whose
- * summed leg distance is finite; the person kilometres sum the finite leg distances by leg mode. The only difference:
+ * version this project uses; {@code org.matsim.analysis.LoopTripDistancesMatsimParityTest} compares them): over the
+ * EXECUTED plans of the iteration, a leg's distance is its route distance (NaN without a route); the leg statistic is
+ * over every leg with a finite distance, the trip statistic over every trip whose summed leg distance is finite; the
+ * person kilometres sum by leg mode the route distance of every leg, where a leg without a route or with a NaN distance
+ * counts 0. MATSim sums in parallel streams, this class in one pass, so the values agree up to the floating-point
+ * rounding of the summation order. The only difference:
  * a trip whose destination activity carries a diary length counts that length. Its main leg (the first leg whose mode
  * is the trip's routing mode, else its first leg) gets the diary length minus the finite lengths of the trip's other
  * legs (never below 0), so the trip's legs add up to the diary length and keep their modes.
@@ -56,7 +59,7 @@ public final class LoopTripDistances {
 	public static final class Result {
 		public final DoubleSummaryStatistics legStatistics = new DoubleSummaryStatistics();
 		public final DoubleSummaryStatistics tripStatistics = new DoubleSummaryStatistics();
-		/** Sum of the finite leg distances by leg mode, metres. */
+		/** Person metres by leg mode (a leg without a route or with a NaN distance counts 0, as in MATSim). */
 		public final Map<String, Double> metersByMode = new TreeMap<>();
 		/** Trips whose distance was replaced by the diary length. */
 		public long correctedTrips;
@@ -153,8 +156,10 @@ public final class LoopTripDistances {
 			tripMeters += meters[index];
 			if (Double.isFinite(meters[index])) {
 				result.legStatistics.accept(meters[index]);
-				result.metersByMode.merge(legs.get(index).getMode(), meters[index], Double::sum);
 			}
+			// MATSim's PKMbyModeCalculator: no route or a NaN distance counts 0, every other value is summed.
+			double personMeters = Double.isNaN(meters[index]) ? 0.0 : meters[index];
+			result.metersByMode.merge(legs.get(index).getMode(), personMeters, Double::sum);
 		}
 		if (Double.isFinite(tripMeters)) {
 			result.tripStatistics.accept(tripMeters);
